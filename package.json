@@ -1,0 +1,27 @@
+{
+  "name": "tetrix",
+  "version": "0.0.0",
+  "description": "Tetris in reasonml",
+  "main": "index.js",
+  "scripts": {
+    "start": "./lib/bs/bytecode/indexhot.byte",
+    "start:native": "./lib/bs/native/index.native",
+    "build": "bsb -make-world",
+    "build:web": "bsb -make-world -backend js",
+    "build:native": "bsb -make-world -backend native",
+    "clean": "bsb -clean-world"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/goodcodedev/tetris.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "reprocessing": "github:Schmavery/reprocessing"
+  },
+  "devDependencies": {
+    "bs-platform": "bsansouci/bsb-native"
+  }
+}
