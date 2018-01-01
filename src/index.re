@@ -2,7 +2,13 @@ open Reprocessing;
 
 type element =
   | Cube
-  | Line;
+  | Line
+  | Triangle
+  | RightTurn
+  | LeftTurn
+  | LeftL
+  | RightL
+  ;
 
 let cubeTiles = [
   (0, 0),
@@ -13,13 +19,50 @@ let cubeTiles = [
 let lineTiles = [
   (0, 0),
   (0, 1),
+  (0, 2),
+  (0, 3)
+];
+
+let triangleTiles = [
+  (0, 0),
+  (-1, 1),
+  (0, 1),
+  (1, 1)
+];
+let rightTurnTiles = [
+  (0, 0),
+  (1, 0),
+  (-1, 1),
+  (0, 1)
+];
+let leftTurnTiles = [
+  (0, 0),
+  (1, 0),
+  (1, 1),
+  (2, 1)
+];
+let leftLTiles = [
+  (0, 0),
+  (0, 1),
+  (-1, 2),
   (0, 2)
+];
+let rightLTiles = [
+  (0, 0),
+  (0, 1),
+  (0, 2),
+  (1, 2)
 ];
 
 let elTiles = (element) => {
   switch element {
   | Cube => cubeTiles
   | Line => lineTiles
+  | Triangle => triangleTiles
+  | LeftTurn => leftTurnTiles
+  | RightTurn => rightTurnTiles
+  | LeftL => leftLTiles
+  | RightL => rightLTiles
   }
 };
 
@@ -33,7 +76,8 @@ let tileColors = [|
   Utils.color(~r=199, ~g=214, ~b=240, ~a=255), /* Standard unfilled color */
   Utils.color(~r=255, ~g=180, ~b=160, ~a=255),
   Utils.color(~r=180, ~g=255, ~b=160, ~a=255),
-  Utils.color(~r=180, ~g=240, ~b=250, ~a=255)
+  Utils.color(~r=180, ~g=240, ~b=250, ~a=255),
+  Utils.color(~r=240, ~g=220, ~b=200, ~a=255)
 |];
 
 type pos = {
@@ -75,6 +119,28 @@ let fillElTiles = (tiles, color, x, y, env) => {
     }, tiles);
 };
 
+let newElement = (state) => {
+  let newElType = switch (Random.int(7)) {
+  | 0 => Cube
+  | 1 => Line
+  | 2 => Triangle
+  | 3 => RightTurn
+  | 4 => LeftTurn
+  | 5 => LeftL
+  | 6 => RightL
+  | _ => Cube
+  };
+  {
+    ...state,
+    curEl: newElType,
+    curElColor: Random.int(Array.length(tileColors)),
+    curElPos: {
+      x: tileCols / 2,
+      y: 0
+    }
+  }
+};
+
 let draw = (state, env) => {
   let timeStep = Env.deltaTime(env);
   let screenHeight = Env.height(env);
@@ -100,7 +166,7 @@ let draw = (state, env) => {
   /* Draw element */
   fillElTiles(elTiles(state.curEl), tileColors[state.curElColor], state.curElPos.x, state.curElPos.y, env);
   let curTime = state.curTime +. timeStep;
-  let isNewTick = curTime > state.lastTick +. 0.3;
+  let isNewTick = curTime > state.lastTick +. 0.1;
   let isCollision = (state) => {
     List.exists(((tileX, tileY)) => {
       state.curElPos.y + tileY >= tileRows - 1 || state.tiles[state.curElPos.y + tileY + 1][state.curElPos.x + tileX] > 0
@@ -118,24 +184,23 @@ let draw = (state, env) => {
   let updatePos = (state) => {
     if (isNewTick) {
       if (newEl) {
-        {
-          x: tileCols / 2,
-          y: 0
-        }
+        newElement(state)
       } else {
         {
-          x: state.curElPos.x,
-          y: state.curElPos.y + 1
+          ...state,
+          curElPos: {
+            x: state.curElPos.x,
+            y: state.curElPos.y + 1
+          }
         }
       }
     } else {
-      state.curElPos
+      state
     }
   };
 
   {
-    ...state,
-    curElPos: updatePos(state),
+    ...updatePos(state),
     curTime: curTime,
     lastTick: (isNewTick) ? curTime : state.lastTick
   }
