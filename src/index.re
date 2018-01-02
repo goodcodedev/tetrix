@@ -91,7 +91,15 @@ type curEl = {
   color: int,
 };
 
+type inputAction =
+  | None
+  | MoveLeft
+  | MoveRight
+  | MoveDown
+  | DropDown;
+
 type stateT = {
+  action: inputAction,
   curEl: curEl,
   lastTick: float,
   curTime: float,
@@ -123,6 +131,7 @@ let setup = (env) : stateT => {
   Random.self_init();
   Env.size(~width=400, ~height=640, env);
   {
+    action: None,
     curEl: newElement(),
     lastTick: 0.,
     curTime: 0.,
@@ -177,6 +186,65 @@ let draw = (state, env) => {
     },
     state.tiles
   );
+  let state = switch state.action {
+  | MoveLeft  => {
+    ...state,
+    action: None,
+    curEl: {
+      ...state.curEl,
+      pos: {
+        x: state.curEl.pos.x - 1,
+        y: state.curEl.pos.y
+      }
+    }
+  }
+  | MoveRight => {
+    ...state,
+    action: None,
+    curEl: {
+      ...state.curEl,
+      pos: {
+        x: state.curEl.pos.x + 1,
+        y: state.curEl.pos.y
+      }
+    }
+  }
+  | MoveDown => {
+    ...state,
+    action: None,
+    curEl: {
+      ...state.curEl,
+      pos: {
+        x: state.curEl.pos.x,
+        y: state.curEl.pos.y + 1
+      }
+    }
+  }
+  | DropDown => {
+    /* Drop down until collision */
+    let rec dropDown = (state) => {
+      if (isCollision(state)) {
+        state
+      } else {
+        dropDown({
+          ...state,
+          curEl: {
+            ...state.curEl,
+            pos: {
+              x: state.curEl.pos.x,
+              y: state.curEl.pos.y + 1
+            }
+          }
+        })
+      }
+    };
+    dropDown({
+      ...state,
+      action: None
+    })
+  }
+  | None => state
+  };
   /* Draw element */
   fillElTiles(elTiles(state.curEl.el), tileColors[state.curEl.color], state.curEl.pos.x, state.curEl.pos.y, env);
   let curTime = state.curTime +. timeStep;
@@ -243,36 +311,23 @@ let keyPressed = (state, env) => {
     switch (Env.keyCode(env)) {
     | J => {
       ...state,
-      curEl: {
-        ...state.curEl,
-        pos: {
-          x: state.curEl.pos.x - 1,
-          y: state.curEl.pos.y
-        }
-      }
+      action: MoveLeft
     }
     | K => {
       ...state,
-      curEl: {
-        ...state.curEl,
-        pos: {
-          x: state.curEl.pos.x + 1,
-          y: state.curEl.pos.y
-        }
-      }
+      action: MoveRight
     }
     | S => {
       ...state,
-      curEl: {
-        ...state.curEl,
-        pos: {
-          x: state.curEl.pos.x,
-          y: state.curEl.pos.y + 1
-        }
-      }
+      action: MoveDown
+    }
+    | Period => {
+      ...state,
+      action: DropDown
     }
     | _ => state
     }
   );
 };
+
 run(~setup, ~draw, ~keyPressed, ());
