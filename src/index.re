@@ -103,6 +103,9 @@ type inputAction =
   | MoveLeft
   | MoveRight
   | MoveDown
+  | BlockLeft
+  | BlockRight
+  | CancelDown
   | DropDown
   | RotateCW
   | RotateCCW
@@ -165,9 +168,39 @@ let fillElTiles = (tiles, color, x, y, env) => {
 
 let isCollision = (state) => {
   List.exists(((tileX, tileY)) => {
-    state.curEl.pos.y + tileY >= tileRows - 1 || state.tiles[state.curEl.pos.y + tileY + 1][state.curEl.pos.x + tileX] > 0
+    state.curEl.pos.y + tileY >= tileRows - 1
+    || state.curEl.pos.x + tileX < 0 || state.curEl.pos.x + tileX > tileCols - 1
+    || state.tiles[state.curEl.pos.y + tileY + 1][state.curEl.pos.x + tileX] > 0
   }, elTiles(state.curEl.el, state.curEl.rotation))
 };
+
+let attemptMoveLeft = (state) => {
+  let movedState = {
+    ...state,
+    curEl: {
+      ...state.curEl,
+      pos: {
+        x: state.curEl.pos.x - 1,
+        y: state.curEl.pos.y
+      }
+    }
+  };
+  (isCollision(movedState)) ? state : movedState
+};
+let attemptMoveRight = (state) => {
+  let movedState = {
+    ...state,
+    curEl: {
+      ...state.curEl,
+      pos: {
+        x: state.curEl.pos.x + 1,
+        y: state.curEl.pos.y
+      }
+    }
+  };
+  (isCollision(movedState)) ? state : movedState
+};
+
 
 let elToTiles = (state) => {
   List.iter(((tileX, tileY)) => {
@@ -199,26 +232,20 @@ let draw = (state, env) => {
   );
   let state = switch state.action {
   | MoveLeft  => {
-    ...state,
-    action: None,
-    curEl: {
-      ...state.curEl,
-      pos: {
-        x: state.curEl.pos.x - 1,
-        y: state.curEl.pos.y
-      }
-    }
+    ...attemptMoveLeft(state),
+    action: None
   }
   | MoveRight => {
-    ...state,
-    action: None,
-    curEl: {
-      ...state.curEl,
-      pos: {
-        x: state.curEl.pos.x + 1,
-        y: state.curEl.pos.y
-      }
-    }
+    ...attemptMoveRight(state),
+    action: None
+  }
+  | BlockLeft => {
+    ...List.fold_left((state, _) => attemptMoveLeft(state), state, [1,2,3]),
+    action: None
+  }
+  | BlockRight => {
+    ...List.fold_left((state, _) => attemptMoveRight(state), state, [1,2,3]),
+    action: None
   }
   | MoveDown => {
     ...state,
@@ -231,6 +258,7 @@ let draw = (state, env) => {
       }
     }
   }
+  | CancelDown => state
   | DropDown => {
     /* Drop down until collision */
     let rec dropDown = (state) => {
@@ -288,10 +316,10 @@ let draw = (state, env) => {
       state.tiles
     );
     /* Move rows above completed down */
-    let _ = Array.fold_left(
-      ((movedRows, currentRow), isCompleted) => {
+    let _ = Array.fold_right(
+      (isCompleted, (movedRows, currentRow)) => {
         if (isCompleted) {
-          for (y in currentRow downto 0) {
+          for (y in currentRow downto 1) {
             state.tiles[y] = state.tiles[y - 1];
           };
           (movedRows + 1, currentRow - 1)
@@ -299,8 +327,8 @@ let draw = (state, env) => {
           (movedRows, currentRow - 1)
         }
       },
-      (0, tileRows - 1),
-      completedRows
+      completedRows,
+      (0, tileRows - 1)
     );
   };
   let updatePos = (state) => {
@@ -311,13 +339,17 @@ let draw = (state, env) => {
           curEl: newElement()
         }
       } else {
-        {
-          ...state,
-          curEl: {
-            ...state.curEl,
-            pos: {
-              x: state.curEl.pos.x,
-              y: state.curEl.pos.y + 1
+        switch state.action {
+        | CancelDown => state
+        | _ => {
+            ...state,
+            action: None,
+            curEl: {
+              ...state.curEl,
+              pos: {
+                x: state.curEl.pos.x,
+                y: state.curEl.pos.y + 1
+              }
             }
           }
         }
@@ -344,9 +376,21 @@ let keyPressed = (state, env) => {
       ...state,
       action: MoveRight
     }
+    | W | E => {
+      ...state,
+      action: BlockRight
+    }
+    | B => {
+      ...state,
+      action: BlockLeft
+    }
     | J => {
       ...state,
       action: MoveDown
+    }
+    | K => {
+      ...state,
+      action: CancelDown
     }
     | S | R => {
       ...state,
