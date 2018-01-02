@@ -11,6 +11,7 @@ module Document = {
 [@bs.get] external getWhich : 'eventT => int = "which";
 
 let tickDuration = 0.5;
+let elColorOffset = 2;
 
 type element =
   | Cube
@@ -106,6 +107,7 @@ let tilePadding = 3;
 
 let tileColors = [|
   Utils.color(~r=199, ~g=214, ~b=240, ~a=255), /* Standard unfilled color */
+  Utils.color(~r=205, ~g=220, ~b=246, ~a=255), /* Standard lighter color */
   Utils.color(~r=255, ~g=180, ~b=160, ~a=255),
   Utils.color(~r=180, ~g=255, ~b=160, ~a=255),
   Utils.color(~r=180, ~g=240, ~b=250, ~a=255),
@@ -130,7 +132,8 @@ type stateT = {
   curEl: curEl,
   lastTick: float,
   curTime: float,
-  tiles: array(array(int))
+  tiles: array(array(int)),
+  elTiles: array(int)
 };
 
 let newElement = () => {
@@ -146,7 +149,7 @@ let newElement = () => {
   };
   {
     el: newElType,
-    color: Random.int(Array.length(tileColors) - 1) + 1,
+    color: Random.int(Array.length(tileColors) - elColorOffset) + elColorOffset,
     rotation: 0,
     pos: {
       x: tileCols / 2,
@@ -170,7 +173,8 @@ let setup = (env) : stateT => {
     curEl: newElement(),
     lastTick: 0.,
     curTime: 0.,
-    tiles: Array.make_matrix(tileRows, tileCols, 0)
+    tiles: Array.make_matrix(tileRows, tileCols, 0),
+    elTiles: Array.make(tileCols, 0)
   }
 };
 
@@ -242,25 +246,6 @@ let listTo = (countDown) => {
 let draw = (state, env) => {
   let timeStep = Env.deltaTime(env);
   let screenHeight = Env.height(env);
-  Draw.background(Utils.color(~r=190, ~g=199, ~b=230, ~a=245), env);
-  Draw.clear(env);
-  Array.iteri(
-    (y, tileRow) => {
-      Array.iteri(
-        (x, tileVal) => {
-          Draw.fill(tileColors[tileVal], env);
-          Draw.rect(
-            ~pos=(x * tileWidth, y * tileHeight),
-            ~width=tileWidth - tilePadding,
-            ~height=tileHeight - tilePadding,
-            env
-          );
-        },
-        tileRow
-      )
-    },
-    state.tiles
-  );
   let state = switch state.action {
   | MoveLeft  => {
     ...attemptMoveLeft(state),
@@ -339,6 +324,45 @@ let draw = (state, env) => {
   }
   | None => state
   };
+  Draw.background(Utils.color(~r=190, ~g=199, ~b=230, ~a=245), env);
+  Draw.clear(env);
+  /* Reset element tile rows */
+  Array.iteri((i, tileRow) => {
+    if (tileRow > 0) {
+      state.elTiles[i] = 0;
+    }
+  }, state.elTiles);
+  /* Set row where element tile is */
+  List.iter(((x, y)) => {
+    let pointX = state.curEl.pos.x + x;
+    let pointY = state.curEl.pos.y + y;
+    if (state.elTiles[pointX] < pointY) {
+      state.elTiles[pointX] = pointY;
+    };
+  }, elTiles(state.curEl.el, state.curEl.rotation));
+  /* Draw tile squares */
+  Array.iteri(
+    (y, tileRow) => {
+      Array.iteri(
+        (x, tileVal) => {
+          if (state.elTiles[x] > 0 && state.elTiles[x] < y && tileVal == 0) {
+            /* Use light standard color */
+            Draw.fill(tileColors[1], env);
+          } else {
+            Draw.fill(tileColors[tileVal], env);
+          };
+          Draw.rect(
+            ~pos=(x * tileWidth, y * tileHeight),
+            ~width=tileWidth - tilePadding,
+            ~height=tileHeight - tilePadding,
+            env
+          );
+        },
+        tileRow
+      )
+    },
+    state.tiles
+  );
   /* Draw element */
   fillElTiles(elTiles(state.curEl.el, state.curEl.rotation), tileColors[state.curEl.color], state.curEl.pos.x, state.curEl.pos.y, env);
   let curTime = state.curTime +. timeStep;
