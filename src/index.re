@@ -1,5 +1,7 @@
 open Reprocessing;
 
+let tickDuration = 0.5;
+
 type element =
   | Cube
   | Line
@@ -9,53 +11,51 @@ type element =
   | LeftL
   | RightL
   ;
-
-let cubeTiles = [
+let cubeTiles = Tetronimo.make([
   (0, 0),
   (1, 0),
   (0, 1),
   (1, 1)
-];
-let lineTiles = [
+]);
+let lineTiles = Tetronimo.make([
   (0, 0),
   (0, 1),
   (0, 2),
   (0, 3)
-];
-
-let triangleTiles = [
+]);
+let triangleTiles = Tetronimo.make([
   (0, 0),
   (-1, 1),
   (0, 1),
   (1, 1)
-];
-let rightTurnTiles = [
+]);
+let rightTurnTiles = Tetronimo.make([
   (0, 0),
   (1, 0),
   (-1, 1),
   (0, 1)
-];
-let leftTurnTiles = [
+]);
+let leftTurnTiles = Tetronimo.make([
   (0, 0),
   (1, 0),
   (1, 1),
   (2, 1)
-];
-let leftLTiles = [
+]);
+let leftLTiles = Tetronimo.make([
   (0, 0),
   (0, 1),
   (-1, 2),
   (0, 2)
-];
-let rightLTiles = [
+]);
+let rightLTiles = Tetronimo.make([
   (0, 0),
   (0, 1),
   (0, 2),
   (1, 2)
-];
+]);
 
-let elTiles = (element) => {
-  switch element {
+let elTiles = (element, rotation) => {
+  let tetronimo = switch element {
   | Cube => cubeTiles
   | Line => lineTiles
   | Triangle => triangleTiles
@@ -63,6 +63,12 @@ let elTiles = (element) => {
   | RightTurn => rightTurnTiles
   | LeftL => leftLTiles
   | RightL => rightLTiles
+  };
+  switch rotation {
+  | 1 => tetronimo.points90
+  | 2 => tetronimo.points180
+  | 3 => tetronimo.points270
+  | _ => tetronimo.points
   }
 };
 
@@ -89,6 +95,7 @@ type curEl = {
   el: element,
   pos: pos,
   color: int,
+  rotation: int
 };
 
 type inputAction =
@@ -96,7 +103,10 @@ type inputAction =
   | MoveLeft
   | MoveRight
   | MoveDown
-  | DropDown;
+  | DropDown
+  | RotateCW
+  | RotateCCW
+  ;
 
 type stateT = {
   action: inputAction,
@@ -120,6 +130,7 @@ let newElement = () => {
   {
     el: newElType,
     color: Random.int(Array.length(tileColors) - 1) + 1,
+    rotation: 0,
     pos: {
       x: tileCols / 2,
       y: 0
@@ -155,13 +166,13 @@ let fillElTiles = (tiles, color, x, y, env) => {
 let isCollision = (state) => {
   List.exists(((tileX, tileY)) => {
     state.curEl.pos.y + tileY >= tileRows - 1 || state.tiles[state.curEl.pos.y + tileY + 1][state.curEl.pos.x + tileX] > 0
-  }, elTiles(state.curEl.el))
+  }, elTiles(state.curEl.el, state.curEl.rotation))
 };
 
 let elToTiles = (state) => {
   List.iter(((tileX, tileY)) => {
     state.tiles[state.curEl.pos.y + tileY][state.curEl.pos.x + tileX] = state.curEl.color;
-  }, elTiles(state.curEl.el));
+  }, elTiles(state.curEl.el, state.curEl.rotation));
 };
 
 let draw = (state, env) => {
@@ -243,12 +254,28 @@ let draw = (state, env) => {
       action: None
     })
   }
+  | RotateCW => {
+    ...state,
+    action: None,
+    curEl: {
+      ...state.curEl,
+      rotation: (state.curEl.rotation + 1) mod 4
+    }
+  }
+  | RotateCCW => {
+    ...state,
+    action: None,
+    curEl: {
+      ...state.curEl,
+      rotation: (state.curEl.rotation == 0) ? 3 : (state.curEl.rotation - 1)
+    }
+  }
   | None => state
   };
   /* Draw element */
-  fillElTiles(elTiles(state.curEl.el), tileColors[state.curEl.color], state.curEl.pos.x, state.curEl.pos.y, env);
+  fillElTiles(elTiles(state.curEl.el, state.curEl.rotation), tileColors[state.curEl.color], state.curEl.pos.x, state.curEl.pos.y, env);
   let curTime = state.curTime +. timeStep;
-  let isNewTick = curTime > state.lastTick +. 0.2;
+  let isNewTick = curTime > state.lastTick +. tickDuration;
   let newEl = (isNewTick && isCollision(state));
   if (newEl) {
     /* Put element into tiles */
@@ -309,17 +336,25 @@ let draw = (state, env) => {
 let keyPressed = (state, env) => {
   Events.(
     switch (Env.keyCode(env)) {
-    | J => {
+    | H => {
       ...state,
       action: MoveLeft
     }
-    | K => {
+    | L => {
       ...state,
       action: MoveRight
     }
-    | S => {
+    | J => {
       ...state,
       action: MoveDown
+    }
+    | S | R => {
+      ...state,
+      action: RotateCW
+    }
+    | C => {
+      ...state,
+      action: RotateCCW
     }
     | Period => {
       ...state,
