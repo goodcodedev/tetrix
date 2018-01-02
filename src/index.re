@@ -1,5 +1,15 @@
 open Reprocessing;
 
+module Document = {
+  type window;
+  let window: window = [%bs.raw "window"];
+  [@bs.send] external addEventListener : ('window, string, 'eventT => unit) => unit = "addEventListener";
+};
+
+[@bs.set] external setLastKeyCode : ('a, int) => unit = "__lastKeyCode";
+[@bs.get] external lastKeyCode : 'a => int = "__lastKeyCode";
+[@bs.get] external getWhich : 'eventT => int = "which";
+
 let tickDuration = 0.5;
 
 type element =
@@ -11,6 +21,22 @@ type element =
   | LeftL
   | RightL
   ;
+
+type inputAction =
+  | None
+  | MoveLeft
+  | MoveRight
+  | MoveDown
+  | BlockLeft
+  | BlockRight
+  | CancelDown
+  | DropDown
+  | RotateCW
+  | RotateCCW
+  | MoveBeginning
+  | MoveEnd
+  ;
+
 let cubeTiles = Tetronimo.make([
   (0, 0),
   (1, 0),
@@ -98,18 +124,6 @@ type curEl = {
   rotation: int
 };
 
-type inputAction =
-  | None
-  | MoveLeft
-  | MoveRight
-  | MoveDown
-  | BlockLeft
-  | BlockRight
-  | CancelDown
-  | DropDown
-  | RotateCW
-  | RotateCCW
-  ;
 
 type stateT = {
   action: inputAction,
@@ -142,6 +156,13 @@ let newElement = () => {
 };
 
 let setup = (env) : stateT => {
+  Document.addEventListener(
+    Document.window,
+    "keydown",
+    (e) => {
+      setLastKeyCode(Document.window, getWhich(e))
+    }
+  );
   Random.self_init();
   Env.size(~width=400, ~height=640, env);
   {
@@ -201,11 +222,21 @@ let attemptMoveRight = (state) => {
   (isCollision(movedState)) ? state : movedState
 };
 
-
 let elToTiles = (state) => {
   List.iter(((tileX, tileY)) => {
     state.tiles[state.curEl.pos.y + tileY][state.curEl.pos.x + tileX] = state.curEl.color;
   }, elTiles(state.curEl.el, state.curEl.rotation));
+};
+
+let listTo = (countDown) => {
+  let rec addToList = (list, countDown) => {
+    if (countDown <= 0) {
+      list
+    } else {
+      addToList([countDown, ...list], countDown - 1)
+    }
+  };
+  addToList([], countDown)
 };
 
 let draw = (state, env) => {
@@ -240,11 +271,19 @@ let draw = (state, env) => {
     action: None
   }
   | BlockLeft => {
-    ...List.fold_left((state, _) => attemptMoveLeft(state), state, [1,2,3]),
+    ...List.fold_left((state, _) => attemptMoveLeft(state), state, listTo(3)),
     action: None
   }
   | BlockRight => {
-    ...List.fold_left((state, _) => attemptMoveRight(state), state, [1,2,3]),
+    ...List.fold_left((state, _) => attemptMoveRight(state), state, listTo(3)),
+    action: None
+  }
+  | MoveBeginning => {
+    ...List.fold_left((state, _) => attemptMoveLeft(state), state, listTo(state.curEl.pos.x)),
+    action: None
+  }
+  | MoveEnd => {
+    ...List.fold_left((state, _) => attemptMoveRight(state), state, listTo(tileCols - state.curEl.pos.x)),
     action: None
   }
   | MoveDown => {
@@ -404,7 +443,21 @@ let keyPressed = (state, env) => {
       ...state,
       action: DropDown
     }
-    | _ => state
+    | _ => {
+      /* Js.log(lastKeyCode(Document.window)); */
+      /* Todo: check shift press */
+      switch (lastKeyCode(Document.window)) {
+      | 48 | 173 => {
+          ...state,
+          action: MoveBeginning
+        }
+      | 52 => {
+          ...state,
+          action: MoveEnd
+        }
+      | _ => state
+      }
+    }
     }
   );
 };
