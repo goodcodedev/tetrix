@@ -36,6 +36,7 @@ type inputAction =
   | RotateCCW
   | MoveBeginning
   | MoveEnd
+  | Pause
   ;
 
 let getTetronimo = (element) => {
@@ -90,6 +91,9 @@ type curEl = {
   rotation: int
 };
 
+type gameState =
+  | Running
+  | GameOver;
 
 type stateT = {
   action: inputAction,
@@ -97,7 +101,9 @@ type stateT = {
   lastTick: float,
   curTime: float,
   tiles: array(array(int)),
-  elTiles: array(int)
+  elTiles: array(int),
+  gameState: gameState,
+  paused: bool
 };
 
 
@@ -140,7 +146,28 @@ let setup = (env) : stateT => {
     lastTick: 0.,
     curTime: 0.,
     tiles: Array.make_matrix(tileRows, tileCols, 0),
-    elTiles: Array.make(tileCols, 0)
+    elTiles: Array.make(tileCols, 0),
+    gameState: Running,
+    paused: false
+  }
+};
+
+let newGame = (state) => {
+  for (y in 0 to tileRows - 1) {
+    for (x in 0 to tileCols - 1) {
+      state.tiles[y][x] = 0;
+    }
+  };
+  for (x in 0 to tileCols - 1) {
+    state.elTiles[x] = 0;
+  };
+  {
+    ...state,
+    action: None,
+    curEl: newElement(),
+    lastTick: 0.,
+    curTime: 0.,
+    gameState: Running
   }
 };
 
@@ -304,9 +331,8 @@ let listRange = (countDown) => {
   addToList([], countDown)
 };
 
-let draw = (state, env) => {
-  let timeStep = Env.deltaTime(env);
-  let state = switch state.action {
+let processAction = (state, env) => {
+  switch state.action {
   | MoveLeft  => {
     ...attemptMove(state, (-1, 0)),
     action: None
@@ -373,8 +399,17 @@ let draw = (state, env) => {
     }
     }
   }
+  | Pause => {
+    ...state,
+    action: None,
+    paused: !state.paused
+  }
   | None => state
-  };
+  }
+};
+
+let drawGame = (state, env) => {
+  let timeStep = Env.deltaTime(env);
   Draw.background(Utils.color(~r=190, ~g=199, ~b=230, ~a=245), env);
   Draw.clear(env);
   /* Reset element tile rows */
@@ -431,7 +466,10 @@ let draw = (state, env) => {
   } else {
     (state, false)
   };
-  if (newEl) {
+  /* Handle element has touched down */
+  let state = switch (newEl) {
+  | false => state
+  | true => {
     /* Put element into tiles */
     elToTiles(state);
     /* Check for completed rows */
@@ -456,12 +494,38 @@ let draw = (state, env) => {
       completedRows,
       (0, tileRows - 1)
     );
+    {
+      ...state,
+      curEl: newElement()
+    }
+  }
   };
-  {
-    ...state,
-    curEl: (newEl) ? newElement() : state.curEl,
-    curTime: curTime,
-    lastTick: (isNewTick) ? curTime : state.lastTick
+  if (newEl && isCollision(state)) {
+    {
+      ...state,
+      gameState: GameOver
+    }
+  } else {
+    {
+      ...state,
+      curTime: curTime,
+      lastTick: (isNewTick) ? curTime : state.lastTick
+    }
+  }
+};
+
+let draw = (state, env) => {
+  let state = processAction(state, env);
+  if (state.paused) {
+    state
+  } else {
+    let state = drawGame(state, env);
+    switch (state.gameState) {
+    | Running => state
+    | GameOver => {
+      newGame(state)
+    }
+    }
   }
 };
 
@@ -503,6 +567,10 @@ let keyPressed = (state, env) => {
     | Period => {
       ...state,
       action: DropDown
+    }
+    | Space => {
+      ...state,
+      action: Pause
     }
     | _ => {
       /* Js.log(lastKeyCode(Document.window)); */
