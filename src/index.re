@@ -192,6 +192,101 @@ let attemptMoveTest = (state, (x, y)) => {
   (isCollision(moved)) ? (false, state) : (true, moved)
 };
 
+/* Wall kicks http://tetris.wikia.com/wiki/SRS */
+let wallTests = (state, newRotation, positions) => {
+  let rec loop = (positions) => {
+    switch (positions) {
+    | [] => (false, state)
+    | [(x, y), ...rest] => {
+      let rotated = {
+        ...state,
+        curEl: {
+          ...state.curEl,
+          rotation: newRotation,
+          pos: {
+            x: state.curEl.pos.x + x,
+            y: state.curEl.pos.y - y,
+          }
+        }
+      };
+      if (isCollision(rotated)) {
+        loop(rest)
+      } else {
+        (true, rotated)
+      }
+    }
+    }
+  };
+  loop(positions)
+};
+let attemptRotateCW = (state) => {
+  let newRotation = (state.curEl.rotation + 1) mod 4;
+  /* First test for successful default rotation */
+  let rotated = {
+    ...state,
+    curEl: {
+      ...state.curEl,
+      rotation: newRotation
+    }
+  };
+  if (!isCollision(rotated)) {
+    (true, rotated)
+  } else {
+    /* Loop wall kick tests */
+    let testPositions = switch (state.curEl.el) {
+    | Line => switch (newRotation) {
+    | 1 => [(-2, 0), (1, 0), (-2, -1), (1, 2)]
+    | 2 => [(-1, 0), (2, 0), (-1, 2), (2, -1)]
+    | 3 => [(2, 0), (-1, 0), (2, 1), (-1, -2)]
+    | 0 => [(1, 0), (-2, 0), (1, -2), (-2, 1)]
+    | _ => []
+    }
+    | _ => switch (newRotation) {
+    | 1 => [(-1, 0), (-1, 1), (0, -2), (-1, -2)]
+    | 2 => [(1, 0), (1, -1), (0, 2), (1, 2)]
+    | 3 => [(1, 0), (1, 1), (0, -2), (1, -2)]
+    | 0 => [(-1, 0), (-1, -1), (0, 2), (-1, 2)]
+    | _ => []
+    }
+    };
+    wallTests(state, newRotation, testPositions)
+  }
+};
+
+let attemptRotateCCW = (state) => {
+  let newRotation = (state.curEl.rotation == 0) ? 3 : (state.curEl.rotation - 1);
+  /* First test for successful default rotation */
+  let rotated = {
+    ...state,
+    curEl: {
+      ...state.curEl,
+      rotation: newRotation
+    }
+  };
+  if (!isCollision(rotated)) {
+    (true, rotated)
+  } else {
+    /* Loop wall kick tests */
+    let testPositions = switch (state.curEl.el) {
+    | Line => switch (newRotation) {
+    | 1 => [(1, 0), (-2, 0), (1, -2), (-2, 1)]
+    | 2 => [(-2, 0), (1, 0), (-2, -1), (1, 2)]
+    | 3 => [(-1, 0), (2, 0), (-1, 2), (2, -1)]
+    | 0 => [(2, 0), (-1, 0), (2, 1), (-1, -2)]
+    | _ => []
+    }
+    | _ => switch (newRotation) {
+    | 1 => [(-1, 0), (-1, 1), (0, -2), (-1, -2)]
+    | 2 => [(-1, 0), (-1, -1), (0, 2), (-1, 2)]
+    | 3 => [(1, 0), (1, 1), (0, -2), (1, -2)]
+    | 0 => [(1, 0), (1, -1), (0, 2), (1, 2)]
+    | _ => []
+    }
+    };
+    wallTests(state, newRotation, testPositions)
+  }
+};
+
 let elToTiles = (state) => {
   List.iter(((tileX, tileY)) => {
     state.tiles[state.curEl.pos.y + tileY][state.curEl.pos.x + tileX] = state.curEl.color;
@@ -249,35 +344,34 @@ let draw = (state, env) => {
       | (true, state) => dropDown(state)
       }
     };
-    let newState = dropDown({
+    dropDown({
       ...state,
       action: None
-    });
-    Js.log(Array.of_list(elTiles(state.curEl.el, state.curEl.rotation)));
-    Js.log(newState.curEl);
-    newState
+    })
   }
   | RotateCW => {
-    let rotated = {
+    switch (attemptRotateCW(state)) {
+    | (true, state) => {
       ...state,
-      action: None,
-      curEl: {
-        ...state.curEl,
-        rotation: (state.curEl.rotation + 1) mod 4
-      }
-    };
-    (isCollision(rotated)) ? state : rotated
+      action: None
+    }
+    | (false, state) => {
+      ...state,
+      action: None
+    }
+    }
   }
   | RotateCCW => {
-    let rotated = {
+    switch (attemptRotateCCW(state)) {
+    | (true, state) => {
       ...state,
-      action: None,
-      curEl: {
-        ...state.curEl,
-        rotation: (state.curEl.rotation == 0) ? 3 : (state.curEl.rotation - 1)
-      }
-    };
-    (isCollision(rotated)) ? state : rotated
+      action: None
+    }
+    | (false, state) => {
+      ...state,
+      action: None
+    }
+    }
   }
   | None => state
   };
