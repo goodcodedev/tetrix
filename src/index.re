@@ -38,46 +38,20 @@ type inputAction =
   | MoveEnd
   ;
 
-/* Origin is in x2 to simplify to ints */
-let lineTiles = Tetronimo.make(
-  [(-3, 1), (-1, 1), (1, 1), (3, 1)],
-  (1, 1), 2
-);
-let leftLTiles = Tetronimo.make(
-  [(-2, 2), (-2, 0), (0, 0), (2, 0)],
-  (0, 0), 3
-);
-let rightLTiles = Tetronimo.make(
-  [(-2, 0), (0, 0), (2, 0), (2, 2)],
-  (0, 0), 4
-);
-let cubeTiles = Tetronimo.make(
-  [(-1, 1), (-1, -1), (1, 1), (1, -1)],
-  (1, 1), 5
-);
-let rightTurnTiles = Tetronimo.make(
-  [(-2, 0), (0, 0), (0, 2), (2, 2)],
-  (0, 0), 6
-);
-let triangleTiles = Tetronimo.make(
-  [(-2, 0), (0, 0), (0, 2), (2, 0)],
-  (0, 0), 7
-);
-let leftTurnTiles = Tetronimo.make(
-  [(-2, 2), (0, 2), (0, 0), (2, 0)],
-  (0, 0), 8
-);
+let getTetronimo = (element) => {
+  switch element {
+  | Cube => Tetronimo.cubeTiles
+  | Line => Tetronimo.lineTiles
+  | Triangle => Tetronimo.triangleTiles
+  | RightTurn => Tetronimo.rightTurnTiles
+  | LeftTurn => Tetronimo.leftTurnTiles
+  | LeftL => Tetronimo.leftLTiles
+  | RightL => Tetronimo.rightLTiles
+  }
+};
 
 let elTiles = (element, rotation) => {
-  let tetronimo = switch element {
-  | Cube => cubeTiles
-  | Line => lineTiles
-  | Triangle => triangleTiles
-  | LeftTurn => leftTurnTiles
-  | RightTurn => rightTurnTiles
-  | LeftL => leftLTiles
-  | RightL => rightLTiles
-  };
+  let tetronimo = getTetronimo(element);
   switch rotation {
   | 1 => tetronimo.points90
   | 2 => tetronimo.points180
@@ -126,17 +100,6 @@ type stateT = {
   elTiles: array(int)
 };
 
-let getTetronimo = (element) => {
-  switch element {
-  | Cube => cubeTiles
-  | Line => lineTiles
-  | Triangle => triangleTiles
-  | RightTurn => rightTurnTiles
-  | LeftTurn => leftTurnTiles
-  | LeftL => leftLTiles
-  | RightL => rightLTiles
-  }
-};
 
 let newElement = () => {
   let newElType = switch (Random.int(7)) {
@@ -156,7 +119,7 @@ let newElement = () => {
     rotation: 0,
     pos: {
       x: tileCols / 2,
-      y: 1
+      y: 2
     }
   }
 };
@@ -196,37 +159,37 @@ let fillElTiles = (tiles, color, x, y, env) => {
 
 let isCollision = (state) => {
   List.exists(((tileX, tileY)) => {
-    state.curEl.pos.y + tileY >= tileRows - 1
+    state.curEl.pos.y + tileY >= tileRows
     || state.curEl.pos.x + tileX < 0 || state.curEl.pos.x + tileX > tileCols - 1
-    || state.tiles[state.curEl.pos.y + tileY + 1][state.curEl.pos.x + tileX] > 0
+    || state.tiles[state.curEl.pos.y + tileY][state.curEl.pos.x + tileX] > 0
   }, elTiles(state.curEl.el, state.curEl.rotation))
 };
 
-let attemptMoveLeft = (state) => {
-  let movedState = {
+let attemptMove = (state, (x, y)) => {
+  let moved = {
     ...state,
     curEl: {
       ...state.curEl,
       pos: {
-        x: state.curEl.pos.x - 1,
-        y: state.curEl.pos.y
+        x: state.curEl.pos.x + x,
+        y: state.curEl.pos.y + y
       }
     }
   };
-  (isCollision(movedState)) ? state : movedState
+  (isCollision(moved)) ? state : moved
 };
-let attemptMoveRight = (state) => {
-  let movedState = {
+let attemptMoveTest = (state, (x, y)) => {
+  let moved = {
     ...state,
     curEl: {
       ...state.curEl,
       pos: {
-        x: state.curEl.pos.x + 1,
-        y: state.curEl.pos.y
+        x: state.curEl.pos.x + x,
+        y: state.curEl.pos.y + y
       }
     }
   };
-  (isCollision(movedState)) ? state : movedState
+  (isCollision(moved)) ? (false, state) : (true, moved)
 };
 
 let elToTiles = (state) => {
@@ -235,7 +198,7 @@ let elToTiles = (state) => {
   }, elTiles(state.curEl.el, state.curEl.rotation));
 };
 
-let listTo = (countDown) => {
+let listRange = (countDown) => {
   let rec addToList = (list, countDown) => {
     if (countDown <= 0) {
       list
@@ -248,66 +211,51 @@ let listTo = (countDown) => {
 
 let draw = (state, env) => {
   let timeStep = Env.deltaTime(env);
-  let screenHeight = Env.height(env);
   let state = switch state.action {
   | MoveLeft  => {
-    ...attemptMoveLeft(state),
+    ...attemptMove(state, (-1, 0)),
     action: None
   }
   | MoveRight => {
-    ...attemptMoveRight(state),
+    ...attemptMove(state, (1, 0)),
     action: None
   }
   | BlockLeft => {
-    ...List.fold_left((state, _) => attemptMoveLeft(state), state, listTo(3)),
+    ...List.fold_left((state, _) => attemptMove(state, (-1, 0)), state, listRange(3)),
     action: None
   }
   | BlockRight => {
-    ...List.fold_left((state, _) => attemptMoveRight(state), state, listTo(3)),
+    ...List.fold_left((state, _) => attemptMove(state, (1, 0)), state, listRange(3)),
     action: None
   }
   | MoveBeginning => {
-    ...List.fold_left((state, _) => attemptMoveLeft(state), state, listTo(state.curEl.pos.x)),
+    ...List.fold_left((state, _) => attemptMove(state, (-1, 0)), state, listRange(state.curEl.pos.x)),
     action: None
   }
   | MoveEnd => {
-    ...List.fold_left((state, _) => attemptMoveRight(state), state, listTo(tileCols - state.curEl.pos.x)),
+    ...List.fold_left((state, _) => attemptMove(state, (1, 0)), state, listRange(tileCols - state.curEl.pos.x)),
     action: None
   }
   | MoveDown => {
-    ...state,
-    action: None,
-    curEl: {
-      ...state.curEl,
-      pos: {
-        x: state.curEl.pos.x,
-        y: state.curEl.pos.y + 1
-      }
-    }
+    ...attemptMove(state, (0, 1)),
+    action: None
   }
   | CancelDown => state
   | DropDown => {
     /* Drop down until collision */
     let rec dropDown = (state) => {
-      if (isCollision(state)) {
-        state
-      } else {
-        dropDown({
-          ...state,
-          curEl: {
-            ...state.curEl,
-            pos: {
-              x: state.curEl.pos.x,
-              y: state.curEl.pos.y + 1
-            }
-          }
-        })
+      switch (attemptMoveTest(state, (0, 1))) {
+      | (false, state) => state
+      | (true, state) => dropDown(state)
       }
     };
-    dropDown({
+    let newState = dropDown({
       ...state,
       action: None
-    })
+    });
+    Js.log(Array.of_list(elTiles(state.curEl.el, state.curEl.rotation)));
+    Js.log(newState.curEl);
+    newState
   }
   | RotateCW => {
     let rotated = {
@@ -368,7 +316,7 @@ let draw = (state, env) => {
           );
         },
         tileRow
-      )
+      );
     },
     state.tiles
   );
@@ -376,7 +324,19 @@ let draw = (state, env) => {
   fillElTiles(elTiles(state.curEl.el, state.curEl.rotation), tileColors[state.curEl.color], state.curEl.pos.x, state.curEl.pos.y, env);
   let curTime = state.curTime +. timeStep;
   let isNewTick = curTime > state.lastTick +. tickDuration;
-  let newEl = (isNewTick && isCollision(state));
+  let (state, newEl) = if (isNewTick) {
+    switch (state.action) {
+    | CancelDown => (state, false)
+    | _ => {
+      switch (attemptMoveTest(state, (0, 1))) {
+      | (true, state) => (state, false)
+      | (false, state) => (state, true)
+      }
+    }
+    }
+  } else {
+    (state, false)
+  };
   if (newEl) {
     /* Put element into tiles */
     elToTiles(state);
@@ -403,35 +363,9 @@ let draw = (state, env) => {
       (0, tileRows - 1)
     );
   };
-  let updatePos = (state) => {
-    if (isNewTick) {
-      if (newEl) {
-        {
-          ...state,
-          curEl: newElement()
-        }
-      } else {
-        switch state.action {
-        | CancelDown => state
-        | _ => {
-            ...state,
-            action: None,
-            curEl: {
-              ...state.curEl,
-              pos: {
-                x: state.curEl.pos.x,
-                y: state.curEl.pos.y + 1
-              }
-            }
-          }
-        }
-      }
-    } else {
-      state
-    }
-  };
   {
-    ...updatePos(state),
+    ...state,
+    curEl: (newEl) ? newElement() : state.curEl,
     curTime: curTime,
     lastTick: (isNewTick) ? curTime : state.lastTick
   }

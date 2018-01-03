@@ -25,3 +25,33 @@ let make = (points, (translateX, translateY), colorIndex) => {
         colorIndex
     }
 };
+
+/* Origin is in x2 to simplify to ints */
+let lineTiles = make(
+  [(-3, 1), (-1, 1), (1, 1), (3, 1)],
+  (1, 1), 2
+);
+let leftLTiles = make(
+  [(-2, 2), (-2, 0), (0, 0), (2, 0)],
+  (0, 0), 3
+);
+let rightLTiles = make(
+  [(-2, 0), (0, 0), (2, 0), (2, 2)],
+  (0, 0), 4
+);
+let cubeTiles = make(
+  [(-1, 1), (-1, -1), (1, 1), (1, -1)],
+  (1, 1), 5
+);
+let rightTurnTiles = make(
+  [(-2, 0), (0, 0), (0, 2), (2, 2)],
+  (0, 0), 6
+);
+let triangleTiles = make(
+  [(-2, 0), (0, 0), (0, 2), (2, 0)],
+  (0, 0), 7
+);
+let leftTurnTiles = make(
+  [(-2, 2), (0, 2), (0, 0), (2, 0)],
+  (0, 0), 8
+);
