@@ -38,48 +38,35 @@ type inputAction =
   | MoveEnd
   ;
 
-let cubeTiles = Tetronimo.make([
-  (0, 0),
-  (1, 0),
-  (0, 1),
-  (1, 1)
-]);
-let lineTiles = Tetronimo.make([
-  (0, 0),
-  (0, 1),
-  (0, 2),
-  (0, 3)
-]);
-let triangleTiles = Tetronimo.make([
-  (0, 0),
-  (-1, 1),
-  (0, 1),
-  (1, 1)
-]);
-let rightTurnTiles = Tetronimo.make([
-  (0, 0),
-  (1, 0),
-  (-1, 1),
-  (0, 1)
-]);
-let leftTurnTiles = Tetronimo.make([
-  (0, 0),
-  (1, 0),
-  (1, 1),
-  (2, 1)
-]);
-let leftLTiles = Tetronimo.make([
-  (0, 0),
-  (0, 1),
-  (-1, 2),
-  (0, 2)
-]);
-let rightLTiles = Tetronimo.make([
-  (0, 0),
-  (0, 1),
-  (0, 2),
-  (1, 2)
-]);
+/* Origin is in x2 to simplify to ints */
+let lineTiles = Tetronimo.make(
+  [(-3, 1), (-1, 1), (1, 1), (3, 1)],
+  (1, 1), 2
+);
+let leftLTiles = Tetronimo.make(
+  [(-2, 2), (-2, 0), (0, 0), (2, 0)],
+  (0, 0), 3
+);
+let rightLTiles = Tetronimo.make(
+  [(-2, 0), (0, 0), (2, 0), (2, 2)],
+  (0, 0), 4
+);
+let cubeTiles = Tetronimo.make(
+  [(-1, 1), (-1, -1), (1, 1), (1, -1)],
+  (1, 1), 5
+);
+let rightTurnTiles = Tetronimo.make(
+  [(-2, 0), (0, 0), (0, 2), (2, 2)],
+  (0, 0), 6
+);
+let triangleTiles = Tetronimo.make(
+  [(-2, 0), (0, 0), (0, 2), (2, 0)],
+  (0, 0), 7
+);
+let leftTurnTiles = Tetronimo.make(
+  [(-2, 2), (0, 2), (0, 0), (2, 0)],
+  (0, 0), 8
+);
 
 let elTiles = (element, rotation) => {
   let tetronimo = switch element {
@@ -108,10 +95,13 @@ let tilePadding = 3;
 let tileColors = [|
   Utils.color(~r=199, ~g=214, ~b=240, ~a=255), /* Standard unfilled color */
   Utils.color(~r=205, ~g=220, ~b=246, ~a=255), /* Standard lighter color */
-  Utils.color(~r=255, ~g=180, ~b=160, ~a=255),
-  Utils.color(~r=180, ~g=255, ~b=160, ~a=255),
-  Utils.color(~r=180, ~g=240, ~b=250, ~a=255),
-  Utils.color(~r=240, ~g=220, ~b=200, ~a=255)
+  Utils.color(~r=130, ~g=240, ~b=250, ~a=255), /* Magenta line */
+  Utils.color(~r=120, ~g=130, ~b=250, ~a=255), /* Blue left L */
+  Utils.color(~r=250, ~g=210, ~b=80, ~a=255), /* Orange right L */
+  Utils.color(~r=250, ~g=250, ~b=130, ~a=255), /* Yellow cube */
+  Utils.color(~r=140, ~g=250, ~b=140, ~a=255), /* Green right shift */
+  Utils.color(~r=180, ~g=100, ~b=230, ~a=255), /* Purple triangle */
+  Utils.color(~r=240, ~g=130, ~b=120, ~a=255), /* Red left shift */
 |];
 
 type pos = {
@@ -136,6 +126,18 @@ type stateT = {
   elTiles: array(int)
 };
 
+let getTetronimo = (element) => {
+  switch element {
+  | Cube => cubeTiles
+  | Line => lineTiles
+  | Triangle => triangleTiles
+  | RightTurn => rightTurnTiles
+  | LeftTurn => leftTurnTiles
+  | LeftL => leftLTiles
+  | RightL => rightLTiles
+  }
+};
+
 let newElement = () => {
   let newElType = switch (Random.int(7)) {
   | 0 => Cube
@@ -147,13 +149,14 @@ let newElement = () => {
   | 6 => RightL
   | _ => Cube
   };
+  let tetronimo = getTetronimo(newElType);
   {
     el: newElType,
-    color: Random.int(Array.length(tileColors) - elColorOffset) + elColorOffset,
+    color: tetronimo.colorIndex,
     rotation: 0,
     pos: {
       x: tileCols / 2,
-      y: 0
+      y: 1
     }
   }
 };
@@ -307,20 +310,26 @@ let draw = (state, env) => {
     })
   }
   | RotateCW => {
-    ...state,
-    action: None,
-    curEl: {
-      ...state.curEl,
-      rotation: (state.curEl.rotation + 1) mod 4
-    }
+    let rotated = {
+      ...state,
+      action: None,
+      curEl: {
+        ...state.curEl,
+        rotation: (state.curEl.rotation + 1) mod 4
+      }
+    };
+    (isCollision(rotated)) ? state : rotated
   }
   | RotateCCW => {
-    ...state,
-    action: None,
-    curEl: {
-      ...state.curEl,
-      rotation: (state.curEl.rotation == 0) ? 3 : (state.curEl.rotation - 1)
-    }
+    let rotated = {
+      ...state,
+      action: None,
+      curEl: {
+        ...state.curEl,
+        rotation: (state.curEl.rotation == 0) ? 3 : (state.curEl.rotation - 1)
+      }
+    };
+    (isCollision(rotated)) ? state : rotated
   }
   | None => state
   };
@@ -457,11 +466,11 @@ let keyPressed = (state, env) => {
     }
     | S | R => {
       ...state,
-      action: RotateCW
+      action: RotateCCW
     }
     | C => {
       ...state,
-      action: RotateCCW
+      action: RotateCW
     }
     | Period => {
       ...state,
