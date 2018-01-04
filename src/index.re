@@ -12,6 +12,14 @@ module Document = {
 
 let tickDuration = 0.5;
 let elColorOffset = 2;
+let boardOffsetX = 50;
+let boardOffsetY = 20;
+let tileCols = 14;
+let tileRows = 28;
+let tileWidth = 20;
+let tileHeight = 20;
+let tilePadding = 3;
+let boardWidth = tileCols * tileWidth;
 
 type element =
   | Cube
@@ -61,11 +69,6 @@ let elTiles = (element, rotation) => {
   }
 };
 
-let tileCols = 20;
-let tileRows = 31;
-let tileWidth = 20;
-let tileHeight = 20;
-let tilePadding = 3;
 
 let tileColors = [|
   Utils.color(~r=199, ~g=214, ~b=240, ~a=255), /* Standard unfilled color */
@@ -103,7 +106,9 @@ type stateT = {
   tiles: array(array(int)),
   elTiles: array(int),
   gameState: gameState,
-  paused: bool
+  paused: bool,
+  headingFont: Reprocessing.fontT,
+  infoFont: Reprocessing.fontT
 };
 
 
@@ -139,7 +144,8 @@ let setup = (env) : stateT => {
     }
   );
   Random.self_init();
-  Env.size(~width=400, ~height=640, env);
+  Env.size(~width=800, ~height=640, env);
+  /*Mandelbrot.createCanvas();*/
   {
     action: None,
     curEl: newElement(),
@@ -148,7 +154,9 @@ let setup = (env) : stateT => {
     tiles: Array.make_matrix(tileRows, tileCols, 0),
     elTiles: Array.make(tileCols, 0),
     gameState: Running,
-    paused: false
+    paused: false,
+    headingFont: Draw.loadFont(~filename="./assets/font.fnt", ~isPixel=true, env),
+    infoFont: Draw.loadFont(~filename="./assets/roboto.fnt", ~isPixel=true, env),
   }
 };
 
@@ -171,17 +179,6 @@ let newGame = (state) => {
   }
 };
 
-let fillElTiles = (tiles, color, x, y, env) => {
-    Draw.fill(color, env);
-    List.iter(((tileX, tileY)) => {
-      Draw.rect(
-        ~pos=((x + tileX) * tileWidth, (y + tileY) * tileHeight),
-        ~width=tileWidth - 1,
-        ~height=tileHeight - 1,
-        env
-      );
-    }, tiles);
-};
 
 
 let isCollision = (state) => {
@@ -408,6 +405,18 @@ let processAction = (state, env) => {
   }
 };
 
+let drawElTiles = (tiles, color, x, y, env) => {
+    Draw.fill(color, env);
+    List.iter(((tileX, tileY)) => {
+      Draw.rect(
+        ~pos=((x + tileX) * tileWidth + boardOffsetX, (y + tileY) * tileHeight + boardOffsetY),
+        ~width=tileWidth - 1,
+        ~height=tileHeight - 1,
+        env
+      );
+    }, tiles);
+};
+
 let drawGame = (state, env) => {
   let timeStep = Env.deltaTime(env);
   Draw.background(Utils.color(~r=190, ~g=199, ~b=230, ~a=245), env);
@@ -438,7 +447,7 @@ let drawGame = (state, env) => {
             Draw.fill(tileColors[tileVal], env);
           };
           Draw.rect(
-            ~pos=(x * tileWidth, y * tileHeight),
+            ~pos=(x * tileWidth + boardOffsetX, y * tileHeight + boardOffsetY),
             ~width=tileWidth - tilePadding,
             ~height=tileHeight - tilePadding,
             env
@@ -450,7 +459,12 @@ let drawGame = (state, env) => {
     state.tiles
   );
   /* Draw element */
-  fillElTiles(elTiles(state.curEl.el, state.curEl.rotation), tileColors[state.curEl.color], state.curEl.pos.x, state.curEl.pos.y, env);
+  drawElTiles(
+    elTiles(state.curEl.el, state.curEl.rotation),
+    tileColors[state.curEl.color],
+    state.curEl.pos.x, state.curEl.pos.y,
+    env
+  );
   let curTime = state.curTime +. timeStep;
   let isNewTick = curTime > state.lastTick +. tickDuration;
   let (state, newEl) = if (isNewTick) {
@@ -514,12 +528,46 @@ let drawGame = (state, env) => {
   }
 };
 
+let drawInfo = (state, env) => {
+  let infoOffsetX = boardOffsetX * 2 + boardWidth;
+  let infoOffsetY = boardOffsetY;
+  Draw.text(
+    ~font=state.headingFont,
+    ~body="Vimtris",
+    ~pos=(infoOffsetX, infoOffsetY),
+    env
+  );
+  List.iteri((i, text) => {
+    Js.log(text);
+    Draw.text(
+      ~font=state.infoFont,
+      ~body=text,
+      ~pos=(infoOffsetX + 4, infoOffsetY + 40 + (18 * i)),
+      env
+    );
+  }, [
+    "Space - pause",
+    "H - move left",
+    "L - move right",
+    "J - move down",
+    "K - cancel down",
+    "W - move 3 tiles right",
+    "B - move 3 tiles left",
+    "0 - move leftmost",
+    "$ - move rightmost",
+    "S - rotate counter clockwise",
+    "C - rotate clockwise",
+    ". - drop",
+  ]);
+};
+
 let draw = (state, env) => {
   let state = processAction(state, env);
   if (state.paused) {
     state
   } else {
     let state = drawGame(state, env);
+    drawInfo(state, env);
     switch (state.gameState) {
     | Running => state
     | GameOver => {

@@ -19,7 +19,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "reprocessing": "github:Schmavery/reprocessing"
+    "reprocessing": "github:Schmavery/reprocessing",
+    "ReasonglInterface": "github:bsansouci/reasongl-interface",
+    "ReasonglNative": "github:bsansouci/reasongl-native",
+    "ReasonglWeb": "github:bsansouci/reasongl-web",
+    "matchenv": "bsansouci/matchenv"
   },
   "devDependencies": {
     "bs-platform": "bsansouci/bsb-native"
