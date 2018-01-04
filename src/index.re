@@ -145,7 +145,7 @@ let setup = (env) : stateT => {
   );
   Random.self_init();
   Env.size(~width=800, ~height=640, env);
-  /*Mandelbrot.createCanvas();*/
+  Mandelbrot.createCanvas();
   {
     action: None,
     curEl: newElement(),
@@ -538,7 +538,6 @@ let drawInfo = (state, env) => {
     env
   );
   List.iteri((i, text) => {
-    Js.log(text);
     Draw.text(
       ~font=state.infoFont,
       ~body=text,
