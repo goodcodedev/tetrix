@@ -62,19 +62,15 @@ let fragmentSource = {|
     }
 
     void main() {
-        float z_r = 0.0;
-        float z_r2 = 0.0;
-        float z_i = 0.0;
-        float c_r = vPosition.x * 1.4;
-        float c_i = vPosition.y * 1.2;
+        vec2 z = vec2(0.0, 0.0);
+        float z_r_temp = 0.0;
+        vec2 c = vec2(vPosition.x * 1.4, vPosition.y * 1.2) * 0.15 + 0.4;
         int iterations = 0;
         for (int i = 0; i <= max_iterations; i++) {
             // z = z*z + c
-            z_r2 = (z_r*z_r - z_i*z_i) + c_r;
-            z_i = ((z_r*z_i) * 2.0) + c_i;
-            z_r = z_r2;
-            // If abs(z) > 2.0
-            if (sqrt(z_i*z_i + z_r*z_r) > 2.0) {
+            z_r_temp = (z.x*z.x - z.y*z.y) + c.x;
+            z = vec2(z_r_temp, ((z.x*z.y) * 2.0) + c.y);
+            if (length(z) > 2.0) {
                 iterations = i;
                 break;
             }
@@ -82,11 +78,11 @@ let fragmentSource = {|
         if (iterations == 0) {
             iterations = max_iterations;
         }
-        float c = 1.0 - float(iterations) / float(max_iterations);
+        float l_extra = length(z) - 2.0;
         vec3 color = vec3(
-            range_over(4.0, iterations),
-            range_over(12.0, iterations),
-            range_over(80.0, iterations)
+            range_over(4.0 + l_extra, iterations),
+            range_over(12.0 + l_extra, iterations),
+            range_over(80.0 + l_extra, iterations)
         );
         gl_FragColor = vec4(color, 1.0);
     }
