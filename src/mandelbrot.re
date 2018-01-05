@@ -55,13 +55,18 @@ let vertexSource = {|
 
 let fragmentSource = {|
     varying vec2 vPosition;
-    const int max_iterations = 99999;
+    const int max_iterations = 256;
+
+    float range_over(float range, int iterations) {
+        return float(range - min(range, float(iterations))) / range;
+    }
+
     void main() {
         float z_r = 0.0;
         float z_r2 = 0.0;
         float z_i = 0.0;
-        float c_r = vPosition.x;
-        float c_i = vPosition.y;
+        float c_r = vPosition.x * 1.4;
+        float c_i = vPosition.y * 1.2;
         int iterations = 0;
         for (int i = 0; i <= max_iterations; i++) {
             // z = z*z + c
@@ -78,7 +83,12 @@ let fragmentSource = {|
             iterations = max_iterations;
         }
         float c = 1.0 - float(iterations) / float(max_iterations);
-        gl_FragColor = vec4(0.0, c / 2.0, c, 1.0);
+        vec3 color = vec3(
+            range_over(4.0, iterations),
+            range_over(12.0, iterations),
+            range_over(80.0, iterations)
+        );
+        gl_FragColor = vec4(color, 1.0);
     }
 |};
 
