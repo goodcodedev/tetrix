@@ -216,9 +216,10 @@ module VertexBuffer = {
             }
         );
         let stride = ref(0);
-        let locs = Array.map((attrib) => {
-            Js.log(attrib);
-            let loc = VertexAttrib.init(attrib, context, program, 2, stride^);
+        let locs = Array.map((attrib : VertexAttrib.t) => {
+            let size = GlType.getSize(attrib.glType);
+            let loc = VertexAttrib.init(attrib, context, program, size, stride^);
+            stride := stride^ + (size * GlType.getBytes(attrib.glType));
             loc
         }, buffer.attributes);
         {
@@ -273,6 +274,69 @@ module IndexBuffer = {
     };
 };
 
+module DataTexture = {
+    type t = {
+        width: int,
+        height: int
+    };
+
+    type inited = {
+        texRef: Gl.textureT
+    };
+
+    let make = (width, height) => {
+        {
+            width: width,
+            height: height
+        }
+    };
+
+    let init = (texture, context, data) => {
+        let texRef = Gl.createTexture(~context);
+        Gl.bindTexture(
+            ~context,
+            ~target=Constants.texture_2d,
+            ~texture=texRef
+        );
+        Gl.texParameteri(
+            ~context,
+            ~target=Constants.texture_2d,
+            ~pname=Constants.texture_wrap_s,
+            ~param=Constants.clamp_to_edge
+        );
+        Gl.texParameteri(
+            ~context,
+            ~target=Constants.texture_2d,
+            ~pname=Constants.texture_wrap_t,
+            ~param=Constants.clamp_to_edge
+        );
+        Gl.texParameteri(
+            ~context,
+            ~target=Constants.texture_2d,
+            ~pname=Constants.texture_min_filter,
+            ~param=Constants.linear
+        );
+        Gl.texParameteri(
+            ~context,
+            ~target=Constants.texture_2d,
+            ~pname=Constants.texture_mag_filter,
+            ~param=Constants.linear
+        );
+        Gl.texImage2D_RGBA(
+            ~context,
+            ~target=Constants.texture_2d,
+            ~level=0,
+            ~width=texture.width,
+            ~height=texture.height,
+            ~border=0,
+            ~data=Gl.Bigarray.of_array(Gl.Bigarray.Uint8, data)
+        );
+        {
+            texRef: texRef
+        }
+    };
+};
+
 module DrawState = {
     type t = {
         uniforms: array(uniformValue)
@@ -286,7 +350,8 @@ module Canvas = {
         context: Gl.contextT,
         mutable currProgram: option(Program.inited),
         mutable currVertexBuffer: option(VertexBuffer.inited),
-        mutable currIndexBuffer: option(IndexBuffer.inited)
+        mutable currIndexBuffer: option(IndexBuffer.inited),
+        mutable currTextures: array(DataTexture.inited)
     };
     let init = (width, height) => {
         let window = Gl.Window.init(~argv=[||]);
@@ -298,7 +363,8 @@ module Canvas = {
             context,
             currProgram: None,
             currVertexBuffer: None,
-            currIndexBuffer: None
+            currIndexBuffer: None,
+            currTextures: [||]
         }
     };
 
@@ -337,7 +403,7 @@ module Canvas = {
         );
     };
 
-    let drawIndexes = (canvas, program, vertexBuffer, indexBuffer) => {
+    let drawIndexes = (canvas, program, vertexBuffer, indexBuffer, textures) => {
         let context = canvas.context;
         switch (canvas.currProgram) {
         | Some(currentProgram) when (currentProgram == program) => ()
@@ -369,6 +435,16 @@ module Canvas = {
             );
         }
         };
+        /* Textures */
+        let tex0 = Constants.texture0;
+        let currTexLength = Array.length(canvas.currTextures);
+        canvas.currTextures = Array.mapi((i, tex) => {
+            if (i > currTexLength - 1 || canvas.currTextures[i] != tex) {
+                Gl.bindTexture(~context, ~target=Constants.texture_2d, ~texture=tex.texRef);
+                Gl.activeTexture(~context, tex0 + i);
+            };
+            tex
+        }, textures);
         Gl.drawElements(
             ~context,
             ~mode=Constants.triangles,
