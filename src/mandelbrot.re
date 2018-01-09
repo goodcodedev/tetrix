@@ -38,13 +38,10 @@ let calcIterations = (x, y) => {
     iterate(z, c, 0)
 };
 
-let createImage = (x, y) => {
-
-};
-
 module Constants = RGLConstants;
 module Gl = Reasongl.Gl;
 let vertexSource = {|
+    precision mediump float;
     attribute vec2 position;
     varying vec2 vPosition;
     void main() {
@@ -54,8 +51,9 @@ let vertexSource = {|
 |};
 
 let fragmentSource = {|
+    precision mediump float;
     varying vec2 vPosition;
-    const int max_iterations = 256;
+    const int max_iterations = 80;
 
     float range_over(float range, int iterations) {
         return float(range - min(range, float(iterations))) / range;
@@ -116,7 +114,7 @@ let createProgram = (context, vertexSource, fragmentSource) => {
         if (linkedCorrectly) {
             Some(program)
         } else {
-            print_endline("GlProgram linking failed");
+            print_endline("GlProgram linking failed" ++ Gl.getProgramInfoLog(~context, program));
             None
         };
     }
@@ -126,7 +124,33 @@ let createProgram = (context, vertexSource, fragmentSource) => {
     }
 };
 
+open Gpu;
+
 let createCanvas = () => {
+    let canvas = Canvas.init(400, 300);
+    let context = canvas.context;
+    let program = Program.init(Program.make(
+        Shader.make(vertexSource),
+        Shader.make(fragmentSource),
+        [||]
+    ), context);
+    switch (program) {
+    | Some(program) => {
+        let vertices = VertexBuffer.makeQuad();
+        let vBuffer = VertexBuffer.init(
+            vertices,
+            context,
+            program.programRef
+        );
+        let indexes = IndexBuffer.makeQuad();
+        let indexInit = IndexBuffer.init(indexes, context);
+        Canvas.drawIndexes(canvas, program, vBuffer, indexInit);
+    }
+    | None => failwith("Program creation failed");
+    }
+};
+
+let createCanvas2 = () => {
     let window = Gl.Window.init(~argv=[||]);
     let width = 400;
     let height = 300;
@@ -172,7 +196,7 @@ let createCanvas = () => {
         Gl.vertexAttribPointer(
             ~context,
             ~attribute=vertexPosition,
-            ~size=2,
+            ~size=2 * 4,
             ~type_=Constants.float_,
             ~normalize=false,
             ~stride=0,
@@ -189,8 +213,4 @@ let createCanvas = () => {
         );
     }
     }
-};
-
-let drawFrame = () => {
-
 };
