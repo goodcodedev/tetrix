@@ -277,21 +277,54 @@ module IndexBuffer = {
 module DataTexture = {
     type t = {
         width: int,
-        height: int
+        height: int,
+        uniformName: string,
+        data: option(array(int))
     };
 
     type inited = {
-        texRef: Gl.textureT
+        texRef: Gl.textureT,
+        uniformRef: Gl.uniformT
     };
 
-    let make = (width, height) => {
+    let make = (width, height, uniformName, data) => {
         {
             width: width,
-            height: height
+            height: height,
+            uniformName: uniformName,
+            data: data
         }
     };
 
-    let init = (texture, context, data) => {
+    let luminance = 6409;
+    
+    [@bs.send]
+    external _texImage2D :
+    (
+      ~context: Gl.contextT,
+      ~target: int,
+      ~level: int,
+      ~internalFormat: int,
+      ~width: int,
+      ~height: int,
+      ~border: int,
+      ~format: int,
+      ~type_: int,
+      ~data: Gl.Bigarray.t('a, 'b)
+    ) =>
+    unit =
+    "texImage2D";
+
+    let unpackAlignment = 3317;
+
+    [@bs.send]
+    external _pixelStorei : (
+        ~context: Gl.contextT,
+        int,
+        int
+    ) => unit = "pixelStorei";
+
+    let init = (texture, context, program) => {
         let texRef = Gl.createTexture(~context);
         Gl.bindTexture(
             ~context,
@@ -314,34 +347,45 @@ module DataTexture = {
             ~context,
             ~target=Constants.texture_2d,
             ~pname=Constants.texture_min_filter,
-            ~param=Constants.linear
+            ~param=Constants.nearest
         );
         Gl.texParameteri(
             ~context,
             ~target=Constants.texture_2d,
             ~pname=Constants.texture_mag_filter,
-            ~param=Constants.linear
+            ~param=Constants.nearest
         );
-        Gl.texImage2D_RGBA(
+        /* Luminance format gives 1 value per pixel repeated for rgba */
+        switch (texture.data) {
+        | Some(data) => {
+            _texImage2D(
+                ~context,
+                ~target=Constants.texture_2d,
+                ~level=0,
+                ~internalFormat=luminance,
+                ~width=texture.width,
+                ~height=texture.height,
+                ~border=0,
+                ~format=luminance,
+                ~type_=RGLConstants.unsigned_byte,
+                ~data=Gl.Bigarray.of_array(Gl.Bigarray.Uint8, data)
+            );
+        }
+        | None => ()
+        };
+        _pixelStorei(~context, unpackAlignment, 1);
+        let uRef = Gl.getUniformLocation(
             ~context,
-            ~target=Constants.texture_2d,
-            ~level=0,
-            ~width=texture.width,
-            ~height=texture.height,
-            ~border=0,
-            ~data=Gl.Bigarray.of_array(Gl.Bigarray.Uint8, data)
+            ~program,
+            ~name=texture.uniformName
         );
         {
-            texRef: texRef
+            texRef: texRef,
+            uniformRef: uRef
         }
     };
 };
 
-module DrawState = {
-    type t = {
-        uniforms: array(uniformValue)
-    };
-};
 
 
 module Canvas = {
@@ -440,8 +484,9 @@ module Canvas = {
         let currTexLength = Array.length(canvas.currTextures);
         canvas.currTextures = Array.mapi((i, tex) => {
             if (i > currTexLength - 1 || canvas.currTextures[i] != tex) {
-                Gl.bindTexture(~context, ~target=Constants.texture_2d, ~texture=tex.texRef);
+                Gl.uniform1i(~context, ~location=tex.uniformRef, ~value=i);
                 Gl.activeTexture(~context, tex0 + i);
+                Gl.bindTexture(~context, ~target=Constants.texture_2d, ~texture=tex.texRef);
             };
             tex
         }, textures);
@@ -452,5 +497,57 @@ module Canvas = {
             ~type_=Constants.unsigned_short,
             ~offset=0
         );
+    };
+};
+
+module DrawState = {
+    type t = {
+        uniforms: array(uniformValue),
+        program: Program.inited,
+        vertexBuffer: VertexBuffer.inited,
+        indexBuffer: option(IndexBuffer.inited),
+        textures: array(DataTexture.inited)
+    };
+
+    let init = (context, program, vertexes, indexes, textures) => {
+        let pInited = Program.init(program, context);
+        switch (pInited) {
+        | Some(program) => {
+            let iBuffer = VertexBuffer.init(vertexes, context, program.programRef);
+            let iIndexes = IndexBuffer.init(indexes, context);
+            let iTextures = Array.map((tex) => {
+                DataTexture.init(tex, context, program.programRef)
+            }, textures);
+            {
+                uniforms: [||],
+                program: program,
+                vertexBuffer: iBuffer,
+                indexBuffer: Some(iIndexes),
+                textures: iTextures
+            }
+        }
+        | None => failwith("Program creation failed");
+        };
+    };
+
+    let draw = (drawState, canvas) => {
+        switch (drawState.indexBuffer) {
+        | Some(indexBuffer) => {
+            Canvas.drawIndexes(
+                canvas,
+                drawState.program,
+                drawState.vertexBuffer,
+                indexBuffer,
+                drawState.textures
+            );
+        }
+        | None => {
+            Canvas.drawVertices(
+                canvas,
+                drawState.program,
+                drawState.vertexBuffer
+            );
+        }
+        }
     };
 };

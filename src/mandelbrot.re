@@ -90,24 +90,16 @@ open Gpu;
 
 let createCanvas = () => {
     let canvas = Canvas.init(400, 300);
-    let context = canvas.context;
-    let program = Program.init(Program.make(
-        Shader.make(vertexSource),
-        Shader.make(fragmentSource),
+    let drawState = DrawState.init(
+        canvas.context,
+        Program.make(
+            Shader.make(vertexSource),
+            Shader.make(fragmentSource),
+            [||]
+        ),
+        VertexBuffer.makeQuad(),
+        IndexBuffer.makeQuad(),
         [||]
-    ), context);
-    switch (program) {
-    | Some(program) => {
-        let vertices = VertexBuffer.makeQuad();
-        let vBuffer = VertexBuffer.init(
-            vertices,
-            context,
-            program.programRef
-        );
-        let indexes = IndexBuffer.makeQuad();
-        let indexInit = IndexBuffer.init(indexes, context);
-        Canvas.drawIndexes(canvas, program, vBuffer, indexInit, [||]);
-    }
-    | None => failwith("Program creation failed");
-    };
+    );
+    DrawState.draw(drawState, canvas);
 };
