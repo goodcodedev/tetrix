@@ -108,7 +108,8 @@ type stateT = {
   gameState: gameState,
   paused: bool,
   headingFont: Reprocessing.fontT,
-  infoFont: Reprocessing.fontT
+  infoFont: Reprocessing.fontT,
+  boardProgram: BoardProgram.t
 };
 
 
@@ -145,9 +146,16 @@ let setup = (env) : stateT => {
   );
   Random.self_init();
   Env.size(~width=800, ~height=640, env);
-  Mandelbrot.createCanvas();
+  let tiles = Array.make(tileRows * tileCols, 0);
+  Js.log("Created");
+  Js.log(tiles);
+  let bp = BoardProgram.createCanvas(tiles);
+  /*Mandelbrot.createCanvas();*/
+  let sdf = SdfTiles.createCanvas();
+  SdfTiles.draw(sdf);
   {
     action: None,
+    boardProgram: bp,
     curEl: newElement(),
     lastTick: 0.,
     curTime: 0.,
@@ -313,8 +321,12 @@ let attemptRotateCCW = (state) => {
 
 let elToTiles = (state) => {
   List.iter(((tileX, tileY)) => {
+    let posy = state.curEl.pos.y + tileY;
+    let posx = state.curEl.pos.x + tileX;
     state.tiles[state.curEl.pos.y + tileY][state.curEl.pos.x + tileX] = state.curEl.color;
+    state.boardProgram.tiles[posy * tileCols + posx] = state.curEl.color - 1;
   }, elTiles(state.curEl.el, state.curEl.rotation));
+  state.boardProgram.updateTiles = true;
 };
 
 let listRange = (countDown) => {
@@ -566,6 +578,7 @@ let draw = (state, env) => {
     state
   } else {
     let state = drawGame(state, env);
+    BoardProgram.draw(state.boardProgram);
     drawInfo(state, env);
     switch (state.gameState) {
     | Running => state

@@ -284,7 +284,11 @@ module DataTexture = {
 
     type inited = {
         texRef: Gl.textureT,
-        uniformRef: Gl.uniformT
+        uniformRef: Gl.uniformT,
+        width: int,
+        height: int,
+        data: array(int),
+        mutable update: bool
     };
 
     let make = (width, height, uniformName, data) => {
@@ -324,7 +328,7 @@ module DataTexture = {
         int
     ) => unit = "pixelStorei";
 
-    let init = (texture, context, program) => {
+    let init = (texture : t, context, program) => {
         let texRef = Gl.createTexture(~context);
         Gl.bindTexture(
             ~context,
@@ -356,7 +360,7 @@ module DataTexture = {
             ~param=Constants.nearest
         );
         /* Luminance format gives 1 value per pixel repeated for rgba */
-        switch (texture.data) {
+        let data = switch (texture.data) {
         | Some(data) => {
             _texImage2D(
                 ~context,
@@ -370,8 +374,9 @@ module DataTexture = {
                 ~type_=RGLConstants.unsigned_byte,
                 ~data=Gl.Bigarray.of_array(Gl.Bigarray.Uint8, data)
             );
+            data
         }
-        | None => ()
+        | None => [||]
         };
         _pixelStorei(~context, unpackAlignment, 1);
         let uRef = Gl.getUniformLocation(
@@ -381,8 +386,29 @@ module DataTexture = {
         );
         {
             texRef: texRef,
-            uniformRef: uRef
+            uniformRef: uRef,
+            width: texture.width,
+            height: texture.height,
+            data: data,
+            update: false
         }
+    };
+    let updateData = (inited, context) => {
+        Js.log("Updateing");
+        Js.log(inited.data);
+        _texImage2D(
+            ~context,
+            ~target=Constants.texture_2d,
+            ~level=0,
+            ~internalFormat=luminance,
+            ~width=inited.width,
+            ~height=inited.height,
+            ~border=0,
+            ~format=luminance,
+            ~type_=RGLConstants.unsigned_byte,
+            ~data=Gl.Bigarray.of_array(Gl.Bigarray.Uint8, inited.data)
+        );
+        inited.update = false;
     };
 };
 
@@ -483,10 +509,19 @@ module Canvas = {
         let tex0 = Constants.texture0;
         let currTexLength = Array.length(canvas.currTextures);
         canvas.currTextures = Array.mapi((i, tex) => {
-            if (i > currTexLength - 1 || canvas.currTextures[i] != tex) {
+            let wasBound = if (i > currTexLength - 1 || canvas.currTextures[i] != tex) {
                 Gl.uniform1i(~context, ~location=tex.uniformRef, ~value=i);
                 Gl.activeTexture(~context, tex0 + i);
                 Gl.bindTexture(~context, ~target=Constants.texture_2d, ~texture=tex.texRef);
+                true
+            } else {
+                false
+            };
+            if (tex.update) {
+                if (!wasBound) {
+                    Gl.bindTexture(~context, ~target=Constants.texture_2d, ~texture=tex.texRef);
+                };
+                DataTexture.updateData(tex, context);
             };
             tex
         }, textures);
