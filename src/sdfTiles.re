@@ -97,14 +97,9 @@ let fragmentSource = {|
         vec3 eye = vec3(0.0, 0.0, 5.0);
         vec3 pixelEye = vec3(fragCoord, 4.0);
         float dist = shortestDistance(pixelEye, vec3(0.0, 0.0, -1.0));
-        if (dist > (maxDist - epsilon)) {
-            /* No shape in ray */
-            gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
-        } else {
-            vec3 p = pixelEye + dist * vec3(0.0, 0.0, -1.0);
-            gl_FragColor = vec4(p, 1.0);
-            gl_FragColor = vec4(lighting(p), 1.0);
-        }
+        // All points should hit a shape in this shader
+        vec3 p = pixelEye + dist * vec3(0.0, 0.0, -1.0);
+        gl_FragColor = vec4(lighting(p), 1.0);
     }
 |};
 
@@ -115,19 +110,26 @@ type t = {
 
 open Gpu;
 
-let createCanvas = () => {
-    let canvas = Canvas.init(280, 560);
-    let drawState = DrawState.init(
+let createProgram = () => {
+    Program.make(
+        Shader.make(vertexSource),
+        Shader.make(fragmentSource),
+        [||]
+    )
+};
+
+let createDrawState = (canvas : Canvas.t) => {
+    DrawState.init(
         canvas.context,
-        Program.make(
-            Shader.make(vertexSource),
-            Shader.make(fragmentSource),
-            [||]
-        ),
+        createProgram(),
         VertexBuffer.makeQuad(),
         IndexBuffer.makeQuad(),
         [||]
-    );
+    )
+};
+let createCanvas = () => {
+    let canvas = Canvas.init(280, 560);
+    let drawState = createDrawState(canvas);
     DrawState.draw(drawState, canvas);
     {
         drawState: drawState,

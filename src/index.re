@@ -147,8 +147,6 @@ let setup = (env) : stateT => {
   Random.self_init();
   Env.size(~width=800, ~height=640, env);
   let tiles = Array.make(tileRows * tileCols, 0);
-  Js.log("Created");
-  Js.log(tiles);
   let bp = BoardProgram.createCanvas(tiles);
   /*Mandelbrot.createCanvas();*/
   let sdf = SdfTiles.createCanvas();
