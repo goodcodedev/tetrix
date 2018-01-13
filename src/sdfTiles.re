@@ -12,70 +12,43 @@ let fragmentSource = {|
     precision mediump float;
     varying vec2 vPosition;
     
-    float epsilon = 0.0001;
+    float epsilon = 0.00005;
     float minDist = 1.0;
-    float maxDist = 200.0;
-    const int marchingSteps = 300;
-
-    // Octahedron turned towards z
-    float sdfOcta(vec3 point) {
-        point = point - vec3(0.5, 0.5, 0.0);
-        vec3 h = vec3(0.2, 0.2, 0.1);
-        float d = 0.0;
-        float size = 0.2;
-        d = max( d, abs( dot(point, vec3( -size, 0, size )) ));
-        d = max( d, abs( dot(point, vec3(  size, 0, size )) ));
-        d = max( d, abs( dot(point, vec3(  0, -size, size )) ));
-        d = max( d, abs( dot(point, vec3(  0, size, size )) ));
-        float octa = d - size / 2.0;
-        return octa;
-    }
+    float maxDist = 5.0;
+    const int marchingSteps = 30;
     
     float sdfDist(vec3 point) {
-        float octa2 = sdfOcta(point);
-        point = point - vec3(0.5, 0.5, 0.0);
-        float box2 = length(max(abs(point) - vec3(0.5, 0.5, 0.1), vec3(0.0, 0.0, 0.0)));
-        return max(octa2, box2);
-
-        
         // Repeat x and y for each tile
+        /*
+        point.x -= 0.5;
+        point.y -= 0.5;
+        */
         point.x = mod(point.x, 1.0 / 14.0) - 1.0 / 28.0;
         point.y = mod(point.y, 1.0 / 28.0) - 1.0 / 56.0;
-        float x = 1.0 / 30.5;
-        float y = 1.0 / 62.0;
-        float box = length(max(abs(point) - vec3(x, y, y), vec3(0.0, 0.0, 0.0)));
-        // Pyramid
-        vec3 h = vec3(0.03, 0.03, 0.03);
+        float boxWidth = 1.0 / 28.0;
+        float boxHeight = 1.0 / 56.0;
+        float boxDepth = 0.01;
+        float box = length(max(abs(point) - vec3(boxWidth, boxHeight, boxDepth), vec3(0.0, 0.0, 0.0)));
+        // Octahedron towards z
+        float rot = 20.0;
+        mat3 xrot = mat3(
+            1.0, 0.0, 0.0,
+            0.0, cos(rot), -sin(rot),
+            0.0, sin(rot), cos(rot)
+        );
+        //point = point * xrot;
         float d = 0.0;
-        d = max( d, abs( dot(point, vec3( -h.x, h.y, 0 )) ));
-        d = max( d, abs( dot(point, vec3(  h.x, h.y, 0 )) ));
-        d = max( d, abs( dot(point, vec3(  0, h.y, h.x )) ));
-        d = max( d, abs( dot(point, vec3(  0, h.y,-h.x )) ));
-        float octa = d - h.z;
-        return octa;
-        return max(-octa,box); // Subtraction
-        return length(point) - 1.0 / 28.0;
-    }
-    
-    /*
-     * Normalized direction to march in from the eye point
-     * for a single pixel.
-     */
-    vec3 rayDirection(float fieldOfView, vec2 size, vec2 fragCoord) {
-        vec2 xy = fragCoord - size / 2.0;
-        float z = size.y / tan(radians(fieldOfView) / 2.0);
-        return normalize(vec3(xy, -z));
-    }
-    
-    /*
-     * Returns a transform matrix that will transform
-     * a ray from view space to world coordinates.
-     */
-    mat3 viewMatrix(vec3 eye, vec3 center, vec3 up) {
-        vec3 f = normalize(center - eye);
-        vec3 s = cross(f, up);
-        vec3 u = cross(s, f);
-        return mat3(s, u, -f);
+        // Dont know too much of what I'm doing here..
+        // sdpyramid from https://www.shadertoy.com/view/Xds3zN with some modifications
+        vec3 octa = vec3(0.5 * boxHeight / boxWidth, 0.5, 0.24);
+        d = max( d, abs( dot(point, vec3( -octa.x, 0, octa.z )) ));
+        d = max( d, abs( dot(point, vec3(  octa.x, 0, octa.z )) ));
+        d = max( d, abs( dot(point, vec3(  0, -octa.y, octa.z )) ));
+        d = max( d, abs( dot(point, vec3(  0, octa.y, octa.z )) ));
+        float o = d - octa.z / 27.0;
+        // Intersection
+        //return o;
+        return max(o, box);
     }
     
     vec3 estimateNormal(vec3 point) {
@@ -84,57 +57,6 @@ let fragmentSource = {|
             sdfDist(vec3(point.x, point.y + epsilon, point.z)) - sdfDist(vec3(point.x, point.y - epsilon, point.z)),
             sdfDist(vec3(point.x, point.y, point.z + epsilon)) - sdfDist(vec3(point.x, point.y, point.z - epsilon))
         ));
-    }
-    
-    /*
-     * Lighting contribution of a single point light source
-     * via phong illumination.
-     * 
-     */
-    vec3 phongContribForLight(vec3 diffuse, vec3 specular, float alpha,
-            vec3 point, vec3 eye, vec3 lightPos, vec3 lightIntensity) {
-        vec3 N = estimateNormal(point);
-        vec3 L = normalize(lightPos - point);
-        vec3 V = normalize(eye - point);
-        vec3 R = normalize(reflect(L * -1.0, N));
-        float dotLN = dot(L, N);
-        float dotRV = dot(R, V);
-        if (dotLN < 0.0) {
-            /* Light not visible from this point on the surface */
-            return vec3(0.0, 0.0, 0.0);
-        }
-        if (dotRV < 0.0) {
-            /* Light reflection in opposite direction, apply only diffuse */
-            return lightIntensity * (diffuse * dotLN);
-        }
-        return lightIntensity * (diffuse * dotLN + specular * pow(dotRV, alpha));
-    }
-    
-    /*
-     * Lighting via phong illumination
-     * https://en.wikipedia.org/wiki/Phong_reflection_model#Description
-     */
-    vec3 phongIllumination(vec3 ambient, vec3 diffuse, vec3 specular, 
-            float alpha, vec3 point, vec3 eye) {
-        vec3 ambientLight = vec3(0.5, 0.5, 0.5);
-        vec3 color = ambientLight * ambient;
-        vec3 light1Pos = vec3(4.0,
-                                2.0,
-                                4.0);
-        vec3 light1Intensity = vec3(0.4, 0.4, 0.4);
-        color += phongContribForLight(diffuse, specular, alpha,
-                                        point, eye,
-                                        light1Pos,
-                                        light1Intensity);
-        vec3 light2Pos = vec3(2.0,
-                                2.0,
-                                2.0);
-        vec3 light2Intensity = vec3(0.4, 0.4, 0.4);
-        color += phongContribForLight(diffuse, specular, alpha,
-                                        point, eye,
-                                        light2Pos,
-                                        light2Intensity);
-        return color;
     }
     
     float shortestDistance(vec3 eye, vec3 dir) {
@@ -153,28 +75,35 @@ let fragmentSource = {|
         }
         return end;
     }
+
+    vec3 lighting(vec3 surfacePoint) {
+        vec3 N = estimateNormal(surfacePoint);
+        vec3 diffuseDir = vec3(0.4, 0.3, 0.3);
+        float NdotD = max(dot(diffuseDir, N), 0.0);
+        vec3 pointPos = vec3(0.6, 0.8, 0.4);
+        vec3 pointVec = pointPos - surfacePoint;
+        vec3 pointDir = normalize(pointVec);
+        float NdotP = max(dot(pointDir, N), 0.0);
+        float ambient = 0.1;
+        float c = NdotD * 0.1 + ambient + NdotP * 0.6 * max(0.0, 1.0 - length(pointVec));
+        //c = NdotD;
+        //c = NdotP;
+        return vec3(c, c, c);
+    }
     
     void main() {
         vec2 viewport = vec2(1.0, 1.0);
         vec2 fragCoord = (vPosition + 1.0) * 0.5;
-        vec3 viewDir = rayDirection(60.0, viewport, fragCoord);
         vec3 eye = vec3(0.0, 0.0, 5.0);
-        mat3 viewToWorld = viewMatrix(eye, vec3(0.0, 0.0, -1.0), vec3(0.0, 1.0, 0.0));
-        vec3 worldDir = viewToWorld * viewDir;
         vec3 pixelEye = vec3(fragCoord, 4.0);
         float dist = shortestDistance(pixelEye, vec3(0.0, 0.0, -1.0));
         if (dist > (maxDist - epsilon)) {
             /* No shape in ray */
             gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
-            gl_FragColor = vec4(worldDir, 1.0);
         } else {
             vec3 p = pixelEye + dist * vec3(0.0, 0.0, -1.0);
-            vec3 alpha = (estimateNormal(p) + vec3(1.0)) / 2.0;
-            vec3 diffuse = alpha;
-            vec3 specular = vec3(1.0, 1.0, 1.0);
-            float shininess = 10.0;
-            vec3 color = phongIllumination(alpha, diffuse, specular, shininess, p, pixelEye);
-            gl_FragColor = vec4(color, 1.0);
+            gl_FragColor = vec4(p, 1.0);
+            gl_FragColor = vec4(lighting(p), 1.0);
         }
     }
 |};
