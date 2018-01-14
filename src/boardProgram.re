@@ -33,20 +33,51 @@ let fragmentSource = {|
             : vec3(0.8, 0.8, 0.9);
         vec2 sdfPos = vec2(tilePos.x, (tilePos.y * -1.0) + 1.0);
         vec3 sdfColor = texture2D(sdfTiles, sdfPos).xyz;
-        color = color * 0.5 + sdfColor * 0.5;
+        float sdfCoef = abs(0.5 - sdfColor.x);
+        float tileCoef = 1.0 - sdfCoef;
+        //color = color * 0.5 + ((colorIdx == 0) ? vec3(0.0, 0.0, 0.0) : (sdfColor * 0.5));
+        color = (colorIdx == 0) ? color : color * tileCoef + sdfColor * sdfCoef;
         gl_FragColor = vec4(color, 1.0);
+    }
+|};
+
+let currElFragment = {|
+    precision mediump float;
+    varying vec2 vPosition;
+
+    uniform vec3 elColor;
+    uniform sampler2D sdfTiles;
+
+    void main() {
+        vec2 tilePos = vec2((vPosition.x + 1.0) * 0.5, (vPosition.y - 1.0) * -0.5);
+        vec2 sdfPos = vec2(tilePos.x, (tilePos.y * -1.0) + 1.0);
+        vec3 sdfColor = texture2D(sdfTiles, sdfPos).xyz;
+        vec3 color = elColor * 0.5 + sdfColor * 0.5;
+        gl_FragColor = vec4(color, 1.0);
+        gl_FragColor = vec4(0.5, 0.0, 0.0, 1.0);
     }
 |};
 
 type t = {
     tiles: array(int),
     mutable updateTiles: bool,
+    mutable currElTiles: array(float),
+    mutable currElColor: array(float),
+    mutable updateCurrEl: bool,
     drawState: Gpu.DrawState.t,
+    currElDraw: Gpu.DrawState.t,
     canvas: Gpu.Canvas.t,
     frameBuffer: Gpu.FrameBuffer.t
 };
 
 open Gpu;
+
+let currElVertices = VertexBuffer.make(
+    [|-0.5, -0.5, -0.5, 0.5, 0.5, 0.5, 0.5, -0.5|],
+    [|VertexAttrib.make("position", Vec2f)|],
+    DynamicDraw
+);
+let currElIndexes = IndexBuffer.make(IndexBuffer.makeQuadsData(1), DynamicDraw);
 
 let createCanvas = (tiles) => {
     let canvas = Canvas.init(280, 560);
@@ -85,10 +116,25 @@ let createCanvas = (tiles) => {
             ProgramTexture.make("sdfTiles", sdfTilesTex)
         |]
     );
+    let currElDraw = DrawState.init(
+        canvas.context,
+        Program.make(
+            Shader.make(vertexSource),
+            Shader.make(currElFragment),
+            [||]
+        ),
+        currElVertices,
+        currElIndexes,
+        [||]
+    );
     DrawState.draw(drawState, canvas);
     {
         tiles: tiles,
+        currElTiles: [||],
+        updateCurrEl: false,
+        currElColor: [||],
         drawState: drawState,
+        currElDraw: currElDraw,
         canvas: canvas,
         updateTiles: false,
         frameBuffer: fbuffer
@@ -102,4 +148,5 @@ let draw = (bp) => {
     };
     Canvas.clear(bp.canvas, 0.0, 0.0, 0.0);
     DrawState.draw(bp.drawState, bp.canvas);
+    DrawState.draw(bp.currElDraw, bp.canvas);
 };

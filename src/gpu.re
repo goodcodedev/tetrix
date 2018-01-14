@@ -67,6 +67,12 @@ module VertexAttrib = {
         name: string,
         glType: GlType.t
     };
+    type inited = {
+        loc: Gl.attributeT,
+        size: int,
+        stride: int,
+        type_: int
+    };
 
     let make = (name, glType) => {
         name: name,
@@ -76,16 +82,24 @@ module VertexAttrib = {
 
     let init = (attrib, context, program, size, stride) => {
         let loc = Gl.getAttribLocation(~context, ~program, ~name=attrib.name);
+        {
+            loc: loc,
+            size: size,
+            stride: stride,
+            type_: GlType.getTypeConst(attrib.glType)
+        }
+    };
+
+    let setPointer = (inited, context) => {
         Gl.vertexAttribPointer(
             ~context,
-            ~attribute=loc,
-            ~size,
-            ~type_=GlType.getTypeConst(attrib.glType),
+            ~attribute=inited.loc,
+            ~size=inited.size,
+            ~type_=inited.type_,
             ~normalize=false,
-            ~stride,
+            ~stride=inited.stride,
             ~offset=0
         );
-        loc
     };
 };
 
@@ -174,7 +188,7 @@ module Program = {
 module VertexBuffer = {
     type inited = {
         bufferRef: Gl.bufferT,
-        attribLocs: array(Gl.attributeT),
+        attribs: array(VertexAttrib.inited),
         count: int
     };
     type t = {
@@ -204,7 +218,6 @@ module VertexBuffer = {
             inited: None
         }
     };
-
     let init = (buffer, context, program) => {
         switch (buffer.inited) {
         | Some(inited) => inited
@@ -234,7 +247,7 @@ module VertexBuffer = {
             }, buffer.attributes);
             let inited = {
                 bufferRef: vertexBuffer,
-                attribLocs: locs,
+                attribs: locs,
                 count: Array.length(buffer.data)
             };
             buffer.inited = Some(inited);
@@ -266,6 +279,22 @@ module IndexBuffer = {
         |],
         usage: StaticDraw,
         inited: None
+    };
+    let makeQuadsData = (num) => {
+        /* Assuming clockwise orientation */
+        let rec quadData = (quadNum) => {
+            if (quadNum >= num) {
+                []
+            } else {
+                let offset = 4 * quadNum;
+                [[|
+                    0 + offset, 1 + offset,
+                    2 + offset, 0 + offset,
+                    2 + offset, 3 + offset
+                |], ...quadData(quadNum + 1)]
+            }
+        };
+        Array.concat(quadData(0))
     };
     let init = (buffer, context) => {
         switch (buffer.inited) {
@@ -619,9 +648,10 @@ module Canvas = {
                 ~target=Constants.array_buffer,
                 ~buffer=vertexBuffer.bufferRef
             );
-            Array.iter((loc) => {
-                Gl.enableVertexAttribArray(~context, ~attribute=loc);
-            }, vertexBuffer.attribLocs)
+            Array.iter((attrib : VertexAttrib.inited) => {
+                VertexAttrib.setPointer(attrib, context);
+                Gl.enableVertexAttribArray(~context, ~attribute=attrib.loc);
+            }, vertexBuffer.attribs);
         }
         };
         Gl.drawArrays(
@@ -635,40 +665,43 @@ module Canvas = {
     let drawIndexes = (canvas, program, vertexBuffer, indexBuffer, textures) => {
         let context = canvas.context;
         switch (canvas.currProgram) {
-        | Some(currentProgram) when (currentProgram == program) => ()
+        | Some(currentProgram) when (currentProgram === program) => ()
         | _ => {
             Gl.useProgram(~context, program.programRef);
             canvas.currProgram = Some(program);
         }
         };
         switch (canvas.currVertexBuffer) {
-        | Some(currBuffer) when (currBuffer == vertexBuffer) => ()
+        | Some(currBuffer) when (currBuffer === vertexBuffer) => ()
         | _ => {
             Gl.bindBuffer(
                 ~context,
                 ~target=Constants.array_buffer,
                 ~buffer=vertexBuffer.bufferRef
             );
-            Array.iter((loc) => {
-                Gl.enableVertexAttribArray(~context, ~attribute=loc);
-            }, vertexBuffer.attribLocs)
+            Array.iter((attrib : VertexAttrib.inited) => {
+                VertexAttrib.setPointer(attrib, context);
+                Gl.enableVertexAttribArray(~context, ~attribute=attrib.loc);
+            }, vertexBuffer.attribs);
+            canvas.currVertexBuffer = Some(vertexBuffer);
         }
         };
         switch (canvas.currIndexBuffer) {
-        | Some(currBuffer) when (currBuffer == indexBuffer) => ()
+        | Some(currBuffer) when (currBuffer === indexBuffer) => ()
         | _ => {
             Gl.bindBuffer(
                 ~context,
                 ~target=Constants.element_array_buffer,
                 ~buffer=indexBuffer.elBufferRef
             );
+            canvas.currIndexBuffer = Some(indexBuffer);
         }
         };
         /* Textures */
         let tex0 = Constants.texture0;
         let currTexLength = Array.length(canvas.currTextures);
         canvas.currTextures = Array.mapi((i, pInit : ProgramTexture.inited) => {
-            let wasBound = if (i > currTexLength - 1 || canvas.currTextures[i] != pInit) {
+            let wasBound = if (i > currTexLength - 1 || canvas.currTextures[i] !== pInit) {
                 Gl.uniform1i(~context, ~location=pInit.uniformRef, ~value=i);
                 Gl.activeTexture(~context, tex0 + i);
                 Gl.bindTexture(~context, ~target=Constants.texture_2d, ~texture=pInit.texture.texRef);

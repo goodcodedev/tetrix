@@ -81,6 +81,22 @@ let tileColors = [|
   Utils.color(~r=180, ~g=100, ~b=230, ~a=255), /* Purple triangle */
   Utils.color(~r=240, ~g=130, ~b=120, ~a=255), /* Red left shift */
 |];
+let tileColors2 = Array.map((color) => {
+  Array.map((component) => {
+    float_of_int(component) /. 255.0
+  }, color)
+},
+[|
+  [|199, 214, 240, 255|], /* Standard unfilled color */
+  [|205, 220, 246, 255|], /* Standard lighter color */
+  [|130, 240, 250, 255|], /* Magenta line */
+  [|120, 130, 250, 255|], /* Blue left L */
+  [|250, 210, 80, 255|], /* Orange right L */
+  [|250, 250, 130, 255|], /* Yellow cube */
+  [|140, 250, 140, 255|], /* Green right shift */
+  [|180, 100, 230, 255|], /* Purple triangle */
+  [|240, 130, 120, 255|], /* Red left shift */
+|]);
 
 type pos = {
   x: int,
@@ -170,8 +186,10 @@ let newGame = (state) => {
   for (y in 0 to tileRows - 1) {
     for (x in 0 to tileCols - 1) {
       state.tiles[y][x] = 0;
+      state.boardProgram.tiles[tileCols*y + x] = 0;
     }
   };
+  state.boardProgram.updateTiles = true;
   for (x in 0 to tileCols - 1) {
     state.elTiles[x] = 0;
   };
@@ -426,6 +444,24 @@ let drawElTiles = (tiles, color, x, y, env) => {
       );
     }, tiles);
 };
+let drawElTiles2 = (tiles, color, x, y, state) => {
+    state.boardProgram.currElColor = color;
+    state.boardProgram.currElTiles = Array.concat(List.map(((tileX, tileY)) => {
+      /* Translate to -1.0 to 1.0 coords */
+      let tileHeight = 2.0 /. float_of_int(tileRows);
+      let tileWidth = 2.0 /. float_of_int(tileCols);
+      let tileYScaled = float_of_int(tileY) /. float_of_int(tileRows);
+      let tileXScaled = float_of_int(tileX) /. float_of_int(tileCols);
+      /* Bottom left, Top left, Top right, Bottom right */
+      [|
+        tileXScaled, tileYScaled -. tileHeight,
+        tileXScaled, tileYScaled,
+        tileXScaled +. tileWidth, tileYScaled,
+        tileXScaled +. tileWidth, tileYScaled -. tileHeight
+      |] 
+    }, tiles));
+    state.boardProgram.updateCurrEl = true;
+};
 
 let drawGame = (state, env) => {
   let timeStep = Env.deltaTime(env);
@@ -474,6 +510,12 @@ let drawGame = (state, env) => {
     tileColors[state.curEl.color],
     state.curEl.pos.x, state.curEl.pos.y,
     env
+  );
+  drawElTiles2(
+    elTiles(state.curEl.el, state.curEl.rotation),
+    tileColors2[state.curEl.color],
+    state.curEl.pos.x, state.curEl.pos.y,
+    state
   );
   let curTime = state.curTime +. timeStep;
   let isNewTick = curTime > state.lastTick +. tickDuration;
