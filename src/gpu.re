@@ -677,6 +677,10 @@ module FrameBuffer = {
 };
 
 module Canvas = {
+    type keyboardT = {
+        mutable keyCode: Reasongl.Gl.Events.keycodeT
+    };
+
     type t = {
         window: Gl.Window.t,
         context: Gl.contextT,
@@ -685,7 +689,9 @@ module Canvas = {
         mutable currProgram: option(Program.inited),
         mutable currVertexBuffer: option(VertexBuffer.inited),
         mutable currIndexBuffer: option(IndexBuffer.inited),
-        mutable currTextures: array(ProgramTexture.inited)
+        mutable currTextures: array(ProgramTexture.inited),
+        keyboard: keyboardT,
+        mutable deltaTime: float
     };
     let init = (width, height) => {
         let window = Gl.Window.init(~argv=[||]);
@@ -700,8 +706,42 @@ module Canvas = {
             currProgram: None,
             currVertexBuffer: None,
             currIndexBuffer: None,
-            currTextures: [||]
+            currTextures: [||],
+            keyboard: {
+                keyCode: Gl.Events.Nothing
+            },
+            deltaTime: 0.0
         }
+    };
+
+    let run = (width, height, setup, draw, ~keyPressed=?, ()) => {
+        let canvas = init(width, height);
+        let userState = ref(setup(canvas));
+        /* Start render loop */
+        Gl.render(
+            ~window = canvas.window,
+            ~displayFunc = (f) => {
+                canvas.deltaTime = f /. 1000.;
+                userState := draw(userState^, canvas);
+            },
+            ~keyDown = (~keycode, ~repeat) => {
+                canvas.keyboard.keyCode = keycode;
+                if (!repeat) {
+                    switch (keyPressed) {
+                    | Some(keyPressed) => {
+                        userState := keyPressed(userState^, canvas);
+                    }
+                    | None => ()
+                    }
+                };
+            },
+            ~keyUp = (~keycode) => {
+                /* Need this to trigger cleaning of keyes pressed
+                   and repeat marked */
+                ()
+            },
+            ()
+        );
     };
 
     let clear = (canvas, r, g, b) => {

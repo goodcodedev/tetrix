@@ -89,8 +89,7 @@ let currElVertices = VertexBuffer.make(
 );
 let currElIndexes = IndexBuffer.make(IndexBuffer.makeQuadsData(1), DynamicDraw);
 
-let createCanvas = (tiles) => {
-    let canvas = Canvas.init(280, 560);
+let init = (canvas : Gpu.Canvas.t, tiles) => {
     let context = canvas.context;
     /* Sdf tiles */
     let sdfTilesTex = Texture.make(512, 512, Some(Array.make(512*512*4, 0)), Texture.RGBA);
@@ -184,7 +183,8 @@ let draw = (bp) => {
         }
     };
     let context = bp.canvas.context;
-    let bg = Color.from255(205, 220, 246);
+    let bgLight = Color.from255(205, 220, 246);
+    let bg = Color.from255(199, 214, 240);
     Canvas.clear(bp.canvas, bg.r, bg.g, bg.b);
     let lineColor = Color.from255(180, 190, 220);
     bp.gridDraw.uniforms[0] = Uniform.UniformVec3f(Color.toArray(lineColor));

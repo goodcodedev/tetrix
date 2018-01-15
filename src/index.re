@@ -1,5 +1,3 @@
-open Reprocessing;
-
 module Document = {
   type window;
   let window: window = [%bs.raw "window"];
@@ -69,18 +67,6 @@ let elTiles = (element, rotation) => {
   }
 };
 
-
-let tileColors = [|
-  Utils.color(~r=199, ~g=214, ~b=240, ~a=255), /* Standard unfilled color */
-  Utils.color(~r=205, ~g=220, ~b=246, ~a=255), /* Standard lighter color */
-  Utils.color(~r=130, ~g=240, ~b=250, ~a=255), /* Magenta line */
-  Utils.color(~r=120, ~g=130, ~b=250, ~a=255), /* Blue left L */
-  Utils.color(~r=250, ~g=210, ~b=80, ~a=255), /* Orange right L */
-  Utils.color(~r=250, ~g=250, ~b=130, ~a=255), /* Yellow cube */
-  Utils.color(~r=140, ~g=250, ~b=140, ~a=255), /* Green right shift */
-  Utils.color(~r=180, ~g=100, ~b=230, ~a=255), /* Purple triangle */
-  Utils.color(~r=240, ~g=130, ~b=120, ~a=255), /* Red left shift */
-|];
 let tileColors2 = Array.map((color) => {
   Array.map((component) => {
     float_of_int(component) /. 255.0
@@ -123,8 +109,6 @@ type stateT = {
   elTiles: array(int),
   gameState: gameState,
   paused: bool,
-  headingFont: Reprocessing.fontT,
-  infoFont: Reprocessing.fontT,
   boardProgram: BoardProgram.t
 };
 
@@ -152,7 +136,7 @@ let newElement = () => {
   }
 };
 
-let setup = (env) : stateT => {
+let setup = (canvas) : stateT => {
   Document.addEventListener(
     Document.window,
     "keydown",
@@ -161,9 +145,8 @@ let setup = (env) : stateT => {
     }
   );
   Random.self_init();
-  Env.size(~width=800, ~height=640, env);
   let tiles = Array.make(tileRows * tileCols, 0);
-  let bp = BoardProgram.createCanvas(tiles);
+  let bp = BoardProgram.init(canvas, tiles);
   /*Mandelbrot.createCanvas();*/
   let sdf = SdfTiles.createCanvas();
   SdfTiles.draw(sdf);
@@ -176,9 +159,7 @@ let setup = (env) : stateT => {
     tiles: Array.make_matrix(tileRows, tileCols, 0),
     elTiles: Array.make(tileCols, 0),
     gameState: Running,
-    paused: false,
-    headingFont: Draw.loadFont(~filename="./assets/font.fnt", ~isPixel=true, env),
-    infoFont: Draw.loadFont(~filename="./assets/roboto.fnt", ~isPixel=true, env),
+    paused: false
   }
 };
 
@@ -356,7 +337,7 @@ let listRange = (countDown) => {
   addToList([], countDown)
 };
 
-let processAction = (state, env) => {
+let processAction = (state) => {
   switch state.action {
   | MoveLeft  => {
     ...attemptMove(state, (-1, 0)),
@@ -433,17 +414,6 @@ let processAction = (state, env) => {
   }
 };
 
-let drawElTiles = (tiles, color, x, y, env) => {
-    Draw.fill(color, env);
-    List.iter(((tileX, tileY)) => {
-      Draw.rect(
-        ~pos=((x + tileX) * tileWidth + boardOffsetX, (y + tileY) * tileHeight + boardOffsetY),
-        ~width=tileWidth - 1,
-        ~height=tileHeight - 1,
-        env
-      );
-    }, tiles);
-};
 let drawElTiles2 = (tiles, color, x, y, state) => {
     state.boardProgram.currElDraw.uniforms[0] = Gpu.Uniform.UniformVec3f(color);
     /* Translate to -1.0 to 1.0 coords */
@@ -469,10 +439,8 @@ let drawElTiles2 = (tiles, color, x, y, state) => {
     state.boardProgram.updateCurrEl = true;
 };
 
-let drawGame = (state, env) => {
-  let timeStep = Env.deltaTime(env);
-  Draw.background(Utils.color(~r=190, ~g=199, ~b=230, ~a=245), env);
-  Draw.clear(env);
+let drawGame = (state, canvas : Gpu.Canvas.t) => {
+  let timeStep = canvas.deltaTime;
   /* Reset element tile rows */
   Array.iteri((i, tileRow) => {
     if (tileRow > 0) {
@@ -487,36 +455,7 @@ let drawGame = (state, env) => {
       state.elTiles[pointX] = pointY;
     };
   }, elTiles(state.curEl.el, state.curEl.rotation));
-  /* Draw tile squares */
-  Array.iteri(
-    (y, tileRow) => {
-      Array.iteri(
-        (x, tileVal) => {
-          if (state.elTiles[x] > 0 && state.elTiles[x] < y && tileVal == 0) {
-            /* Use light standard color */
-            Draw.fill(tileColors[1], env);
-          } else {
-            Draw.fill(tileColors[tileVal], env);
-          };
-          Draw.rect(
-            ~pos=(x * tileWidth + boardOffsetX, y * tileHeight + boardOffsetY),
-            ~width=tileWidth - tilePadding,
-            ~height=tileHeight - tilePadding,
-            env
-          );
-        },
-        tileRow
-      );
-    },
-    state.tiles
-  );
-  /* Draw element */
-  drawElTiles(
-    elTiles(state.curEl.el, state.curEl.rotation),
-    tileColors[state.curEl.color],
-    state.curEl.pos.x, state.curEl.pos.y,
-    env
-  );
+  /* Draw element, todo: finer grained updating */
   drawElTiles2(
     elTiles(state.curEl.el, state.curEl.rotation),
     tileColors2[state.curEl.color],
@@ -551,25 +490,25 @@ let drawGame = (state, env) => {
       },
       state.tiles
     );
-    /* Move rows above completed down */
-    let _ = Array.fold_right(
-      (isCompleted, (movedRows, currentRow)) => {
-        if (isCompleted) {
-          for (y in currentRow downto 1) {
-            state.tiles[y] = Array.copy(state.tiles[y - 1]);
-            for (tileIdx in (y * tileCols) to (y * tileCols + tileCols) - 1) {
-              state.boardProgram.tiles[tileIdx] = state.boardProgram.tiles[tileIdx - tileCols];
-            };
-          };
-          (movedRows + 1, currentRow)
-        } else {
-          (movedRows, currentRow - 1)
-        }
-      },
-      completedRows,
-      (0, tileRows - 1)
-    );
     if (Array.length(completedRows) > 0) {
+      /* Move rows above completed down */
+      let _ = Array.fold_right(
+        (isCompleted, (movedRows, currentRow)) => {
+          if (isCompleted) {
+            for (y in currentRow downto 1) {
+              state.tiles[y] = Array.copy(state.tiles[y - 1]);
+              for (tileIdx in (y * tileCols) to (y * tileCols + tileCols) - 1) {
+                state.boardProgram.tiles[tileIdx] = state.boardProgram.tiles[tileIdx - tileCols];
+              };
+            };
+            (movedRows + 1, currentRow)
+          } else {
+            (movedRows, currentRow - 1)
+          }
+        },
+        completedRows,
+        (0, tileRows - 1)
+      );
       state.boardProgram.updateTiles = true;
     };
     let state = {
@@ -599,6 +538,7 @@ let drawGame = (state, env) => {
   }
 };
 
+/*
 let drawInfo = (state, env) => {
   let infoOffsetX = boardOffsetX * 2 + boardWidth;
   let infoOffsetY = boardOffsetY;
@@ -630,15 +570,15 @@ let drawInfo = (state, env) => {
     ". - drop",
   ]);
 };
+*/
 
-let draw = (state, env) => {
-  let state = processAction(state, env);
+let draw = (state, canvas) => {
+  let state = processAction(state);
   if (state.paused) {
     state
   } else {
-    let state = drawGame(state, env);
+    let state = drawGame(state, canvas);
     BoardProgram.draw(state.boardProgram);
-    drawInfo(state, env);
     switch (state.gameState) {
     | Running => state
     | GameOver => {
@@ -648,9 +588,9 @@ let draw = (state, env) => {
   }
 };
 
-let keyPressed = (state, env) => {
-  Events.(
-    switch (Env.keyCode(env)) {
+let keyPressed = (state, canvas : Gpu.Canvas.t) => {
+  Reasongl.Gl.Events.(
+    switch (canvas.keyboard.keyCode) {
     | H => {
       ...state,
       action: MoveLeft
@@ -710,4 +650,4 @@ let keyPressed = (state, env) => {
   );
 };
 
-run(~setup, ~draw, ~keyPressed, ());
+Gpu.Canvas.run(280, 560, setup, draw, ~keyPressed, ());

@@ -1,7 +1,7 @@
 {
   "name": "Tetrix",
   "sources": "src",
-  "bs-dependencies": ["Reprocessing", "ReasonglInterface", "ReasonglWeb", "ReasonglNative"],
+  "bs-dependencies": ["ReasonglInterface", "ReasonglWeb", "ReasonglNative"],
   "bs-super-errors": true,
   "entries": [
     {"backend": "bytecode", "main-module": "IndexHot"},

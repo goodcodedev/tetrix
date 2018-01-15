@@ -46,15 +46,6 @@ matchenv@bsansouci/matchenv:
   dependencies:
     bs-platform bsansouci/bsb-native
 
-"reprocessing@github:Schmavery/reprocessing":
-  version "0.1.0"
-  resolved "https://codeload.github.com/Schmavery/reprocessing/tar.gz/2a96a0fd785028bb9edd2cb2bc3480ce7318f0a8"
-  dependencies:
-    ReasonglInterface "github:bsansouci/reasongl-interface"
-    ReasonglNative "github:bsansouci/reasongl-native"
-    ReasonglWeb "github:bsansouci/reasongl-web"
-    matchenv bsansouci/matchenv
-
 sdl2@bsansouci/SDL-mirror#bsb-support:
   version "2.0.5"
   resolved "https://codeload.github.com/bsansouci/SDL-mirror/tar.gz/436449d6406ee0185737aedae1b8ddbb4c6d81a9"
