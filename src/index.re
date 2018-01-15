@@ -446,6 +446,7 @@ let drawElTiles = (tiles, color, x, y, env) => {
 };
 let drawElTiles2 = (tiles, color, x, y, state) => {
     state.boardProgram.currElColor = color;
+    state.boardProgram.updateCurrElColor = true;
     state.boardProgram.currElTiles = Array.concat(List.map(((tileX, tileY)) => {
       /* Translate to -1.0 to 1.0 coords */
       let tileHeight = 2.0 /. float_of_int(tileRows);
@@ -560,10 +561,12 @@ let drawGame = (state, env) => {
       completedRows,
       (0, tileRows - 1)
     );
-    {
+    let state = {
       ...state,
       curEl: newElement()
-    }
+    };
+    drawElTiles2(elTiles(state.curEl.el, state.curEl.rotation), tileColors2[state.curEl.color], 0, 0, state);
+    state
   }
   };
   if (newEl && isCollision(state)) {

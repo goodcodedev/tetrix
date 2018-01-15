@@ -122,6 +122,7 @@ let createDrawState = (canvas : Canvas.t) => {
     DrawState.init(
         canvas.context,
         createProgram(),
+        [||],
         VertexBuffer.makeQuad(),
         IndexBuffer.makeQuad(),
         [||]

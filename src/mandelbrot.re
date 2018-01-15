@@ -97,6 +97,7 @@ let createCanvas = () => {
             Shader.make(fragmentSource),
             [||]
         ),
+        [||],
         VertexBuffer.makeQuad(),
         IndexBuffer.makeQuad(),
         [||]

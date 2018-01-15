@@ -54,7 +54,7 @@ let currElFragment = {|
         vec3 sdfColor = texture2D(sdfTiles, sdfPos).xyz;
         vec3 color = elColor * 0.5 + sdfColor * 0.5;
         gl_FragColor = vec4(color, 1.0);
-        gl_FragColor = vec4(0.5, 0.0, 0.0, 1.0);
+        gl_FragColor = vec4(elColor, 1.0);
     }
 |};
 
@@ -62,8 +62,9 @@ type t = {
     tiles: array(int),
     mutable updateTiles: bool,
     mutable currElTiles: array(float),
-    mutable currElColor: array(float),
     mutable updateCurrEl: bool,
+    mutable currElColor: array(float),
+    mutable updateCurrElColor: bool,
     drawState: Gpu.DrawState.t,
     currElDraw: Gpu.DrawState.t,
     canvas: Gpu.Canvas.t,
@@ -90,6 +91,7 @@ let createCanvas = (tiles) => {
     let sdfTilesDrawState = DrawState.init(
         canvas.context,
         SdfTiles.createProgram(),
+        [||],
         vertexQuad,
         indexQuad,
         [||]
@@ -106,6 +108,7 @@ let createCanvas = (tiles) => {
             Shader.make(fragmentSource),
             [||]
         ),
+        [||],
         vertexQuad,
         indexQuad,
         [|
@@ -121,11 +124,14 @@ let createCanvas = (tiles) => {
         Program.make(
             Shader.make(vertexSource),
             Shader.make(currElFragment),
-            [||]
+            [|Uniform.make("elColor", GlType.Vec3f)|]
         ),
+        [|Uniform.UniformVec3f([|1.0, 0.0, 1.0|])|],
         currElVertices,
         currElIndexes,
-        [||]
+        [|
+            ProgramTexture.make("sdfTiles", sdfTilesTex)
+        |]
     );
     DrawState.draw(drawState, canvas);
     {
@@ -133,6 +139,7 @@ let createCanvas = (tiles) => {
         currElTiles: [||],
         updateCurrEl: false,
         currElColor: [||],
+        updateCurrElColor: false,
         drawState: drawState,
         currElDraw: currElDraw,
         canvas: canvas,
@@ -145,6 +152,21 @@ let draw = (bp) => {
     if (bp.updateTiles) {
         bp.drawState.textures[0].texture.update = true;
         bp.updateTiles = false;
+    };
+    if (bp.updateCurrElColor) {
+        bp.currElDraw.uniforms[0] = Uniform.UniformVec3f(bp.currElColor);
+    };
+    if (bp.updateCurrEl) {
+        bp.currElDraw.vertexBuffer.data = bp.currElTiles;
+        bp.currElDraw.vertexBuffer.update = true;
+        switch (bp.currElDraw.indexBuffer) {
+        | Some(indexBuffer) => {
+            /* Four per quad, 2 per element */
+            indexBuffer.data = IndexBuffer.makeQuadsData(Array.length(bp.currElTiles) / 4 / 2);
+            indexBuffer.update = true;
+        }
+        | None => ()
+        }
     };
     Canvas.clear(bp.canvas, 0.0, 0.0, 0.0);
     DrawState.draw(bp.drawState, bp.canvas);

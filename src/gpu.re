@@ -37,28 +37,53 @@ module GlType = {
     };
 };
 
-type uniformValue =
-  | UniformFloat(float)
-  | UniformInt(int)
-  | UniformVec2f(array(float))
-  | UniformVec3f(array(float))
-  | UniformVec4f(array(float))
-  ;
-
 type bufferUsage =
   | StaticDraw
   | DynamicDraw
   | StreamingDraw;
 
 module Uniform = {
+    type uniformValue =
+      | UniformFloat(float)
+      | UniformInt(int)
+      | UniformVec2f(array(float))
+      | UniformVec3f(array(float))
+      | UniformVec4f(array(float))
+      ;
+    type inited = {
+        glType: GlType.t,
+        loc: Gl.uniformT
+    };
+
     type t = {
         name: string,
-        glType: GlType.t
+        glType: GlType.t,
+        mutable inited: option(inited)
     };
 
     let make = (name, glType) => {
         name: name,
-        glType: glType
+        glType: glType,
+        inited: None
+    };
+
+    let init = (uniform, context, program) => {
+        let inited = {
+            glType: uniform.glType,
+            loc: Gl.getUniformLocation(~context, ~program, ~name=uniform.name)
+        };
+        uniform.inited = Some(inited);
+        inited
+    };
+
+    let setValue = (uniform, context, uniformValue) => {
+        switch (uniformValue) {
+        | UniformFloat(value) => Gl.uniform1f(~context, ~location=uniform.loc, ~value)
+        | UniformInt(value) => Gl.uniform1i(~context, ~location=uniform.loc, ~value)
+        | UniformVec2f(value) => Gl.uniform2f(~context, ~location=uniform.loc, ~v1=value[0], ~v2=value[1])
+        | UniformVec3f(value) => Gl.uniform3f(~context, ~location=uniform.loc, ~v1=value[0], ~v2=value[1], ~v3=value[2])
+        | UniformVec4f(value) => Gl.uniform4f(~context, ~location=uniform.loc, ~v1=value[0], ~v2=value[1], ~v3=value[2], ~v4=value[3])
+        };
     };
 };
 
@@ -135,7 +160,7 @@ module Program = {
 
     type inited = {
         programRef: Gl.programT,
-        fsource: string
+        uniforms: array(Uniform.inited)
     };
 
     let make = (vertexShader, fragmentShader, uniforms) => {
@@ -175,10 +200,15 @@ module Program = {
             program.vertexShader.source,
             program.fragmentShader.source
         )) {
-            | Some(programRef) => Some({
-                programRef: programRef,
-                fsource: program.fragmentShader.source
-            })
+            | Some(programRef) => {
+                let uniforms = Array.map((uniform) => {
+                    Uniform.init(uniform, context, programRef)
+                }, program.uniforms);
+                Some({
+                    programRef: programRef,
+                    uniforms: uniforms
+                })
+            }
             | None => None
         }
     };
@@ -189,7 +219,10 @@ module VertexBuffer = {
     type inited = {
         bufferRef: Gl.bufferT,
         attribs: array(VertexAttrib.inited),
-        count: int
+        mutable data: array(float),
+        mutable update: bool,
+        mutable count: int,
+        usage: bufferUsage
     };
     type t = {
         data: array(float),
@@ -218,6 +251,20 @@ module VertexBuffer = {
             inited: None
         }
     };
+    let updateData = (inited : inited, context) => {
+        inited.count = Array.length(inited.data);
+        Gl.bufferData(
+            ~context,
+            ~target=Constants.array_buffer,
+            ~data=Gl.Bigarray.of_array(Gl.Bigarray.Float32, inited.data),
+            ~usage=switch (inited.usage) {
+            | StaticDraw => Constants.static_draw
+            | DynamicDraw => Constants.dynamic_draw
+            | StreamingDraw => Constants.stream_draw
+            }
+        );
+    };
+
     let init = (buffer, context, program) => {
         switch (buffer.inited) {
         | Some(inited) => inited
@@ -232,7 +279,7 @@ module VertexBuffer = {
                 ~context,
                 ~target=Constants.array_buffer,
                 ~data=Gl.Bigarray.of_array(Gl.Bigarray.Float32, buffer.data),
-                ~usage=switch buffer.usage {
+                ~usage=switch (buffer.usage) {
                 | StaticDraw => Constants.static_draw
                 | DynamicDraw => Constants.dynamic_draw
                 | StreamingDraw => Constants.stream_draw
@@ -248,7 +295,10 @@ module VertexBuffer = {
             let inited = {
                 bufferRef: vertexBuffer,
                 attribs: locs,
-                count: Array.length(buffer.data)
+                data: buffer.data,
+                update: false,
+                count: Array.length(buffer.data),
+                usage: buffer.usage
             };
             buffer.inited = Some(inited);
             inited
@@ -260,7 +310,10 @@ module VertexBuffer = {
 module IndexBuffer = {
     type inited = {
         elBufferRef: Gl.bufferT,
-        count: int
+        mutable data: array(int),
+        mutable update: bool,
+        mutable count: int,
+        usage: bufferUsage
     };
     type t = {
         data: array(int),
@@ -296,6 +349,19 @@ module IndexBuffer = {
         };
         Array.concat(quadData(0))
     };
+    let updateData = (inited : inited, context) => {
+        inited.count = Array.length(inited.data);
+        Gl.bufferData(
+            ~context,
+            ~target=Constants.element_array_buffer,
+            ~data=Gl.Bigarray.of_array(Gl.Bigarray.Uint16, inited.data),
+            ~usage=switch (inited.usage) {
+            | StaticDraw => Constants.static_draw
+            | DynamicDraw => Constants.dynamic_draw
+            | StreamingDraw => Constants.stream_draw
+            }
+        );
+    };
     let init = (buffer, context) => {
         switch (buffer.inited) {
         | Some(inited) => inited
@@ -318,7 +384,10 @@ module IndexBuffer = {
             );
             let inited = {
                 elBufferRef: bufferRef,
-                count: Array.length(buffer.data)
+                data: buffer.data,
+                update: false,
+                count: Array.length(buffer.data),
+                usage: buffer.usage
             };
             buffer.inited = Some(inited);
             inited
@@ -662,7 +731,7 @@ module Canvas = {
         );
     };
 
-    let drawIndexes = (canvas, program, vertexBuffer, indexBuffer, textures) => {
+    let drawIndexes = (canvas, program, uniforms, vertexBuffer, indexBuffer, textures) => {
         let context = canvas.context;
         switch (canvas.currProgram) {
         | Some(currentProgram) when (currentProgram === program) => ()
@@ -671,6 +740,14 @@ module Canvas = {
             canvas.currProgram = Some(program);
         }
         };
+        /* Set uniforms */
+        if (Array.length(uniforms) != Array.length(program.uniforms)) {
+            failwith("Different number of uniforms and uniform values");
+        };
+        Array.iteri((i, uniform) => {
+            Uniform.setValue(uniform, context, uniforms[i]);
+        }, program.uniforms);
+        /* Vertex buffer */
         switch (canvas.currVertexBuffer) {
         | Some(currBuffer) when (currBuffer === vertexBuffer) => ()
         | _ => {
@@ -679,6 +756,9 @@ module Canvas = {
                 ~target=Constants.array_buffer,
                 ~buffer=vertexBuffer.bufferRef
             );
+            if (vertexBuffer.update) {
+                VertexBuffer.updateData(vertexBuffer, context);
+            };
             Array.iter((attrib : VertexAttrib.inited) => {
                 VertexAttrib.setPointer(attrib, context);
                 Gl.enableVertexAttribArray(~context, ~attribute=attrib.loc);
@@ -686,6 +766,7 @@ module Canvas = {
             canvas.currVertexBuffer = Some(vertexBuffer);
         }
         };
+        /* Index buffer */
         switch (canvas.currIndexBuffer) {
         | Some(currBuffer) when (currBuffer === indexBuffer) => ()
         | _ => {
@@ -694,6 +775,9 @@ module Canvas = {
                 ~target=Constants.element_array_buffer,
                 ~buffer=indexBuffer.elBufferRef
             );
+            if (indexBuffer.update) {
+                IndexBuffer.updateData(indexBuffer, context);
+            };
             canvas.currIndexBuffer = Some(indexBuffer);
         }
         };
@@ -718,6 +802,7 @@ module Canvas = {
             };
             pInit
         }, textures);
+        /* Draw elements */
         Gl.drawElements(
             ~context,
             ~mode=Constants.triangles,
@@ -730,14 +815,14 @@ module Canvas = {
 
 module DrawState = {
     type t = {
-        uniforms: array(uniformValue),
+        uniforms: array(Uniform.uniformValue),
         program: Program.inited,
         vertexBuffer: VertexBuffer.inited,
         indexBuffer: option(IndexBuffer.inited),
         textures: array(ProgramTexture.inited)
     };
 
-    let init = (context, program, vertexes, indexes, textures) => {
+    let init = (context, program, uniforms, vertexes, indexes, textures) => {
         let pInited = Program.init(program, context);
         switch (pInited) {
         | Some(program) => {
@@ -748,7 +833,7 @@ module DrawState = {
                 pInit
             }, textures);
             {
-                uniforms: [||],
+                uniforms: uniforms,
                 program: program,
                 vertexBuffer: iBuffer,
                 indexBuffer: Some(iIndexes),
@@ -765,6 +850,7 @@ module DrawState = {
             Canvas.drawIndexes(
                 canvas,
                 drawState.program,
+                drawState.uniforms,
                 drawState.vertexBuffer,
                 indexBuffer,
                 drawState.textures
