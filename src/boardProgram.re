@@ -36,8 +36,7 @@ let fragmentSource = {|
         float sdfCoef = abs(0.5 - sdfColor.x);
         float tileCoef = 1.0 - sdfCoef;
         //color = color * 0.5 + ((colorIdx == 0) ? vec3(0.0, 0.0, 0.0) : (sdfColor * 0.5));
-        color = (colorIdx == 0) ? color : color * tileCoef + sdfColor * sdfCoef;
-        gl_FragColor = vec4(color, 1.0);
+        gl_FragColor = (colorIdx == 0) ? vec4(0.0, 0.0, 0.0, 0.0) : vec4(color * tileCoef + sdfColor * sdfCoef, 1.0);
     }
 |};
 
@@ -76,6 +75,7 @@ type t = {
     mutable updateCurrEl: bool,
     drawState: Gpu.DrawState.t,
     currElDraw: Gpu.DrawState.t,
+    gridDraw: Gpu.DrawState.t,
     canvas: Gpu.Canvas.t,
     frameBuffer: Gpu.FrameBuffer.t
 };
@@ -91,6 +91,8 @@ let currElIndexes = IndexBuffer.make(IndexBuffer.makeQuadsData(1), DynamicDraw);
 
 let createCanvas = (tiles) => {
     let canvas = Canvas.init(280, 560);
+    let context = canvas.context;
+    /* Sdf tiles */
     let sdfTilesTex = Texture.make(512, 512, Some(Array.make(512*512*4, 0)), Texture.RGBA);
     let vertexQuad = VertexBuffer.makeQuad();
     let indexQuad = IndexBuffer.makeQuad();
@@ -98,7 +100,7 @@ let createCanvas = (tiles) => {
     let fbufferInit = FrameBuffer.init(fbuffer, canvas.context);
     /* Draw to framebuffer */
     let sdfTilesDrawState = DrawState.init(
-        canvas.context,
+        context,
         SdfTiles.createProgram(),
         [||],
         vertexQuad,
@@ -109,6 +111,8 @@ let createCanvas = (tiles) => {
     Canvas.setFramebuffer(canvas, fbufferInit);
     DrawState.draw(sdfTilesDrawState, canvas);
     Canvas.clearFramebuffer(canvas);
+    /* Grid */
+    let gridDraw = GridProgram.createDrawState(canvas);
     /* Board program drawState */
     let drawState = DrawState.init(
         canvas.context,
@@ -155,6 +159,7 @@ let createCanvas = (tiles) => {
         updateCurrEl: false,
         drawState: drawState,
         currElDraw: currElDraw,
+        gridDraw: gridDraw,
         canvas: canvas,
         updateTiles: false,
         frameBuffer: fbuffer
@@ -178,7 +183,15 @@ let draw = (bp) => {
         | None => ()
         }
     };
-    Canvas.clear(bp.canvas, 0.0, 0.0, 0.0);
+    let context = bp.canvas.context;
+    let bg = Color.from255(205, 220, 246);
+    Canvas.clear(bp.canvas, bg.r, bg.g, bg.b);
+    let lineColor = Color.from255(180, 190, 220);
+    bp.gridDraw.uniforms[0] = Uniform.UniformVec3f(Color.toArray(lineColor));
+    Gl.enable(~context, Constants.blend);
+    Gl.blendFunc(~context, Constants.src_alpha, Constants.one_minus_src_alpha);
+    DrawState.draw(bp.gridDraw, bp.canvas);
     DrawState.draw(bp.drawState, bp.canvas);
+    Gl.disable(~context, Constants.blend);
     DrawState.draw(bp.currElDraw, bp.canvas);
 };

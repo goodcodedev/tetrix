@@ -1,6 +1,25 @@
 module Constants = RGLConstants;
 module Gl = Reasongl.Gl;
 
+module Color = {
+    type t = {
+        r: float,
+        g: float,
+        b: float
+    };
+
+    let from255 = (r, g, b) => {
+        {
+            r: float_of_int(r) /. 255.0,
+            g: float_of_int(g) /. 255.0,
+            b: float_of_int(b) /. 255.0
+        }
+    };
+
+    let toArray = (c) => {
+        [|c.r, c.g, c.b|]
+    }
+};
 
 module GlType = {
     type t =
@@ -263,7 +282,6 @@ module VertexBuffer = {
             | StreamingDraw => Constants.stream_draw
             }
         );
-        Js.log2("Updating vertices", inited.data);
     };
 
     let init = (buffer, context, program) => {

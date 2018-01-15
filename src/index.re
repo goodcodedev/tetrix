@@ -561,7 +561,7 @@ let drawGame = (state, env) => {
               state.boardProgram.tiles[tileIdx] = state.boardProgram.tiles[tileIdx - tileCols];
             };
           };
-          (movedRows + 1, currentRow - 1)
+          (movedRows + 1, currentRow)
         } else {
           (movedRows, currentRow - 1)
         }
