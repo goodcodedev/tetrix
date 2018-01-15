@@ -445,21 +445,26 @@ let drawElTiles = (tiles, color, x, y, env) => {
     }, tiles);
 };
 let drawElTiles2 = (tiles, color, x, y, state) => {
-    state.boardProgram.currElColor = color;
-    state.boardProgram.updateCurrElColor = true;
+    state.boardProgram.currElDraw.uniforms[0] = Gpu.Uniform.UniformVec3f(color);
+    /* Translate to -1.0 to 1.0 coords */
+    let tileHeight = 2.0 /. float_of_int(tileRows);
+    let tileWidth = 2.0 /. float_of_int(tileCols);
+    /* Translation */
+    state.boardProgram.currElDraw.uniforms[1] = Gpu.Uniform.UniformVec2f([|
+      -1. +. float_of_int(x) *. tileWidth,
+      1. +. float_of_int(y) *. -.tileHeight
+    |]);
     state.boardProgram.currElTiles = Array.concat(List.map(((tileX, tileY)) => {
-      /* Translate to -1.0 to 1.0 coords */
-      let tileHeight = 2.0 /. float_of_int(tileRows);
-      let tileWidth = 2.0 /. float_of_int(tileCols);
-      let tileYScaled = float_of_int(tileY) /. float_of_int(tileRows);
-      let tileXScaled = float_of_int(tileX) /. float_of_int(tileCols);
+      /* 2x coord system with y 1.0 at top and -1.0 at bottom */
+      let tileYScaled = float_of_int(tileY * -1) *. tileHeight;
+      let tileXScaled = float_of_int(tileX) *. tileWidth;
       /* Bottom left, Top left, Top right, Bottom right */
       [|
         tileXScaled, tileYScaled -. tileHeight,
         tileXScaled, tileYScaled,
         tileXScaled +. tileWidth, tileYScaled,
         tileXScaled +. tileWidth, tileYScaled -. tileHeight
-      |] 
+      |]
     }, tiles));
     state.boardProgram.updateCurrEl = true;
 };
@@ -551,7 +556,10 @@ let drawGame = (state, env) => {
       (isCompleted, (movedRows, currentRow)) => {
         if (isCompleted) {
           for (y in currentRow downto 1) {
-            state.tiles[y] = state.tiles[y - 1];
+            state.tiles[y] = Array.copy(state.tiles[y - 1]);
+            for (tileIdx in (y * tileCols) to (y * tileCols + tileCols) - 1) {
+              state.boardProgram.tiles[tileIdx] = state.boardProgram.tiles[tileIdx - tileCols];
+            };
           };
           (movedRows + 1, currentRow - 1)
         } else {
@@ -561,11 +569,19 @@ let drawGame = (state, env) => {
       completedRows,
       (0, tileRows - 1)
     );
+    if (Array.length(completedRows) > 0) {
+      state.boardProgram.updateTiles = true;
+    };
     let state = {
       ...state,
       curEl: newElement()
     };
-    drawElTiles2(elTiles(state.curEl.el, state.curEl.rotation), tileColors2[state.curEl.color], 0, 0, state);
+    drawElTiles2(
+      elTiles(state.curEl.el, state.curEl.rotation),
+      tileColors2[state.curEl.color],
+      state.curEl.pos.x, state.curEl.pos.y,
+      state
+    );
     state
   }
   };

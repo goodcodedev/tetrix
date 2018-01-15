@@ -41,6 +41,16 @@ let fragmentSource = {|
     }
 |};
 
+let currElVertex = {|
+    precision mediump float;
+    attribute vec2 position;
+    uniform vec2 translation;
+    varying vec2 vPosition;
+    void main() {
+        vPosition = position + translation;
+        gl_Position = vec4(vPosition, 0.0, 1.0);
+    }
+|};
 let currElFragment = {|
     precision mediump float;
     varying vec2 vPosition;
@@ -49,12 +59,13 @@ let currElFragment = {|
     uniform sampler2D sdfTiles;
 
     void main() {
-        vec2 tilePos = vec2((vPosition.x + 1.0) * 0.5, (vPosition.y - 1.0) * -0.5);
-        vec2 sdfPos = vec2(tilePos.x, (tilePos.y * -1.0) + 1.0);
+        // To texture coords
+        vec2 sdfPos = (vPosition + 1.0) * 0.5;
         vec3 sdfColor = texture2D(sdfTiles, sdfPos).xyz;
-        vec3 color = elColor * 0.5 + sdfColor * 0.5;
+        float sdfCoef = abs(0.5 - sdfColor.x);
+        float tileCoef = 1.0 - sdfCoef;
+        vec3 color = elColor * tileCoef + sdfColor * sdfCoef;
         gl_FragColor = vec4(color, 1.0);
-        gl_FragColor = vec4(elColor, 1.0);
     }
 |};
 
@@ -63,8 +74,6 @@ type t = {
     mutable updateTiles: bool,
     mutable currElTiles: array(float),
     mutable updateCurrEl: bool,
-    mutable currElColor: array(float),
-    mutable updateCurrElColor: bool,
     drawState: Gpu.DrawState.t,
     currElDraw: Gpu.DrawState.t,
     canvas: Gpu.Canvas.t,
@@ -122,11 +131,17 @@ let createCanvas = (tiles) => {
     let currElDraw = DrawState.init(
         canvas.context,
         Program.make(
-            Shader.make(vertexSource),
+            Shader.make(currElVertex),
             Shader.make(currElFragment),
-            [|Uniform.make("elColor", GlType.Vec3f)|]
+            [|
+                Uniform.make("elColor", GlType.Vec3f),
+                Uniform.make("translation", GlType.Vec2f)
+            |]
         ),
-        [|Uniform.UniformVec3f([|1.0, 0.0, 1.0|])|],
+        [|
+            Uniform.UniformVec3f([|1.0, 0.0, 1.0|]),
+            Uniform.UniformVec2f([|0.0, 0.0|]),
+        |],
         currElVertices,
         currElIndexes,
         [|
@@ -138,8 +153,6 @@ let createCanvas = (tiles) => {
         tiles: tiles,
         currElTiles: [||],
         updateCurrEl: false,
-        currElColor: [||],
-        updateCurrElColor: false,
         drawState: drawState,
         currElDraw: currElDraw,
         canvas: canvas,
@@ -152,9 +165,6 @@ let draw = (bp) => {
     if (bp.updateTiles) {
         bp.drawState.textures[0].texture.update = true;
         bp.updateTiles = false;
-    };
-    if (bp.updateCurrElColor) {
-        bp.currElDraw.uniforms[0] = Uniform.UniformVec3f(bp.currElColor);
     };
     if (bp.updateCurrEl) {
         bp.currElDraw.vertexBuffer.data = bp.currElTiles;

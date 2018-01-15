@@ -263,6 +263,7 @@ module VertexBuffer = {
             | StreamingDraw => Constants.stream_draw
             }
         );
+        Js.log2("Updating vertices", inited.data);
     };
 
     let init = (buffer, context, program) => {
