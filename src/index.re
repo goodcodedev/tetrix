@@ -416,14 +416,17 @@ let processAction = (state) => {
 
 let drawElTiles2 = (tiles, color, x, y, state) => {
     state.boardProgram.currElDraw.uniforms[0] = Gpu.Uniform.UniformVec3f(color);
+    state.boardProgram.gridDraw.uniforms[2] = Gpu.Uniform.UniformVec3f(color);
     /* Translate to -1.0 to 1.0 coords */
     let tileHeight = 2.0 /. float_of_int(tileRows);
     let tileWidth = 2.0 /. float_of_int(tileCols);
     /* Translation */
-    state.boardProgram.currElDraw.uniforms[1] = Gpu.Uniform.UniformVec2f([|
+    let elPos = [|
       -1. +. float_of_int(x) *. tileWidth,
       1. +. float_of_int(y) *. -.tileHeight
-    |]);
+    |];
+    state.boardProgram.currElDraw.uniforms[1] = Gpu.Uniform.UniformVec2f(elPos);
+    state.boardProgram.gridDraw.uniforms[1] = Gpu.Uniform.UniformVec2f(elPos);
     state.boardProgram.currElTiles = Array.concat(List.map(((tileX, tileY)) => {
       /* 2x coord system with y 1.0 at top and -1.0 at bottom */
       let tileYScaled = float_of_int(tileY * -1) *. tileHeight;

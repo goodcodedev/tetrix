@@ -110,8 +110,10 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
     Canvas.setFramebuffer(canvas, fbufferInit);
     DrawState.draw(sdfTilesDrawState, canvas);
     Canvas.clearFramebuffer(canvas);
+    /* Tiles texture */
+    let tilesTexture = Texture.make(14, 28, Some(tiles), Texture.Luminance);
     /* Grid */
-    let gridDraw = GridProgram.createDrawState(canvas);
+    let gridDraw = GridProgram.createDrawState(canvas, tilesTexture);
     /* Board program drawState */
     let drawState = DrawState.init(
         canvas.context,
@@ -126,7 +128,7 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
         [|
             ProgramTexture.make(
                 "tiles",
-                Texture.make(14, 28, Some(tiles), Texture.Luminance)
+                tilesTexture
             ),
             ProgramTexture.make("sdfTiles", sdfTilesTex)
         |]
@@ -186,7 +188,7 @@ let draw = (bp) => {
     let bgLight = Color.from255(205, 220, 246);
     let bg = Color.from255(199, 214, 240);
     Canvas.clear(bp.canvas, bg.r, bg.g, bg.b);
-    let lineColor = Color.from255(180, 190, 220);
+    let lineColor = Color.fromFloats(0.15, 0.2, 0.3);
     bp.gridDraw.uniforms[0] = Uniform.UniformVec3f(Color.toArray(lineColor));
     Gl.enable(~context, Constants.blend);
     Gl.blendFunc(~context, Constants.src_alpha, Constants.one_minus_src_alpha);

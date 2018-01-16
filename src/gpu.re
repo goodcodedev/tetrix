@@ -16,6 +16,14 @@ module Color = {
         }
     };
 
+    let fromFloats = (r, g, b) => {
+        {
+            r: r,
+            g: g,
+            b: b
+        }
+    };
+
     let toArray = (c) => {
         [|c.r, c.g, c.b|]
     }
