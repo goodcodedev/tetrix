@@ -61,7 +61,7 @@ let currElFragment = {|
         // To texture coords
         vec2 sdfPos = (vPosition + 1.0) * 0.5;
         vec3 sdfColor = texture2D(sdfTiles, sdfPos).xyz;
-        float sdfCoef = abs(0.5 - sdfColor.x);
+        float sdfCoef = abs(0.5 - sdfColor.x) * 0.9;
         float tileCoef = 1.0 - sdfCoef;
         vec3 color = elColor * tileCoef + sdfColor * sdfCoef;
         gl_FragColor = vec4(color, 1.0);

@@ -21,12 +21,15 @@ let fragmentSource = {|
         // Perspective coord
         vec2 aspect = vec2(numCols / numRows, 1.0);
         vec2 persp = vPosition + vec2(
-            vPosition.x * 0.05,
-            vPosition.y * 0.05 * aspect.x
+            vPosition.x * 0.1,
+            0.0
         );
         vec2 tilePos = vec2((persp.x + 1.0) * 0.5, (persp.y - 1.0) * -0.5);
+        tilePos.y = tilePos.y - 0.03;
         float tile = texture2D(tiles, tilePos).x;
-        gl_FragColor = (tile > 0.0) ?  vec4(0.0, 0.0, 0.0, 1.0) : vec4(1.0, 1.0, 1.0, 1.0);
+        vec4 tileColor = (tile > 0.0) ?  vec4(0.0, 0.0, 0.0, 1.0) : vec4(1.0, 1.0, 1.0, 1.0);
+        gl_FragColor = (tilePos.x < 0.0 || tilePos.x > 1.0 || tilePos.y < 0.0 || tilePos.y > 1.0) ?
+                        vec4(1.0, 1.0, 1.0, 1.0) : tileColor;
     }
 |};
 
@@ -149,7 +152,7 @@ let init = (canvas : Gpu.Canvas.t, tilesTex) => {
     let blurDraw1 = DrawState.init(
         context,
         blurProgram,
-        [|Uniform.UniformFloat(4.0)|],
+        [|Uniform.UniformFloat(10.0)|],
         vertexQuad,
         indexQuad,
         [|
