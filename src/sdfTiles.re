@@ -27,7 +27,7 @@ let fragmentSource = {|
         point.y = mod(point.y, 1.0 / 28.0) - 1.0 / 56.0;
         float boxWidth = 1.0 / 28.0;
         float boxHeight = 1.0 / 56.0;
-        float boxDepth = 0.007;
+        float boxDepth = 0.1;
         float box = length(max(abs(point) - vec3(boxWidth, boxHeight, boxDepth), vec3(0.0, 0.0, 0.0)));
         // Octahedron towards z
         float rot = 20.0;

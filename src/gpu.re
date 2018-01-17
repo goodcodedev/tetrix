@@ -171,6 +171,7 @@ module Shader = {
         let compiledCorrectly = Gl.getShaderParameter(~context, ~shader=shaderHandle, ~paramName=Gl.Compile_status) == 1;
         if (!compiledCorrectly) {
             print_endline("Shader compilation failed: " ++ Gl.getShaderInfoLog(~context, shaderHandle));
+            print_endline(source);
             None
         } else {
             Some(shaderHandle)
@@ -639,11 +640,6 @@ module ProgramTexture {
 };
 
 module FrameBuffer = {
-    type t = {
-        width: int,
-        height: int
-    };
-
     type frameBufferT;
     let frameBufferC = 36160;
     let color_attachment0 = 36064;
@@ -660,20 +656,35 @@ module FrameBuffer = {
         height: int,
         frameBufferRef: frameBufferT
     };
+
+    type t = {
+        width: int,
+        height: int,
+        mutable inited: option(inited)
+    };
+
     let make = (width, height) => {
         {
             width: width,
-            height: height
+            height: height,
+            inited: None
         }
     };
 
     let init = (frameBuffer : t, context) => {
-        /* Setup framebuffer */
-        let frameBufferRef = _createFramebuffer(~context);
-        {
-            width: frameBuffer.width,
-            height: frameBuffer.height,
-            frameBufferRef: frameBufferRef
+        switch (frameBuffer.inited) {
+        | Some(inited) => inited
+        | None => {
+            /* Setup framebuffer */
+            let frameBufferRef = _createFramebuffer(~context);
+            let inited = {
+                width: frameBuffer.width,
+                height: frameBuffer.height,
+                frameBufferRef: frameBufferRef
+            };
+            frameBuffer.inited = Some(inited);
+            inited
+        }
         }
     };
 

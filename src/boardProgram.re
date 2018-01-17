@@ -77,7 +77,8 @@ type t = {
     currElDraw: Gpu.DrawState.t,
     gridDraw: Gpu.DrawState.t,
     canvas: Gpu.Canvas.t,
-    frameBuffer: Gpu.FrameBuffer.t
+    frameBuffer: Gpu.FrameBuffer.t,
+    tileShadows: TileShadows.t
 };
 
 open Gpu;
@@ -112,8 +113,10 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
     Canvas.clearFramebuffer(canvas);
     /* Tiles texture */
     let tilesTexture = Texture.make(14, 28, Some(tiles), Texture.Luminance);
+    /* Tiles shadow */
+    let tileShadows = TileShadows.init(canvas, tilesTexture);
     /* Grid */
-    let gridDraw = GridProgram.createDrawState(canvas, tilesTexture);
+    let gridDraw = GridProgram.createDrawState(canvas, tilesTexture, tileShadows.blurTex2);
     /* Board program drawState */
     let drawState = DrawState.init(
         canvas.context,
@@ -163,7 +166,8 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
         gridDraw: gridDraw,
         canvas: canvas,
         updateTiles: false,
-        frameBuffer: fbuffer
+        frameBuffer: fbuffer,
+        tileShadows: tileShadows
     }
 };
 
@@ -188,11 +192,15 @@ let draw = (bp) => {
     let bgLight = Color.from255(205, 220, 246);
     let bg = Color.from255(199, 214, 240);
     Canvas.clear(bp.canvas, bg.r, bg.g, bg.b);
+    /* Shadows */
+    TileShadows.draw(bp.tileShadows);
+    /* Grid */
     let lineColor = Color.fromFloats(0.15, 0.2, 0.3);
     bp.gridDraw.uniforms[0] = Uniform.UniformVec3f(Color.toArray(lineColor));
     Gl.enable(~context, Constants.blend);
     Gl.blendFunc(~context, Constants.src_alpha, Constants.one_minus_src_alpha);
     DrawState.draw(bp.gridDraw, bp.canvas);
+    /* Board program */
     DrawState.draw(bp.drawState, bp.canvas);
     Gl.disable(~context, Constants.blend);
     DrawState.draw(bp.currElDraw, bp.canvas);
