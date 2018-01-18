@@ -100,6 +100,8 @@ type gameState =
   | Running
   | GameOver;
 
+let beamNone = -2;
+
 type stateT = {
   action: inputAction,
   curEl: curEl,
@@ -111,7 +113,8 @@ type stateT = {
   beams: array((int, int)),
   gameState: gameState,
   paused: bool,
-  boardProgram: BoardProgram.t
+  boardProgram: BoardProgram.t,
+  lastCompletedRows: array(int)
 };
 
 
@@ -140,8 +143,8 @@ let newElement = () => {
 let updateBeams = (state) => {
   /* Reset element tile rows */
   Array.iteri((i, (tileRow, _toRow)) => {
-    if (tileRow > 0) {
-      state.beams[i] = (0, 0);
+    if (tileRow > beamNone) {
+      state.beams[i] = (beamNone, 0);
     }
   }, state.beams);
   /* Set row where element tile is */
@@ -158,7 +161,7 @@ let updateBeams = (state) => {
      where tile is navigated below current beamTo.
      Could make update when moved below */
   Array.iteri((i, (beamFrom, _beamTo)) => {
-    if (beamFrom > 0) {
+    if (beamFrom > beamNone) {
       let beamTo = ref(0);
       for (j in beamFrom to tileRows - 1) {
         if (beamTo^ == 0) {
@@ -177,7 +180,7 @@ let updateBeams = (state) => {
   let rowHeight = 2.0 /. float_of_int(tileRows);
   let colWidth = 2.0 /. float_of_int(tileCols);
   let (_, vertices) = Array.fold_left(((i, vertices), (beamFrom, beamTo)) => {
-    if (beamFrom > 0) {
+    if (beamFrom > beamNone) {
       let beamVertices = [|
         -1.0 +. float_of_int(i) *. colWidth,
         1.0 -. (float_of_int(beamTo) *. rowHeight +. rowHeight),
@@ -221,9 +224,10 @@ let setup = (canvas) : stateT => {
     lastTick: 0.,
     curTime: 0.,
     tiles: Array.make_matrix(tileRows, tileCols, 0),
-    beams: Array.make(tileCols, (0, 0)),
+    beams: Array.make(tileCols, (beamNone, 0)),
     gameState: Running,
-    paused: false
+    paused: false,
+    lastCompletedRows: [||]
   };
   state.boardProgram.updateTiles = true;
   state
@@ -510,12 +514,52 @@ let drawElTiles2 = (tiles, color, x, y, state) => {
     state.boardProgram.updateCurrEl = true;
 };
 
+let afterTouchdown = (state, canvas : Gpu.Canvas.t) => {
+  let curTime = state.curTime +. canvas.deltaTime;
+  if (Array.length(state.lastCompletedRows) > 0) {
+    /* Move rows above completed down */
+    Array.iter((currentRow) => {
+      for (y in currentRow downto 1) {
+        state.tiles[y] = Array.copy(state.tiles[y - 1]);
+        for (tileIdx in (y * tileCols) to (y * tileCols + tileCols) - 1) {
+          state.boardProgram.tiles[tileIdx] = state.boardProgram.tiles[tileIdx - tileCols];
+        };
+      };
+    }, state.lastCompletedRows);
+    state.boardProgram.updateTiles = true;
+  };
+  let state = {
+    ...state,
+    curEl: newElement()
+  };
+  drawElTiles2(
+    elTiles(state.curEl.el, state.curEl.rotation),
+    tileColors2[state.curEl.color],
+    state.curEl.pos.x, state.curEl.pos.y,
+    state
+  );
+  updateBeams(state);
+  if (isCollision(state)) {
+    {
+      ...state,
+      gameState: GameOver
+    }
+  } else {
+    {
+      ...state,
+      curTime: curTime,
+      lastTick: curTime,
+      posChanged: false,
+      rotateChanged: false
+    }
+  }
+};
 
 let drawGame = (state, canvas : Gpu.Canvas.t) => {
   let timeStep = canvas.deltaTime;
   let curTime = state.curTime +. timeStep;
   let isNewTick = curTime > state.lastTick +. tickDuration;
-  let (state, newEl) = if (isNewTick) {
+  let (state, isTouchdown) = if (isNewTick) {
     switch (state.action) {
     | CancelDown => (state, false)
     | _ => {
@@ -527,49 +571,6 @@ let drawGame = (state, canvas : Gpu.Canvas.t) => {
     }
   } else {
     (state, false)
-  };
-  /* Handle element has touched down */
-  let state = switch (newEl) {
-  | false => state
-  | true => {
-    /* Put element into tiles */
-    elToTiles(state);
-    /* Check for completed rows */
-    let completedRows = Array.map(
-      tileRow => {
-        !Array.fold_left((hasEmpty, tileState) => hasEmpty || tileState == 0, false, tileRow);
-      },
-      state.tiles
-    );
-    if (Array.length(completedRows) > 0) {
-      /* Move rows above completed down */
-      let _ = Array.fold_right(
-        (isCompleted, (movedRows, currentRow)) => {
-          if (isCompleted) {
-            for (y in currentRow downto 1) {
-              state.tiles[y] = Array.copy(state.tiles[y - 1]);
-              for (tileIdx in (y * tileCols) to (y * tileCols + tileCols) - 1) {
-                state.boardProgram.tiles[tileIdx] = state.boardProgram.tiles[tileIdx - tileCols];
-              };
-            };
-            (movedRows + 1, currentRow)
-          } else {
-            (movedRows, currentRow - 1)
-          }
-        },
-        completedRows,
-        (0, tileRows - 1)
-      );
-      state.boardProgram.updateTiles = true;
-    };
-    let state = {
-      ...state,
-      curEl: newElement(),
-      posChanged: true,
-      rotateChanged: true
-    };
-    state
-  }
   };
   let state = if (state.posChanged || state.rotateChanged) {
     drawElTiles2(
@@ -587,19 +588,45 @@ let drawGame = (state, canvas : Gpu.Canvas.t) => {
   } else {
     state
   };
-  if (newEl && isCollision(state)) {
-    {
-      ...state,
-      gameState: GameOver
-    }
-  } else {
+  /* Handle element has touched down */
+  switch (isTouchdown) {
+  | false =>
     {
       ...state,
       curTime: curTime,
       lastTick: (isNewTick) ? curTime : state.lastTick
     }
+  | true =>
+    /* Put element into tiles */
+    elToTiles(state);
+    /* Check for completed rows */
+    let completedRows = Array.map(
+      tileRow => {
+        !Array.fold_left((hasEmpty, tileState) => hasEmpty || tileState == 0, false, tileRow);
+      },
+      state.tiles
+    );
+    /* Get array with indexes of completed rows */
+    let (_, completedRowIndexes) = Array.fold_left(((i, rows), completed) => {
+      switch (completed) {
+      | true => (i + 1, Array.append(rows, [|i|]))
+      | false => (i + 1, rows)
+      }
+    }, (0, [||]), completedRows);
+    let state = {
+      ...state,
+      lastCompletedRows: completedRowIndexes
+    };
+    if (Array.length(completedRowIndexes) > 0) {
+      state.boardProgram.blinkRows.rows = completedRowIndexes;
+      state.boardProgram.blinkRows.state = BoardProgram.BlinkRows.Blinking;
+      state
+    } else {
+      afterTouchdown(state, canvas)
+    }
   }
 };
+
 
 /*
 let drawInfo = (state, env) => {
@@ -636,17 +663,31 @@ let drawInfo = (state, env) => {
 */
 
 let draw = (state, canvas) => {
+  /* todo: Process by state, pause (etc)? */
   let state = processAction(state);
-  if (state.paused) {
-    state
-  } else {
+  let mainProcess = (state) => {
     let state = drawGame(state, canvas);
     BoardProgram.draw(state.boardProgram);
     switch (state.gameState) {
     | Running => state
-    | GameOver => {
-      newGame(state)
+    | GameOver => newGame(state)
     }
+  };
+  if (state.paused) {
+    state
+  } else {
+    switch (state.boardProgram.blinkRows.state) {
+    | BoardProgram.BlinkRows.NotBlinking =>
+      mainProcess(state);
+    | BoardProgram.BlinkRows.Blinking =>
+      /* Blink animation */
+      BoardProgram.draw(state.boardProgram);
+      state
+    | BoardProgram.BlinkRows.JustBlinked =>
+      state.boardProgram.blinkRows.state = BoardProgram.BlinkRows.NotBlinking;
+      /* Run after touchdown now that animation is done */
+      let state = afterTouchdown(state, canvas);
+      mainProcess(state);
     }
   }
 };

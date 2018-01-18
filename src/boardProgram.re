@@ -68,18 +68,50 @@ let currElFragment = {|
     }
 |};
 
+module BlinkRows {
+    type blinkState =
+      | NotBlinking
+      | Blinking
+      | JustBlinked;
+
+    type t = {
+        mutable state: blinkState,
+        mutable drawn: bool,
+        mutable rows: array(int),
+        mutable elapsed: float
+    };
+
+    let make = () => {
+        {
+            state: NotBlinking,
+            drawn: false,
+            rows: [||],
+            elapsed: 0.0
+        }
+    };
+
+    let endBlink = (self) => {
+        self.state = JustBlinked;
+        self.drawn = false;
+        self.elapsed = 0.0;
+    };
+};
+
 type t = {
     tiles: array(int),
     mutable updateTiles: bool,
     mutable currElTiles: array(float),
     mutable updateCurrEl: bool,
-    drawState: Gpu.DrawState.t,
+    tilesDraw: Gpu.DrawState.t,
     currElDraw: Gpu.DrawState.t,
     gridDraw: Gpu.DrawState.t,
+    colorDraw: ColorDraw.t,
     tileBeam: TileBeam.t,
     canvas: Gpu.Canvas.t,
     frameBuffer: Gpu.FrameBuffer.t,
-    tileShadows: TileShadows.t
+    tileShadows: TileShadows.t,
+    blinkRows: BlinkRows.t,
+    rowsDone: int
 };
 
 open Gpu;
@@ -125,8 +157,10 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
         tileShadows.blurTex2,
         tileBeam.beams
     );
+    let lineColor = Color.fromFloats(0.15, 0.2, 0.3);
+    gridDraw.uniforms[0] = Uniform.UniformVec3f(Color.toArray(lineColor));
     /* Board program drawState */
-    let drawState = DrawState.init(
+    let tilesDraw = DrawState.init(
         canvas.context,
         Program.make(
             Shader.make(vertexSource),
@@ -164,53 +198,89 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
             ProgramTexture.make("sdfTiles", sdfTilesTex)
         |]
     );
-    DrawState.draw(drawState, canvas);
+    let colorDraw = ColorDraw.init(canvas);
     {
         tiles: tiles,
         currElTiles: [||],
         updateCurrEl: false,
-        drawState: drawState,
+        tilesDraw: tilesDraw,
         currElDraw: currElDraw,
         gridDraw: gridDraw,
+        colorDraw: colorDraw,
         tileBeam: tileBeam,
         canvas: canvas,
         updateTiles: false,
         frameBuffer: fbuffer,
-        tileShadows: tileShadows
+        tileShadows: tileShadows,
+        blinkRows: BlinkRows.make(),
+        rowsDone: 0
     }
 };
 
-let draw = (bp) => {
-    if (bp.updateTiles) {
-        bp.drawState.textures[0].texture.update = true;
+let drawScene = (self) => {
+    let context = self.canvas.context;
+    Canvas.clear(self.canvas, 0.0, 0.0, 0.0);
+    DrawState.draw(self.gridDraw, self.canvas);
+    Gl.enable(~context, Constants.blend);
+    Gl.blendFunc(~context, Constants.src_alpha, Constants.one_minus_src_alpha);
+    DrawState.draw(self.tilesDraw, self.canvas);
+    Gl.disable(~context, Constants.blend);
+    DrawState.draw(self.currElDraw, self.canvas);
+};
+
+let updateTiles = (self) => {
+    if (self.updateTiles) {
+        self.tilesDraw.textures[0].texture.update = true;
         /* Update shadows when tiles change */
-        TileShadows.draw(bp.tileShadows);
-        bp.updateTiles = false;
+        TileShadows.draw(self.tileShadows);
+        self.updateTiles = false;
     };
-    if (bp.updateCurrEl) {
-        bp.currElDraw.vertexBuffer.data = bp.currElTiles;
-        bp.currElDraw.vertexBuffer.update = true;
-        switch (bp.currElDraw.indexBuffer) {
+    if (self.updateCurrEl) {
+        self.currElDraw.vertexBuffer.data = self.currElTiles;
+        self.currElDraw.vertexBuffer.update = true;
+        switch (self.currElDraw.indexBuffer) {
         | Some(indexBuffer) => {
             /* Four per quad, 2 per element */
-            indexBuffer.data = IndexBuffer.makeQuadsData(Array.length(bp.currElTiles) / 4 / 2);
+            indexBuffer.data = IndexBuffer.makeQuadsData(Array.length(self.currElTiles) / 4 / 2);
             indexBuffer.update = true;
         }
         | None => ()
         }
     };
-    let context = bp.canvas.context;
-    let bgLight = Color.from255(205, 220, 246);
-    let bg = Color.from255(199, 214, 240);
-    Canvas.clear(bp.canvas, bg.r, bg.g, bg.b);
-    /* Grid */
-    let lineColor = Color.fromFloats(0.15, 0.2, 0.3);
-    bp.gridDraw.uniforms[0] = Uniform.UniformVec3f(Color.toArray(lineColor));
-    Gl.enable(~context, Constants.blend);
-    Gl.blendFunc(~context, Constants.src_alpha, Constants.one_minus_src_alpha);
-    DrawState.draw(bp.gridDraw, bp.canvas);
-    /* Board program */
-    DrawState.draw(bp.drawState, bp.canvas);
-    Gl.disable(~context, Constants.blend);
-    DrawState.draw(bp.currElDraw, bp.canvas);
+};
+
+let draw = (self) => {
+    let context = self.canvas.context;
+    switch (self.blinkRows.state) {
+    | BlinkRows.NotBlinking  =>
+        updateTiles(self);
+        drawScene(self);
+    | BlinkRows.Blinking =>
+        /* Update tiles is not called, so we have the state before
+           as far as rendering is conserned. This is a little brittle */
+        if (!self.blinkRows.drawn) {
+            drawScene(self);
+            Gl.enable(~context, Constants.blend);
+            Gl.blendFunc(~context, Constants.src_alpha, Constants.one_minus_src_alpha);
+            let rowHeight = 2.0 /. 28.0;
+            let vertices = Array.fold_left((vertices, rowIdx) => {
+                Array.append(vertices, [|
+                    -1.0, 1.0 -. rowHeight *. float_of_int(rowIdx + 1),
+                    -1.0, 1.0 -. rowHeight *. float_of_int(rowIdx),
+                    1.0, 1.0 -. rowHeight *. float_of_int(rowIdx),
+                    1.0, 1.0 -. rowHeight *. float_of_int(rowIdx + 1),
+                |]);
+            }, [||], self.blinkRows.rows);
+            ColorDraw.updateVertices(self.colorDraw, vertices);
+            ColorDraw.draw(self.colorDraw, [|1.0, 1.0, 1.0, 0.3|]);
+            Gl.disable(~context, Constants.blend);
+            self.blinkRows.drawn = true;
+        };
+        self.blinkRows.elapsed = self.blinkRows.elapsed +. self.canvas.deltaTime;
+        if (self.blinkRows.elapsed > 0.6) {
+            BlinkRows.endBlink(self.blinkRows);
+            /* Game/rendering will continue */
+        };
+    | BlinkRows.JustBlinked => ()
+    };
 };

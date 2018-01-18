@@ -48,13 +48,15 @@ let fragmentSource = {|
             vPosition.x * 0.05,
             vPosition.y * 0.05 * aspect.x
         );
-        vec3 beam = texture2D(beams, coord).xyz;
+        // Shadow
         float shadow = texture2D(tileShadows, coord).x;
-        // Let shadow fall below line
         vec3 color = mix(bg, vec3(0.0, 0.0, 0.0), (1.0 - shadow) * 0.6);
-        float beamCoef = 0.04 - (1.0 - smoothstep(0.2, 0.6, elVecLength)) * 0.04;
-        color = mix(color, beam, (beam.x == 0.0) ? 0.0 : beamCoef);
+        // Line
         color = mix(color, lineColor, alpha);
+        // Beam
+        vec3 beam = texture2D(beams, coord).xyz;
+        float beamCoef = 0.04 - (1.0 - smoothstep(0.2, 0.4, elVecLength)) * 0.04;
+        color = mix(color, beam, (beam.x == 0.0) ? 0.0 : beamCoef);
         color = color + elColor * colorLight;
         gl_FragColor = vec4(color + light, 1.0);
     }
