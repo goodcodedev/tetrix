@@ -15,6 +15,7 @@ let fragmentSource = {|
     uniform vec3 elColor;
     uniform sampler2D tiles;
     uniform sampler2D tileShadows;
+    uniform sampler2D beams;
 
     varying vec2 vPosition;
 
@@ -37,7 +38,8 @@ let fragmentSource = {|
         vec2 elVecNorm = normalize(elVec);
         // Roughly light a triangle below element
         float dir = dot(elVecNorm, vec2(0.0, -1.0));
-        float lengthCoef = max(1.5 - length(elVec), 0.0);
+        float elVecLength = length(elVec);
+        float lengthCoef = max(1.5 - elVecLength, 0.0);
         float light = smoothstep(-0.3, 0.5, dir) * lengthCoef * 0.05;
         float colorLight = max(0.35 - length(elVec * aspect), 0.0) * 0.3;
         // Add some shadow from neighbour tiles
@@ -46,12 +48,13 @@ let fragmentSource = {|
             vPosition.x * 0.05,
             vPosition.y * 0.05 * aspect.x
         );
-        // Texture coord system.
-        //vec2 tilePos = vec2((persp.x + 1.0) * 0.5, (persp.y * -0.5) + 0.5);
+        vec3 beam = texture2D(beams, coord).xyz;
         float shadow = texture2D(tileShadows, coord).x;
         // Let shadow fall below line
-        vec3 color = (1.0 - alpha) * bg + lineColor * alpha;
-        color = mix(color, vec3(0.0, 0.0, 0.0), (1.0 - shadow) * 0.6);
+        vec3 color = mix(bg, vec3(0.0, 0.0, 0.0), (1.0 - shadow) * 0.6);
+        float beamCoef = 0.04 - (1.0 - smoothstep(0.2, 0.6, elVecLength)) * 0.04;
+        color = mix(color, beam, (beam.x == 0.0) ? 0.0 : beamCoef);
+        color = mix(color, lineColor, alpha);
         color = color + elColor * colorLight;
         gl_FragColor = vec4(color + light, 1.0);
     }
@@ -70,7 +73,7 @@ let createProgram = () => {
     )
 };
 
-let createDrawState = (canvas : Canvas.t, tilesTexture, shadowTexture) => {
+let createDrawState = (canvas : Canvas.t, tilesTexture, shadowTexture, beamTexture) => {
     DrawState.init(
         canvas.context,
         createProgram(),
@@ -83,7 +86,8 @@ let createDrawState = (canvas : Canvas.t, tilesTexture, shadowTexture) => {
         IndexBuffer.makeQuad(),
         [|
             ProgramTexture.make("tiles", tilesTexture),
-            ProgramTexture.make("tileShadows", shadowTexture)
+            ProgramTexture.make("tileShadows", shadowTexture),
+            ProgramTexture.make("beams", beamTexture)
         |]
     )
 };

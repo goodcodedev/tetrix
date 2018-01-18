@@ -103,10 +103,12 @@ type gameState =
 type stateT = {
   action: inputAction,
   curEl: curEl,
+  posChanged: bool,
+  rotateChanged: bool,
   lastTick: float,
   curTime: float,
   tiles: array(array(int)),
-  elTiles: array(int),
+  beams: array((int, int)),
   gameState: gameState,
   paused: bool,
   boardProgram: BoardProgram.t
@@ -135,6 +137,66 @@ let newElement = () => {
     }
   }
 };
+let updateBeams = (state) => {
+  /* Reset element tile rows */
+  Array.iteri((i, (tileRow, _toRow)) => {
+    if (tileRow > 0) {
+      state.beams[i] = (0, 0);
+    }
+  }, state.beams);
+  /* Set row where element tile is */
+  List.iter(((x, y)) => {
+    let pointX = state.curEl.pos.x + x;
+    let pointY = state.curEl.pos.y + y;
+    let (beamFrom, beamTo) = state.beams[pointX];
+    if (beamFrom < pointY) {
+      state.beams[pointX] = (pointY, beamTo);
+    };
+  }, elTiles(state.curEl.el, state.curEl.rotation));
+  /* Set end of beam */
+  /* This could almost be cached, but there are edge cases
+     where tile is navigated below current beamTo.
+     Could make update when moved below */
+  Array.iteri((i, (beamFrom, _beamTo)) => {
+    if (beamFrom > 0) {
+      let beamTo = ref(0);
+      for (j in beamFrom to tileRows - 1) {
+        if (beamTo^ == 0) {
+          if (state.tiles[j][i] > 0) {
+            beamTo := j;
+          };
+        };
+      };
+      if (beamTo^ == 0) {
+        beamTo := tileRows;
+      };
+      state.beams[i] = (beamFrom, beamTo^);
+    };
+  }, state.beams);
+  /* Create vertices for beams */
+  let rowHeight = 2.0 /. float_of_int(tileRows);
+  let colWidth = 2.0 /. float_of_int(tileCols);
+  let (_, vertices) = Array.fold_left(((i, vertices), (beamFrom, beamTo)) => {
+    if (beamFrom > 0) {
+      let beamVertices = [|
+        -1.0 +. float_of_int(i) *. colWidth,
+        1.0 -. (float_of_int(beamTo) *. rowHeight +. rowHeight),
+        -1.0 +. float_of_int(i) *. colWidth,
+        1.0 -. float_of_int(beamFrom) *. rowHeight,
+        -1.0 +. (float_of_int(i) *. colWidth +. colWidth),
+        1.0 -. float_of_int(beamFrom) *. rowHeight,
+        -1.0 +. (float_of_int(i) *. colWidth +. colWidth),
+        1.0 -. (float_of_int(beamTo) *. rowHeight +. rowHeight),
+      |];
+      (i + 1, Array.append(vertices, beamVertices))
+    } else {
+      (i + 1, vertices)
+    };
+  }, (0, [||]), state.beams);
+  let elColor = tileColors2[state.curEl.color];
+  state.boardProgram.tileBeam.drawState.uniforms[0] = Gpu.Uniform.UniformVec3f(elColor);
+  TileBeam.updateVertices(state.boardProgram.tileBeam, vertices, state.boardProgram.canvas);
+};
 
 let setup = (canvas) : stateT => {
   Document.addEventListener(
@@ -150,17 +212,21 @@ let setup = (canvas) : stateT => {
   /*Mandelbrot.createCanvas();*/
   let sdf = SdfTiles.createCanvas();
   SdfTiles.draw(sdf);
-  {
+  let state = {
     action: None,
     boardProgram: bp,
     curEl: newElement(),
+    posChanged: true,
+    rotateChanged: true,
     lastTick: 0.,
     curTime: 0.,
     tiles: Array.make_matrix(tileRows, tileCols, 0),
-    elTiles: Array.make(tileCols, 0),
+    beams: Array.make(tileCols, (0, 0)),
     gameState: Running,
     paused: false
-  }
+  };
+  state.boardProgram.updateTiles = true;
+  state
 };
 
 let newGame = (state) => {
@@ -171,20 +237,17 @@ let newGame = (state) => {
     }
   };
   state.boardProgram.updateTiles = true;
-  for (x in 0 to tileCols - 1) {
-    state.elTiles[x] = 0;
-  };
   {
     ...state,
     action: None,
     curEl: newElement(),
+    posChanged: true,
+    rotateChanged: true,
     lastTick: 0.,
     curTime: 0.,
     gameState: Running
   }
 };
-
-
 
 let isCollision = (state) => {
   List.exists(((tileX, tileY)) => {
@@ -197,6 +260,7 @@ let isCollision = (state) => {
 let attemptMove = (state, (x, y)) => {
   let moved = {
     ...state,
+    posChanged: true,
     curEl: {
       ...state.curEl,
       pos: {
@@ -210,6 +274,7 @@ let attemptMove = (state, (x, y)) => {
 let attemptMoveTest = (state, (x, y)) => {
   let moved = {
     ...state,
+    posChanged: true,
     curEl: {
       ...state.curEl,
       pos: {
@@ -229,6 +294,7 @@ let wallTests = (state, newRotation, positions) => {
     | [(x, y), ...rest] => {
       let rotated = {
         ...state,
+        rotateChanged: true,
         curEl: {
           ...state.curEl,
           rotation: newRotation,
@@ -253,6 +319,7 @@ let attemptRotateCW = (state) => {
   /* First test for successful default rotation */
   let rotated = {
     ...state,
+    rotateChanged: true,
     curEl: {
       ...state.curEl,
       rotation: newRotation
@@ -287,6 +354,7 @@ let attemptRotateCCW = (state) => {
   /* First test for successful default rotation */
   let rotated = {
     ...state,
+    rotateChanged: true,
     curEl: {
       ...state.curEl,
       rotation: newRotation
@@ -442,29 +510,9 @@ let drawElTiles2 = (tiles, color, x, y, state) => {
     state.boardProgram.updateCurrEl = true;
 };
 
+
 let drawGame = (state, canvas : Gpu.Canvas.t) => {
   let timeStep = canvas.deltaTime;
-  /* Reset element tile rows */
-  Array.iteri((i, tileRow) => {
-    if (tileRow > 0) {
-      state.elTiles[i] = 0;
-    }
-  }, state.elTiles);
-  /* Set row where element tile is */
-  List.iter(((x, y)) => {
-    let pointX = state.curEl.pos.x + x;
-    let pointY = state.curEl.pos.y + y;
-    if (state.elTiles[pointX] < pointY) {
-      state.elTiles[pointX] = pointY;
-    };
-  }, elTiles(state.curEl.el, state.curEl.rotation));
-  /* Draw element, todo: finer grained updating */
-  drawElTiles2(
-    elTiles(state.curEl.el, state.curEl.rotation),
-    tileColors2[state.curEl.color],
-    state.curEl.pos.x, state.curEl.pos.y,
-    state
-  );
   let curTime = state.curTime +. timeStep;
   let isNewTick = curTime > state.lastTick +. tickDuration;
   let (state, newEl) = if (isNewTick) {
@@ -516,16 +564,28 @@ let drawGame = (state, canvas : Gpu.Canvas.t) => {
     };
     let state = {
       ...state,
-      curEl: newElement()
+      curEl: newElement(),
+      posChanged: true,
+      rotateChanged: true
     };
+    state
+  }
+  };
+  let state = if (state.posChanged || state.rotateChanged) {
     drawElTiles2(
       elTiles(state.curEl.el, state.curEl.rotation),
       tileColors2[state.curEl.color],
       state.curEl.pos.x, state.curEl.pos.y,
       state
     );
+    updateBeams(state);
+    {
+      ...state,
+      posChanged: false,
+      rotateChanged: false
+    }
+  } else {
     state
-  }
   };
   if (newEl && isCollision(state)) {
     {

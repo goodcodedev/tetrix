@@ -279,6 +279,12 @@ module VertexBuffer = {
             inited: None
         }
     };
+
+    let setData = (inited: inited, data) => {
+        inited.data = data;
+        inited.count = Array.length(data);
+        inited.update = true;
+    };
     let updateData = (inited : inited, context) => {
         inited.count = Array.length(inited.data);
         Gl.bufferData(
@@ -377,6 +383,11 @@ module IndexBuffer = {
         };
         Array.concat(quadData(0))
     };
+    let setData = (inited: inited, data) => {
+        inited.data = data;
+        inited.count = Array.length(data);
+        inited.update = true;
+    };
     let updateData = (inited : inited, context) => {
         inited.count = Array.length(inited.data);
         Gl.bufferData(
@@ -434,7 +445,7 @@ module Texture = {
         texRef: Gl.textureT,
         width: int,
         height: int,
-        data: array(int),
+        mutable data: array(int),
         mutable update: bool,
         format: int
     };

@@ -76,6 +76,7 @@ type t = {
     drawState: Gpu.DrawState.t,
     currElDraw: Gpu.DrawState.t,
     gridDraw: Gpu.DrawState.t,
+    tileBeam: TileBeam.t,
     canvas: Gpu.Canvas.t,
     frameBuffer: Gpu.FrameBuffer.t,
     tileShadows: TileShadows.t
@@ -111,12 +112,19 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
     Canvas.setFramebuffer(canvas, fbufferInit);
     DrawState.draw(sdfTilesDrawState, canvas);
     Canvas.clearFramebuffer(canvas);
+    /* Tile beam program */
+    let tileBeam = TileBeam.init(canvas);
     /* Tiles texture */
     let tilesTexture = Texture.make(14, 28, Some(tiles), Texture.Luminance);
     /* Tiles shadow */
     let tileShadows = TileShadows.init(canvas, tilesTexture);
     /* Grid */
-    let gridDraw = GridProgram.createDrawState(canvas, tilesTexture, tileShadows.blurTex2);
+    let gridDraw = GridProgram.createDrawState(
+        canvas,
+        tilesTexture,
+        tileShadows.blurTex2,
+        tileBeam.beams
+    );
     /* Board program drawState */
     let drawState = DrawState.init(
         canvas.context,
@@ -164,6 +172,7 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
         drawState: drawState,
         currElDraw: currElDraw,
         gridDraw: gridDraw,
+        tileBeam: tileBeam,
         canvas: canvas,
         updateTiles: false,
         frameBuffer: fbuffer,
@@ -174,6 +183,8 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
 let draw = (bp) => {
     if (bp.updateTiles) {
         bp.drawState.textures[0].texture.update = true;
+        /* Update shadows when tiles change */
+        TileShadows.draw(bp.tileShadows);
         bp.updateTiles = false;
     };
     if (bp.updateCurrEl) {
@@ -192,8 +203,6 @@ let draw = (bp) => {
     let bgLight = Color.from255(205, 220, 246);
     let bg = Color.from255(199, 214, 240);
     Canvas.clear(bp.canvas, bg.r, bg.g, bg.b);
-    /* Shadows */
-    TileShadows.draw(bp.tileShadows);
     /* Grid */
     let lineColor = Color.fromFloats(0.15, 0.2, 0.3);
     bp.gridDraw.uniforms[0] = Uniform.UniformVec3f(Color.toArray(lineColor));
