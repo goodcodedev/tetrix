@@ -123,13 +123,13 @@ let createDrawState = (canvas : Canvas.t) => {
         canvas.context,
         createProgram(),
         [||],
-        VertexBuffer.makeQuad(),
+        VertexBuffer.makeQuad(()),
         IndexBuffer.makeQuad(),
         [||]
     )
 };
 let createCanvas = () => {
-    let canvas = Canvas.init(300, 600);
+    let canvas = Canvas.init(240, 580);
     let drawState = createDrawState(canvas);
     DrawState.draw(drawState, canvas);
     {

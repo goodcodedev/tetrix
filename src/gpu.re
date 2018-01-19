@@ -76,6 +76,7 @@ module Uniform = {
       | UniformVec2f(array(float))
       | UniformVec3f(array(float))
       | UniformVec4f(array(float))
+      | UniformMat3f(array(float))
       ;
     type inited = {
         glType: GlType.t,
@@ -103,6 +104,11 @@ module Uniform = {
         inited
     };
 
+    [@bs.send]
+    external uniformMatrix3fv :
+        (~context: Gl.contextT, ~location: Gl.uniformT, ~transpose: bool, ~values: array(float)) => unit =
+        "uniformMatrix3fv";
+
     let setValue = (uniform, context, uniformValue) => {
         switch (uniformValue) {
         | UniformFloat(value) => Gl.uniform1f(~context, ~location=uniform.loc, ~value)
@@ -110,6 +116,7 @@ module Uniform = {
         | UniformVec2f(value) => Gl.uniform2f(~context, ~location=uniform.loc, ~v1=value[0], ~v2=value[1])
         | UniformVec3f(value) => Gl.uniform3f(~context, ~location=uniform.loc, ~v1=value[0], ~v2=value[1], ~v3=value[2])
         | UniformVec4f(value) => Gl.uniform4f(~context, ~location=uniform.loc, ~v1=value[0], ~v2=value[1], ~v3=value[2], ~v4=value[3])
+        | UniformMat3f(values) => uniformMatrix3fv(~context, ~location=uniform.loc, ~transpose=false, ~values=values)
         };
     };
 };
@@ -264,14 +271,26 @@ module VertexBuffer = {
         usage: usage,
         inited: None
     };
-    let makeQuad = () => {
+    /* Width height in 0.0 - 2.0, x, y from top left as 0.0 for now */
+    let makeQuadData = (width, height, x, y) => {
+        let leftX = -1. +. x;
+        let rightX = leftX +. width;
+        let topY = 1.0 -. y;
+        let bottomY = topY -. height;
+        [|
+            leftX, bottomY,
+            leftX, topY,
+            rightX, topY,
+            rightX, bottomY
+        |]
+    };
+    let makeQuad = (~data=?, ()) => {
+        let data = switch (data) {
+        | Some(data) => data
+        | None => makeQuadData(2.0, 2.0, 0.0, 0.0)
+        };
         {
-            data: [|
-                -1., -1.,
-                -1., 1.,
-                1., 1.,
-                1., -1.
-            |],
+            data,
             attributes: [|
                 VertexAttrib.make("position", Vec2f)
             |],
@@ -714,14 +733,25 @@ module Canvas = {
     type t = {
         window: Gl.Window.t,
         context: Gl.contextT,
-        width: int,
-        height: int,
+        mutable width: int,
+        mutable height: int,
         mutable currProgram: option(Program.inited),
         mutable currVertexBuffer: option(VertexBuffer.inited),
         mutable currIndexBuffer: option(IndexBuffer.inited),
         mutable currTextures: array(ProgramTexture.inited),
         keyboard: keyboardT,
         mutable deltaTime: float
+    };
+    type window;
+    let window: window = [%bs.raw "window"];
+    [@bs.get] external winInnerWidth : (window) => float = "innerWidth";
+    [@bs.get] external winInnerHeight : (window) => float = "innerHeight";
+
+    let getViewportSize = () => {
+        (
+            int_of_float(winInnerWidth(window)),
+            int_of_float(winInnerHeight(window))
+        )
     };
     let init = (width, height) => {
         let window = Gl.Window.init(~argv=[||]);
@@ -744,7 +774,13 @@ module Canvas = {
         }
     };
 
-    let run = (width, height, setup, draw, ~keyPressed=?, ()) => {
+    let resize = (self, width, height) => {
+        Gl.Window.setWindowSize(~window=self.window, ~width, ~height);
+        self.width = width;
+        self.height = height;
+    };
+
+    let run = (width, height, setup, draw, ~keyPressed=?, ~resize=?, ()) => {
         let canvas = init(width, height);
         let userState = ref(setup(canvas));
         /* Start render loop */
@@ -753,6 +789,13 @@ module Canvas = {
             ~displayFunc = (f) => {
                 canvas.deltaTime = f /. 1000.;
                 userState := draw(userState^, canvas);
+            },
+            ~windowResize = () => {
+
+                switch (resize) {
+                | Some(resize) => resize(userState^)
+                | None => ()
+                };
             },
             ~keyDown = (~keycode, ~repeat) => {
                 canvas.keyboard.keyCode = keycode;
@@ -792,14 +835,14 @@ module Canvas = {
     let drawVertices = (canvas, program, vertexBuffer) => {
         let context = canvas.context;
         switch (canvas.currProgram) {
-        | Some(currentProgram) when (currentProgram == program) => ()
+        | Some(currentProgram) when (currentProgram === program) => ()
         | _ => {
             Gl.useProgram(~context, program.programRef);
             canvas.currProgram = Some(program);
         }
         };
         switch (canvas.currVertexBuffer) {
-        | Some(currBuffer) when (currBuffer == vertexBuffer) => ()
+        | Some(currBuffer) when (currBuffer === vertexBuffer) => ()
         | _ => {
             Gl.bindBuffer(
                 ~context,

@@ -1,10 +1,12 @@
 let vertexSource = {|
     precision mediump float;
     attribute vec2 position;
+    uniform mat3 mat;
     varying vec2 vPosition;
     void main() {
         vPosition = position;
-        gl_Position = vec4(position, 0.0, 1.0);
+        vec3 transformed = vec3(position, 0.0) * mat;
+        gl_Position = vec4(transformed.xy, 0.0, 1.0);
     }
 |};
 
@@ -27,10 +29,10 @@ type t = {
     fbuffer: Gpu.FrameBuffer.inited
 };
 /* Draws a color given quad coords and a color */
-let init = (canvas : Gpu.Canvas.t) => {
+let init = (canvas : Gpu.Canvas.t, boardCoords: Coords.boardCoords) => {
     let context = canvas.context;
     let fbuffer = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
-    let vertexQuad = VertexBuffer.makeQuad();
+    let vertexQuad = VertexBuffer.makeQuad(());
     let indexQuad = IndexBuffer.makeQuad();
     /* Draw to framebuffer */
     let drawState = DrawState.init(
@@ -38,9 +40,15 @@ let init = (canvas : Gpu.Canvas.t) => {
         Program.make(
             Shader.make(vertexSource),
             Shader.make(fragmentSource),
-            [|Uniform.make("color", GlType.Vec4f)|]
+            [|
+                Uniform.make("color", GlType.Vec4f),
+                Uniform.make("mat", GlType.Mat3f)
+            |]
         ),
-        [|Uniform.UniformVec4f([|1.0, 1.0, 1.0|])|],
+        [|
+            Uniform.UniformVec4f([|1.0, 1.0, 1.0|]),
+            Uniform.UniformMat3f(boardCoords.mat),
+        |],
         vertexQuad,
         indexQuad,
         [||]

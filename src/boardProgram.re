@@ -1,10 +1,12 @@
 let vertexSource = {|
     precision mediump float;
     attribute vec2 position;
+    uniform mat3 mat;
     varying vec2 vPosition;
     void main() {
         vPosition = position;
-        gl_Position = vec4(position, 0.0, 1.0);
+        vec3 transformed = vec3(position, 0.0) * mat;
+        gl_Position = vec4(transformed.xy, 0.0, 1.0);
     }
 |};
 
@@ -45,9 +47,11 @@ let currElVertex = {|
     attribute vec2 position;
     uniform vec2 translation;
     varying vec2 vPosition;
+    uniform mat3 mat;
     void main() {
         vPosition = position + translation;
-        gl_Position = vec4(vPosition, 0.0, 1.0);
+        vec3 transformed = vec3(vPosition, 0.0) * mat;
+        gl_Position = vec4(transformed.xy, 0.0, 1.0);
     }
 |};
 let currElFragment = {|
@@ -102,6 +106,8 @@ type t = {
     mutable updateTiles: bool,
     mutable currElTiles: array(float),
     mutable updateCurrEl: bool,
+    mutable boardQuad: Gpu.VertexBuffer.t,
+    mutable boardIndexes: Gpu.IndexBuffer.t,
     tilesDraw: Gpu.DrawState.t,
     currElDraw: Gpu.DrawState.t,
     gridDraw: Gpu.DrawState.t,
@@ -111,7 +117,8 @@ type t = {
     frameBuffer: Gpu.FrameBuffer.t,
     tileShadows: TileShadows.t,
     blinkRows: BlinkRows.t,
-    rowsDone: int
+    rowsDone: int,
+    background: Background.t
 };
 
 open Gpu;
@@ -125,10 +132,13 @@ let currElIndexes = IndexBuffer.make(IndexBuffer.makeQuadsData(1), DynamicDraw);
 
 let init = (canvas : Gpu.Canvas.t, tiles) => {
     let context = canvas.context;
+    /* Background */
+    let background = Background.init(canvas);
+    let boardCoords = Coords.getBoardCoords(canvas);
     /* Sdf tiles */
     let sdfTilesTex = Texture.make(1024, 1024, Some(Array.make(1024*1024*4, 0)), Texture.RGBA);
-    let vertexQuad = VertexBuffer.makeQuad();
-    let indexQuad = IndexBuffer.makeQuad();
+    let boardQuad = VertexBuffer.makeQuad(());
+    let boardIndexes = IndexBuffer.makeQuad();
     let fbuffer = FrameBuffer.make(1024, 1024);
     let fbufferInit = FrameBuffer.init(fbuffer, canvas.context);
     /* Draw to framebuffer */
@@ -136,8 +146,8 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
         context,
         SdfTiles.createProgram(),
         [||],
-        vertexQuad,
-        indexQuad,
+        boardQuad,
+        boardIndexes,
         [||]
     );
     FrameBuffer.bindTexture(fbufferInit, canvas.context, sdfTilesTex);
@@ -149,10 +159,11 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
     /* Tiles texture */
     let tilesTexture = Texture.make(12, 26, Some(tiles), Texture.Luminance);
     /* Tiles shadow */
-    let tileShadows = TileShadows.init(canvas, tilesTexture);
+    let tileShadows = TileShadows.init(canvas, boardCoords, tilesTexture);
     /* Grid */
     let gridDraw = GridProgram.createDrawState(
         canvas,
+        boardCoords,
         tilesTexture,
         tileShadows.blurTex2,
         tileBeam.beams
@@ -165,11 +176,11 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
         Program.make(
             Shader.make(vertexSource),
             Shader.make(fragmentSource),
-            [||]
+            [|Uniform.make("mat", GlType.Mat3f)|]
         ),
-        [||],
-        vertexQuad,
-        indexQuad,
+        [|Uniform.UniformMat3f(boardCoords.mat)|],
+        boardQuad,
+        boardIndexes,
         [|
             ProgramTexture.make(
                 "tiles",
@@ -185,12 +196,14 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
             Shader.make(currElFragment),
             [|
                 Uniform.make("elColor", GlType.Vec3f),
-                Uniform.make("translation", GlType.Vec2f)
+                Uniform.make("translation", GlType.Vec2f),
+                Uniform.make("mat", GlType.Mat3f)
             |]
         ),
         [|
             Uniform.UniformVec3f([|1.0, 0.0, 1.0|]),
             Uniform.UniformVec2f([|0.0, 0.0|]),
+            Uniform.UniformMat3f(boardCoords.mat)
         |],
         currElVertices,
         currElIndexes,
@@ -198,28 +211,50 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
             ProgramTexture.make("sdfTiles", sdfTilesTex)
         |]
     );
-    let colorDraw = ColorDraw.init(canvas);
+    let colorDraw = ColorDraw.init(canvas, boardCoords);
+    Background.draw(background);
     {
-        tiles: tiles,
+        tiles,
         currElTiles: [||],
         updateCurrEl: false,
-        tilesDraw: tilesDraw,
-        currElDraw: currElDraw,
-        gridDraw: gridDraw,
-        colorDraw: colorDraw,
-        tileBeam: tileBeam,
-        canvas: canvas,
+        boardQuad,
+        boardIndexes,
+        tilesDraw,
+        currElDraw,
+        gridDraw,
+        colorDraw,
+        tileBeam,
+        canvas,
         updateTiles: false,
         frameBuffer: fbuffer,
-        tileShadows: tileShadows,
+        tileShadows,
         blinkRows: BlinkRows.make(),
-        rowsDone: 0
+        rowsDone: 0,
+        background
     }
+};
+
+let onResize = (self) => {
+    let (width, height) = Gpu.Canvas.getViewportSize();
+    /* Todo: There is some bugs here, maybe we need some time after resize
+        before we should redraw background */
+    Canvas.resize(self.canvas, width, height);
+    /* Transform matrices needs update */
+    /* Things like this would be nice to structure better */
+    let boardCoords = Coords.getBoardCoords(self.canvas);
+    let matUniform = Uniform.UniformMat3f(boardCoords.mat);
+    let screenUniform = Uniform.UniformVec2f([|boardCoords.pixelWidth, boardCoords.pixelHeight|]);
+    self.tilesDraw.uniforms[0] = matUniform;
+    self.currElDraw.uniforms[2] = matUniform;
+    self.colorDraw.drawState.uniforms[1] = matUniform;
+    self.gridDraw.uniforms[3] = screenUniform;
+    self.gridDraw.uniforms[4] = matUniform;
+    Background.draw(self.background);
 };
 
 let drawScene = (self) => {
     let context = self.canvas.context;
-    Canvas.clear(self.canvas, 0.0, 0.0, 0.0);
+    /*Canvas.clear(self.canvas, 0.0, 0.0, 0.0);*/
     DrawState.draw(self.gridDraw, self.canvas);
     Gl.enable(~context, Constants.blend);
     Gl.blendFunc(~context, Constants.src_alpha, Constants.one_minus_src_alpha);

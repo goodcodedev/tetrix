@@ -115,12 +115,12 @@ type t = {
     fbuffer3: Gpu.FrameBuffer.inited
 };
 
-let init = (canvas : Gpu.Canvas.t, tilesTex) => {
+let init = (canvas : Gpu.Canvas.t, boardCoords : Coords.boardCoords, tilesTex) => {
     let context = canvas.context;
     /* First draw unblurred */
     let unblurred = Texture.make(1024, 1024, Some(Array.make(1024*1024*4, 0)), Texture.RGBA);
     let fbuffer1 = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
-    let vertexQuad = VertexBuffer.makeQuad();
+    let vertexQuad = VertexBuffer.makeQuad(());
     let indexQuad = IndexBuffer.makeQuad();
     /* Draw to framebuffer */
     let drawState = DrawState.init(
@@ -158,7 +158,7 @@ let init = (canvas : Gpu.Canvas.t, tilesTex) => {
         blurProgram,
         [|
             Uniform.UniformFloat(10.0),
-            Uniform.UniformVec2f([|float_of_int(canvas.width), float_of_int(canvas.height)|])
+            Uniform.UniformVec2f([|boardCoords.pixelWidth, boardCoords.pixelHeight|])
         |],
         vertexQuad,
         indexQuad,
@@ -174,7 +174,7 @@ let init = (canvas : Gpu.Canvas.t, tilesTex) => {
         blurProgram,
         [|
             Uniform.UniformFloat(1.0),
-            Uniform.UniformVec2f([|float_of_int(canvas.width), float_of_int(canvas.height)|])
+            Uniform.UniformVec2f([|boardCoords.pixelWidth, boardCoords.pixelHeight|])
         |],
         vertexQuad,
         indexQuad,

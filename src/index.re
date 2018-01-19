@@ -213,8 +213,8 @@ let setup = (canvas) : stateT => {
   let tiles = Array.make(tileRows * tileCols, 0);
   let bp = BoardProgram.init(canvas, tiles);
   /*Mandelbrot.createCanvas();*/
-  let sdf = SdfTiles.createCanvas();
-  SdfTiles.draw(sdf);
+  /*let sdf = SdfTiles.createCanvas();
+  SdfTiles.draw(sdf);*/
   let state = {
     action: None,
     boardProgram: bp,
@@ -754,4 +754,11 @@ let keyPressed = (state, canvas : Gpu.Canvas.t) => {
   );
 };
 
-Gpu.Canvas.run(240, 520, setup, draw, ~keyPressed, ());
+let resize = (state : stateT) => {
+  /* todo: throttle? */
+  BoardProgram.onResize(state.boardProgram);
+};
+
+let (viewportX, viewportY) = Gpu.Canvas.getViewportSize();
+/*Gpu.Canvas.run(240, 520, setup, draw, ~keyPressed, ());*/
+Gpu.Canvas.run(viewportX, viewportY, setup, draw, ~keyPressed, ~resize, ());

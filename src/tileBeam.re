@@ -32,7 +32,7 @@ let init = (canvas : Gpu.Canvas.t) => {
     let context = canvas.context;
     let beams = Texture.make(1024, 1024, Some(Array.make(1024*1024*4, 0)), Texture.RGBA);
     let fbuffer = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
-    let vertexQuad = VertexBuffer.makeQuad();
+    let vertexQuad = VertexBuffer.makeQuad(());
     let indexQuad = IndexBuffer.makeQuad();
     /* Draw to framebuffer */
     let drawState = DrawState.init(

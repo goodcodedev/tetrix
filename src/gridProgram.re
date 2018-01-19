@@ -1,10 +1,12 @@
 let vertexSource = {|
     precision mediump float;
     attribute vec2 position;
+    uniform mat3 mat;
     varying vec2 vPosition;
     void main() {
         vPosition = position;
-        gl_Position = vec4(position, 0.0, 1.0);
+        vec3 transformed = vec3(position, 0.0) * mat;
+        gl_Position = vec4(transformed.xy, 0.0, 1.0);
     }
 |};
 
@@ -72,12 +74,13 @@ let createProgram = () => {
             Uniform.make("lineColor", GlType.Vec3f),
             Uniform.make("elPos", GlType.Vec2f),
             Uniform.make("elColor", GlType.Vec3f),
-            Uniform.make("screen", GlType.Vec2f)
+            Uniform.make("screen", GlType.Vec2f),
+            Uniform.make("mat", GlType.Mat3f)
         |]
     )
 };
 
-let createDrawState = (canvas : Canvas.t, tilesTexture, shadowTexture, beamTexture) => {
+let createDrawState = (canvas : Canvas.t, boardCoords : Coords.boardCoords, tilesTexture, shadowTexture, beamTexture) => {
     DrawState.init(
         canvas.context,
         createProgram(),
@@ -85,9 +88,10 @@ let createDrawState = (canvas : Canvas.t, tilesTexture, shadowTexture, beamTextu
             Uniform.UniformVec3f([|0.0, 0.0, 0.0|]),
             Uniform.UniformVec2f([|0.0, 0.0|]),
             Uniform.UniformVec3f([|0.0, 0.0, 0.0|]),
-            Uniform.UniformVec2f([|float_of_int(canvas.width), float_of_int(canvas.height)|])
+            Uniform.UniformVec2f([|boardCoords.pixelWidth, boardCoords.pixelHeight|]),
+            Uniform.UniformMat3f(boardCoords.mat)
         |],
-        VertexBuffer.makeQuad(),
+        VertexBuffer.makeQuad(()),
         IndexBuffer.makeQuad(),
         [|
             ProgramTexture.make("tiles", tilesTexture),
