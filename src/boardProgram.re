@@ -15,8 +15,8 @@ let fragmentSource = {|
     uniform sampler2D tiles;
     uniform sampler2D sdfTiles;
 
-    const int numCols = 14;
-    const int numRows = 28;
+    const int numCols = 12;
+    const int numRows = 26;
 
     void main() {
         vec2 tilePos = vec2((vPosition.x + 1.0) * 0.5, (vPosition.y - 1.0) * -0.5);
@@ -126,10 +126,10 @@ let currElIndexes = IndexBuffer.make(IndexBuffer.makeQuadsData(1), DynamicDraw);
 let init = (canvas : Gpu.Canvas.t, tiles) => {
     let context = canvas.context;
     /* Sdf tiles */
-    let sdfTilesTex = Texture.make(512, 512, Some(Array.make(512*512*4, 0)), Texture.RGBA);
+    let sdfTilesTex = Texture.make(1024, 1024, Some(Array.make(1024*1024*4, 0)), Texture.RGBA);
     let vertexQuad = VertexBuffer.makeQuad();
     let indexQuad = IndexBuffer.makeQuad();
-    let fbuffer = FrameBuffer.make(512, 512);
+    let fbuffer = FrameBuffer.make(1024, 1024);
     let fbufferInit = FrameBuffer.init(fbuffer, canvas.context);
     /* Draw to framebuffer */
     let sdfTilesDrawState = DrawState.init(
@@ -147,7 +147,7 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
     /* Tile beam program */
     let tileBeam = TileBeam.init(canvas);
     /* Tiles texture */
-    let tilesTexture = Texture.make(14, 28, Some(tiles), Texture.Luminance);
+    let tilesTexture = Texture.make(12, 26, Some(tiles), Texture.Luminance);
     /* Tiles shadow */
     let tileShadows = TileShadows.init(canvas, tilesTexture);
     /* Grid */
@@ -262,7 +262,7 @@ let draw = (self) => {
             drawScene(self);
             Gl.enable(~context, Constants.blend);
             Gl.blendFunc(~context, Constants.src_alpha, Constants.one_minus_src_alpha);
-            let rowHeight = 2.0 /. 28.0;
+            let rowHeight = 2.0 /. 26.0;
             let vertices = Array.fold_left((vertices, rowIdx) => {
                 Array.append(vertices, [|
                     -1.0, 1.0 -. rowHeight *. float_of_int(rowIdx + 1),

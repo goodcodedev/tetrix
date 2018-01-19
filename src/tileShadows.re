@@ -14,8 +14,8 @@ let fragmentSource = {|
 
     uniform sampler2D tiles;
 
-    const float numCols = 14.0;
-    const float numRows = 28.0;
+    const float numCols = 12.0;
+    const float numRows = 26.0;
 
     void main() {
         // Perspective coord
@@ -47,6 +47,7 @@ let blurFragment = {|
     varying vec2 vPosition;
 
     uniform float pDistance;
+    uniform vec2 screen;
 
     uniform sampler2D unblurred;
 
@@ -89,8 +90,8 @@ let blurFragment = {|
     }
 
     void main() {
-        float pHeight = 1.0 / 560.0 * pDistance;
-        float pWidth = 1.0 / 280.0 * pDistance;
+        float pHeight = 1.0 / screen.y * pDistance;
+        float pWidth = 1.0 / screen.x * pDistance;
         // To texture coords
         vec2 texCoords = (vPosition + 1.0) * 0.5;
         float b = blurred(texCoords, pHeight, pWidth);
@@ -117,8 +118,8 @@ type t = {
 let init = (canvas : Gpu.Canvas.t, tilesTex) => {
     let context = canvas.context;
     /* First draw unblurred */
-    let unblurred = Texture.make(512, 512, Some(Array.make(512*512*4, 0)), Texture.RGBA);
-    let fbuffer1 = FrameBuffer.init(FrameBuffer.make(512, 512), canvas.context);
+    let unblurred = Texture.make(1024, 1024, Some(Array.make(1024*1024*4, 0)), Texture.RGBA);
+    let fbuffer1 = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
     let vertexQuad = VertexBuffer.makeQuad();
     let indexQuad = IndexBuffer.makeQuad();
     /* Draw to framebuffer */
@@ -140,19 +141,25 @@ let init = (canvas : Gpu.Canvas.t, tilesTex) => {
         |]
     );
     /* Blur draw */
-    let blurTex1 = Texture.make(512, 512, Some(Array.make(512*512*4, 0)), Texture.RGBA);
-    let fbuffer2 = FrameBuffer.init(FrameBuffer.make(512, 512), canvas.context);
-    let blurTex2 = Texture.make(512, 512, Some(Array.make(512*512*4, 0)), Texture.RGBA);
-    let fbuffer3 = FrameBuffer.init(FrameBuffer.make(512, 512), canvas.context);
+    let blurTex1 = Texture.make(1024, 1024, Some(Array.make(1024*1024*4, 0)), Texture.RGBA);
+    let fbuffer2 = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
+    let blurTex2 = Texture.make(1024, 1024, Some(Array.make(1024*1024*4, 0)), Texture.RGBA);
+    let fbuffer3 = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
     let blurProgram = Program.make(
         Shader.make(blurVertex),
         Shader.make(blurFragment),
-        [|Uniform.make("pDistance", GlType.Float)|]
+        [|
+            Uniform.make("pDistance", GlType.Float),
+            Uniform.make("screen", GlType.Vec2f),
+        |]
     );
     let blurDraw1 = DrawState.init(
         context,
         blurProgram,
-        [|Uniform.UniformFloat(10.0)|],
+        [|
+            Uniform.UniformFloat(10.0),
+            Uniform.UniformVec2f([|float_of_int(canvas.width), float_of_int(canvas.height)|])
+        |],
         vertexQuad,
         indexQuad,
         [|
@@ -165,7 +172,10 @@ let init = (canvas : Gpu.Canvas.t, tilesTex) => {
     let blurDraw2 = DrawState.init(
         context,
         blurProgram,
-        [|Uniform.UniformFloat(1.0)|],
+        [|
+            Uniform.UniformFloat(1.0),
+            Uniform.UniformVec2f([|float_of_int(canvas.width), float_of_int(canvas.height)|])
+        |],
         vertexQuad,
         indexQuad,
         [|

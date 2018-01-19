@@ -23,10 +23,10 @@ let fragmentSource = {|
         point.x -= 0.5;
         point.y -= 0.5;
         */
-        point.x = mod(point.x, 1.0 / 14.0) - 1.0 / 28.0;
-        point.y = mod(point.y, 1.0 / 28.0) - 1.0 / 56.0;
-        float boxWidth = 1.0 / 28.0;
-        float boxHeight = 1.0 / 56.0;
+        point.x = mod(point.x, 1.0 / 12.0) - 1.0 / 24.0;
+        point.y = mod(point.y, 1.0 / 26.0) - 1.0 / 52.0;
+        float boxWidth = 1.0 / 24.0;
+        float boxHeight = 1.0 / 52.0;
         float boxDepth = 0.1;
         float box = length(max(abs(point) - vec3(boxWidth, boxHeight, boxDepth), vec3(0.0, 0.0, 0.0)));
         // Octahedron towards z
@@ -129,7 +129,7 @@ let createDrawState = (canvas : Canvas.t) => {
     )
 };
 let createCanvas = () => {
-    let canvas = Canvas.init(280, 560);
+    let canvas = Canvas.init(300, 600);
     let drawState = createDrawState(canvas);
     DrawState.draw(drawState, canvas);
     {

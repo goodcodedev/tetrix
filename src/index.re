@@ -12,8 +12,8 @@ let tickDuration = 0.5;
 let elColorOffset = 2;
 let boardOffsetX = 50;
 let boardOffsetY = 20;
-let tileCols = 14;
-let tileRows = 28;
+let tileCols = 12;
+let tileRows = 26;
 let tileWidth = 20;
 let tileHeight = 20;
 let tilePadding = 3;
@@ -754,4 +754,4 @@ let keyPressed = (state, canvas : Gpu.Canvas.t) => {
   );
 };
 
-Gpu.Canvas.run(280, 560, setup, draw, ~keyPressed, ());
+Gpu.Canvas.run(240, 520, setup, draw, ~keyPressed, ());

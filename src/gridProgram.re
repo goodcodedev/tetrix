@@ -13,16 +13,17 @@ let fragmentSource = {|
     uniform vec3 lineColor;
     uniform vec2 elPos;
     uniform vec3 elColor;
+    uniform vec2 screen;
     uniform sampler2D tiles;
     uniform sampler2D tileShadows;
     uniform sampler2D beams;
 
     varying vec2 vPosition;
 
-    const float numCols = 14.0;
-    const float numRows = 28.0;
-    const float xsize = 1.0 / 280.0 * 1.0;
-    const float ysize = 1.0 / 560.0 * 1.0;
+    const float numCols = 12.0;
+    const float numRows = 26.0;
+    float xsize = 1.0 / screen.x;
+    float ysize = 1.0 / screen.y;
     const float tileWidth = 1.0 / numCols;
     const float tileHeight = 1.0 / numRows;
 
@@ -71,6 +72,7 @@ let createProgram = () => {
             Uniform.make("lineColor", GlType.Vec3f),
             Uniform.make("elPos", GlType.Vec2f),
             Uniform.make("elColor", GlType.Vec3f),
+            Uniform.make("screen", GlType.Vec2f)
         |]
     )
 };
@@ -82,7 +84,8 @@ let createDrawState = (canvas : Canvas.t, tilesTexture, shadowTexture, beamTextu
         [|
             Uniform.UniformVec3f([|0.0, 0.0, 0.0|]),
             Uniform.UniformVec2f([|0.0, 0.0|]),
-            Uniform.UniformVec3f([|0.0, 0.0, 0.0|])
+            Uniform.UniformVec3f([|0.0, 0.0, 0.0|]),
+            Uniform.UniformVec2f([|float_of_int(canvas.width), float_of_int(canvas.height)|])
         |],
         VertexBuffer.makeQuad(),
         IndexBuffer.makeQuad(),

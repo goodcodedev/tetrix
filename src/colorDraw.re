@@ -29,7 +29,7 @@ type t = {
 /* Draws a color given quad coords and a color */
 let init = (canvas : Gpu.Canvas.t) => {
     let context = canvas.context;
-    let fbuffer = FrameBuffer.init(FrameBuffer.make(512, 512), canvas.context);
+    let fbuffer = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
     let vertexQuad = VertexBuffer.makeQuad();
     let indexQuad = IndexBuffer.makeQuad();
     /* Draw to framebuffer */
