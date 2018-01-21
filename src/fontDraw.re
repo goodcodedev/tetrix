@@ -1,40 +1,38 @@
-let vertexSource = {|
+let vertexSource = {|#version 300 es
     precision mediump float;
     attribute vec2 position;
     attribute vec2 uv;
     varying vec2 vUv;
     
-    uniform mat3 model;
+    //uniform mat3 model;
     
     void main() {
         vUv = uv;
-        vec2 pos = vec3(model * vec3(position, 1.0)).xy;
-        gl_Position = vec4((pos - vec2(20,0)) / 100., 0.0, 1.0);
+        //vec2 pos = vec3(model * vec3(position, 1.0)).xy;
+        vec2 pos = position;
+        gl_Position = vec4((pos - vec2(40.0, 0.0)) / 50., 0.0, 1.0);
     }
 |};
 
-let fragmentSource = {|
+let fragmentSource = {|#version 300 es
     #ifdef GL_OES_standard_derivatives
     #extension GL_OES_standard_derivatives : enable
     #endif
-    
     precision mediump float;
-    
     uniform sampler2D map;
-    
     varying vec2 vUv;
-    
+
     float median(float r, float g, float b) {
-        return max(min(r,g), min(max(r,g),b));
+        return max(min(r, g), min(max(r, g), b));
     }
-    
+
     void main() {
-        vec3 sdfVal = 1.0 - texture2D(map, vUv).rgb;
-        float sigDist = median(sdfVal.r, sdfVal.g, sdfVal.b) - 0.5;
-        //float alpha = clamp(sigDist/fwidth(sigDist) + 0.5, 0.0, 1.0);
-        float coef = 1.0 - sigDist;
-        float alpha = smoothstep(0.0, 0.22, sigDist);
-        gl_FragColor = vec4(0.0, 0.0, 0.0, alpha);
+        float opacity = 0.5;
+        vec3 color = vec3(0.2, 0.5, 0.8);
+        vec3 sample = 1.0 - texture2D(map, vUv).rgb;
+        float sigDist = median(sample.r, sample.g, sample.b) - 0.5;
+        float alpha = clamp(sigDist/fwidth(sigDist) + 0.5, 0.0, 1.0);
+        gl_FragColor = vec4(color.xyz, alpha * opacity);
     }
 |};
 
@@ -46,37 +44,38 @@ type t = {
     fbuffer: Gpu.FrameBuffer.inited
 };
 
-let loadFont = (font) => {
-    FontFiles.request(font, (fontFiles) => {
-        [%debugger];
-        let parsed = SdfFont.BMFont.parse(fontFiles.bin);
-    });
-};
 
 /* Draws a color given quad coords and a color */
-let init = (canvas : Gpu.Canvas.t, boardCoords: Coords.boardCoords) => {
+let init = (canvas : Gpu.Canvas.t, vertices, image) => {
     let context = canvas.context;
     let fbuffer = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
-    let vertexQuad = VertexBuffer.makeQuad(());
-    let indexQuad = IndexBuffer.makeQuad();
+    let vertexBuffer = VertexBuffer.make(
+        vertices,
+        [|
+            VertexAttrib.make("position", GlType.Vec2f),
+            VertexAttrib.make("uv", GlType.Vec2f)
+        |],
+        StaticDraw
+    );
+    let indexBuffer = IndexBuffer.make(
+        IndexBuffer.makeQuadsData(Array.length(vertices) / 16),
+        StaticDraw
+    );
+    let imageTexture = Texture.make(Texture.ImageTexture(image), Texture.RGBA);
     /* Draw to framebuffer */
     let drawState = DrawState.init(
         context,
         Program.make(
             Shader.make(vertexSource),
             Shader.make(fragmentSource),
-            [|
-                Uniform.make("color", GlType.Vec4f),
-                Uniform.make("mat", GlType.Mat3f)
-            |]
+            [||]
         ),
+        [||],
+        vertexBuffer,
+        indexBuffer,
         [|
-            Uniform.UniformVec4f([|1.0, 1.0, 1.0|]),
-            Uniform.UniformMat3f(boardCoords.mat),
-        |],
-        vertexQuad,
-        indexQuad,
-        [||]
+            ProgramTexture.make("map", imageTexture)
+        |]
     );
     {
         canvas,
@@ -98,9 +97,9 @@ let drawToTexture = (self, texture, color, ~clearColor=?, ()) => {
     Canvas.clearFramebuffer(self.canvas);
 };
 
-let draw = (self, color) => {
-    self.drawState.uniforms[0] = Uniform.UniformVec4f(color);
+let draw = (self) => {
     DrawState.draw(self.drawState, self.canvas);
+    [%debugger];
 };
 
 /* Vertices assumed to be quads. Renders to framebuffer,
@@ -116,4 +115,21 @@ let updateVertices = (self, vertices) => {
     }
     | None => failwith("Indexbuffer expected");
     };
+};
+
+let loadFont = (font, canvas) => {
+    FontFiles.request(font, (fontFiles) => {
+        let font = SdfFont.BMFont.parse(fontFiles.bin);
+        let layout = SdfFont.TextLayout.make(
+            "abc",
+            font,
+            500,
+            ()
+        );
+        let glyphs = SdfFont.TextLayout.update(layout);
+        let vd = SdfFont.TextLayout.vertexData(layout, glyphs);
+        Js.log(vd);
+        let fontDraw = init(canvas, vd, fontFiles.image);
+        draw(fontDraw);
+    });
 };

@@ -81,7 +81,7 @@ let utf8ToBytes = (string) => {
                     } else {
                         ArrayB.push2(
                             bytes,
-                            codePoint^ lsr 0x6 lor 0xC0,
+                            codePoint^ asr 0x6 lor 0xC0,
                             codePoint^ land 0x3F lor 0x80
                         );
                     };
@@ -91,8 +91,8 @@ let utf8ToBytes = (string) => {
                     } else {
                         ArrayB.push3(
                             bytes,
-                            codePoint^ lsr 0xC lor 0xE0,
-                            codePoint^ lsr 0x6 land 0x3F lor 0x80,
+                            codePoint^ asr 0xC lor 0xE0,
+                            codePoint^ asr 0x6 land 0x3F lor 0x80,
                             codePoint^ land 0x3F lor 0x80
                         );
                     };
@@ -102,9 +102,9 @@ let utf8ToBytes = (string) => {
                     } else {
                         ArrayB.push4(
                             bytes,
-                            codePoint^ lsr 0x12 lor 0xF0,
-                            codePoint^ lsr 0xC land 0x3F lor 0x80,
-                            codePoint^ lsr 0x6 land 0x3F lor 0x80,
+                            codePoint^ asr 0x12 lor 0xF0,
+                            codePoint^ asr 0xC land 0x3F lor 0x80,
+                            codePoint^ asr 0x6 land 0x3F lor 0x80,
                             codePoint^ land 0x3F lor 0x80
                         );
                     };

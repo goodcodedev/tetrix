@@ -1,3 +1,5 @@
+/* https://github.com/Jam3/load-bmfont */
+/* https://github.com/Jam3/parse-bmfont-binary */
 type bmChar = {
     id: int,
     x: int,
@@ -61,11 +63,11 @@ let readInfo = (buf, i) : bmInfo => {
     let bitField = Buffer.readUInt8(buf, i + 2);
     {
         size: Buffer.readInt16LE(buf, i),
-        smooth: ((bitField lsr 7) land 1) == 1,
-        unicode: ((bitField lsr 6) land 1) == 1,
-        italic: ((bitField lsr 5) land 1) == 1,
-        bold: ((bitField lsr 4) land 1) == 1,
-        fixedHeight: ((bitField lsr 3) land 1) == 1,
+        smooth: ((bitField asr 7) land 1) == 1,
+        unicode: ((bitField asr 6) land 1) == 1,
+        italic: ((bitField asr 5) land 1) == 1,
+        bold: ((bitField asr 4) land 1) == 1,
+        fixedHeight: ((bitField asr 3) land 1) == 1,
         charset: Buffer.readUInt8(buf, i + 3),
         stretchH: Buffer.readUInt16LE(buf, i + 4),
         aa: Buffer.readUInt8(buf, i + 6),
@@ -108,7 +110,9 @@ let readPages = (buf, i, size) => {
         if (c >= count) {
             pages
         } else {
-            let page = Buffer.utf8Slice(buf, i + c*len, (i + c*len) + String.length(text));
+            /* todo: utf8 decode */
+            /*let page = Buffer.utf8Slice(buf, i + c*len, (i + c*len) + String.length(text));*/
+            let page = Buffer.readStringSlice(buf, i + c*len, (i + c*len) + String.length(text));
             getPages(c + 1, [page, ...pages])
         }
     };
@@ -148,7 +152,7 @@ let readKernings = (buf, i, blockSize) => {
             let kerning = {
                 first: Buffer.readUInt32LE(buf, i + off),
                 second: Buffer.readUInt32LE(buf, i + 4 + off),
-                amount: Buffer.readUInt16LE(buf, i + 8 + off)
+                amount: Buffer.readInt16LE(buf, i + 8 + off)
             };
             getKernings(c + 1, [kerning, ...kernings])
         }
@@ -184,7 +188,7 @@ let readBlock = (buf, i) => {
                     max
                 }
             }, 0, chars);
-            let charsById = Array.make(maxId, None);
+            let charsById = Array.make(maxId + 1, None);
             List.iter((char) => {
                 charsById[char.id] = Some(char);
             }, chars);

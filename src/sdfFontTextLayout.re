@@ -1,3 +1,4 @@
+/* https://github.com/Jam3/layout-bmfont-text */
 module BMFont = SdfFontBMFont;
 
 type align =
@@ -123,7 +124,7 @@ let lineWraps = (self, width, start, last) => {
     } else {
       let nextNChar = optionNChar(curStart^);
       let nextNewline = switch (nextNChar) {
-      | Some(i) => i
+      | Some(nextNewline) => nextNewline
       | None => textLength
       };
       /* Skip whitespaces at the start of line */
@@ -131,7 +132,7 @@ let lineWraps = (self, width, start, last) => {
         curStart := curStart^ + 1;
       };
       /* Get chars fitting on current line */
-      let {start: fitStart, last: fitEnd, width: fitWidth} = measureFittingChars(self, curStart^, last, width);
+      let {start: fitStart, last: fitEnd, width: _fitWidth} = measureFittingChars(self, curStart^, last, width);
       let lineEnd = ref(curStart^ + (fitEnd - fitStart));
       let nextStart = ref(lineEnd^ + 1);
       /* If limit was reached before newline */
@@ -157,10 +158,10 @@ let lineWraps = (self, width, start, last) => {
       };
       let calcedStart = curStart^;
       curStart := nextStart^;
-      if (lineEnd^ >= curStart^) {
+      if (lineEnd^ >= calcedStart) {
         calcLines([measureFittingChars(self, calcedStart, lineEnd^, width), ...lines])
       } else {
-        /* is this right? */
+        /* is this right/neccesary? */
         calcLines(lines)
       }
     }
@@ -187,7 +188,6 @@ let update = (self : textLayout) => {
   let baseline = self.font.common.base;
   let descender = lineHeight - baseline;
   let height = lineHeight * List.length(lines) - descender;
-  /* Todo: go over */
   let (_, glyphs) = List.fold_left(((lineIndex, glyphs), line) => {
     let lastGlyph = ref(None);
     let rec forChar = (charIndex, glyphs) => {
@@ -218,7 +218,7 @@ let update = (self : textLayout) => {
           index: charIndex,
           line: lineIndex
         };
-        penPos.x = bmChar.xAdvance + self.letterSpacing;
+        penPos.x = penPos.x + bmChar.xAdvance + self.letterSpacing;
         lastGlyph := Some(bmChar);
         forChar(charIndex + 1, [glyph, ...glyphs])
       }
@@ -228,29 +228,29 @@ let update = (self : textLayout) => {
     penPos.x = 0;
     (lineIndex + 1, [List.rev(lineGlyphs), ...glyphs])
   }, (0, []), lines);
-  List.concat(glyphs)
+  List.concat(List.rev(glyphs))
 };
 
 let vertexData = (self, glyphs) => {
-  let data = Array.make(List.length(glyphs) * 4 * 2 * 2, 0);
-  let texWidth = self.font.common.scaleW;
-  let texHeight = self.font.common.scaleH;
+  let data = Array.make(List.length(glyphs) * 4 * 2 * 2, 0.0);
+  let texWidth = float_of_int(self.font.common.scaleW);
+  let texHeight = float_of_int(self.font.common.scaleH);
   List.iteri((i, glyph) => {
     /* Bottom left position */
-    let x = glyph.position.x + glyph.data.xOffset;
-    let y = glyph.position.y + glyph.data.yOffset;
+    let x = float_of_int(glyph.position.x + glyph.data.xOffset);
+    let y = float_of_int(glyph.position.y + glyph.data.yOffset);
     /* Quad size */
-    let w = glyph.data.width;
-    let h = glyph.data.height;
+    let w = float_of_int(glyph.data.width);
+    let h = float_of_int(glyph.data.height);
     /* Uv data */
     let bitmap = glyph.data;
-    let bw = bitmap.x + bitmap.width;
-    let bh = bitmap.y + bitmap.height;
+    let bw = float_of_int(bitmap.x + bitmap.width);
+    let bh = float_of_int(bitmap.y + bitmap.height);
     /* Top left positions */
-    let u0 = bitmap.x / texWidth;
-    let u1 = bw / texWidth;
-    let v1 = (self.flipY) ? (texHeight - bitmap.y) / texHeight : bitmap.y / texHeight;
-    let v0 = (self.flipY) ? (texHeight - bh) / texHeight : bh / texHeight;
+    let u0 = float_of_int(bitmap.x) /. texWidth;
+    let u1 = bw /. texWidth;
+    let v1 = (self.flipY) ? (texHeight -. float_of_int(bitmap.y)) /. texHeight : float_of_int(bitmap.y) /. texHeight;
+    let v0 = (self.flipY) ? (texHeight -. bh) /. texHeight : bh /. texHeight;
     /* Register positions x, y, and uvs */
     /* Bottom left */
     let idx = i * 16;
@@ -260,16 +260,16 @@ let vertexData = (self, glyphs) => {
     data[idx + 3] = v1;
     /* Top left */
     data[idx + 4] = x;
-    data[idx + 5] = y + h;
+    data[idx + 5] = y +. h;
     data[idx + 6] = u0;
     data[idx + 7] = v0;
     /* Top right */
-    data[idx + 8] = x + w;
-    data[idx + 9] = y + h;
+    data[idx + 8] = x +. w;
+    data[idx + 9] = y +. h;
     data[idx + 10] = u1;
     data[idx + 11] = v0;
     /* Bottom right */
-    data[idx + 12] = x + w;
+    data[idx + 12] = x +. w;
     data[idx + 13] = y;
     data[idx + 14] = u1;
     data[idx + 15] = v1;
@@ -277,6 +277,7 @@ let vertexData = (self, glyphs) => {
   data
 };
 
+/* todo: to floats */
 let positions = (self, glyphs) => {
   let data = Array.make(List.length(glyphs) * 4 * 2, 0);
   List.iteri((i, glyph) => {

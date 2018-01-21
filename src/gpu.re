@@ -106,7 +106,7 @@ module Uniform = {
 
     [@bs.send]
     external uniformMatrix3fv :
-        (~context: Gl.contextT, ~location: Gl.uniformT, ~transpose: bool, ~values: array(float)) => unit =
+        (~context: Gl.contextT, ~location: Gl.uniformT, ~transpose: Js.boolean, ~values: array(float)) => unit =
         "uniformMatrix3fv";
 
     let setValue = (uniform, context, uniformValue) => {
@@ -116,7 +116,7 @@ module Uniform = {
         | UniformVec2f(value) => Gl.uniform2f(~context, ~location=uniform.loc, ~v1=value[0], ~v2=value[1])
         | UniformVec3f(value) => Gl.uniform3f(~context, ~location=uniform.loc, ~v1=value[0], ~v2=value[1], ~v3=value[2])
         | UniformVec4f(value) => Gl.uniform4f(~context, ~location=uniform.loc, ~v1=value[0], ~v2=value[1], ~v3=value[2], ~v4=value[3])
-        | UniformMat3f(values) => uniformMatrix3fv(~context, ~location=uniform.loc, ~transpose=false, ~values=values)
+        | UniformMat3f(values) => uniformMatrix3fv(~context, ~location=uniform.loc, ~transpose=Js.false_, ~values=values)
         };
     };
 };
@@ -130,6 +130,7 @@ module VertexAttrib = {
         loc: Gl.attributeT,
         size: int,
         stride: int,
+        offset: int,
         type_: int
     };
 
@@ -139,12 +140,13 @@ module VertexAttrib = {
     };
 
 
-    let init = (attrib, context, program, size, stride) => {
+    let init = (attrib, context, program, size, stride, offset) => {
         let loc = Gl.getAttribLocation(~context, ~program, ~name=attrib.name);
         {
             loc: loc,
             size: size,
             stride: stride,
+            offset: offset,
             type_: GlType.getTypeConst(attrib.glType)
         }
     };
@@ -157,7 +159,7 @@ module VertexAttrib = {
             ~type_=inited.type_,
             ~normalize=false,
             ~stride=inited.stride,
-            ~offset=0
+            ~offset=inited.offset
         );
     };
 };
@@ -338,11 +340,15 @@ module VertexBuffer = {
                 | StreamingDraw => Constants.stream_draw
                 }
             );
-            let stride = ref(0);
+            let stride = Array.fold_left((size, attrib: VertexAttrib.t) => {
+                size + GlType.getSize(attrib.glType) * GlType.getBytes(attrib.glType)
+            }, 0, buffer.attributes);
+            let offset = ref(0);
             let locs = Array.map((attrib : VertexAttrib.t) => {
                 let size = GlType.getSize(attrib.glType);
-                let loc = VertexAttrib.init(attrib, context, program, size, stride^);
-                stride := stride^ + (size * GlType.getBytes(attrib.glType));
+                let attrSize = (size * GlType.getBytes(attrib.glType));
+                let loc = VertexAttrib.init(attrib, context, program, size, stride, offset^);
+                offset := offset^ + attrSize;
                 loc
             }, buffer.attributes);
             let inited = {
@@ -400,6 +406,7 @@ module IndexBuffer = {
                 |], ...quadData(quadNum + 1)]
             }
         };
+        /* todo: maybe tail recursive or something */
         Array.concat(quadData(0))
     };
     let setData = (inited: inited, data) => {
@@ -460,27 +467,26 @@ module Texture = {
       | Luminance
       | RGBA;
 
+    type data =
+      | ImageTexture(Reasongl.Gl.imageT)
+      | IntDataTexture(array(int), int, int)
+      | EmptyTexture;
+
     type inited = {
         texRef: Gl.textureT,
-        width: int,
-        height: int,
-        mutable data: array(int),
+        mutable data: data,
         mutable update: bool,
         format: int
     };
 
     type t = {
-        width: int,
-        height: int,
-        data: option(array(int)),
+        data: data,
         format: format,
         mutable inited: option(inited)
     };
 
-    let make = (width, height, data, format) => {
+    let make = (data, format) => {
         {
-            width: width,
-            height: height,
             data: data,
             format: format,
             inited: None
@@ -560,29 +566,32 @@ module Texture = {
             }
             | _ => ()
             };
-            let data = switch (texture.data) {
-            | Some(data) => {
+            switch (texture.data) {
+            | ImageTexture(image) =>
+                Reasongl.Gl.texImage2DWithImage(
+                    ~context,
+                    ~target=Constants.texture_2d,
+                    ~level=0,
+                    ~image
+                );
+            | IntDataTexture(intArray, width, height) =>
                 _texImage2D(
                     ~context,
                     ~target=Constants.texture_2d,
                     ~level=0,
                     ~internalFormat=format,
-                    ~width=texture.width,
-                    ~height=texture.height,
+                    ~width=width,
+                    ~height=height,
                     ~border=0,
                     ~format,
                     ~type_=RGLConstants.unsigned_byte,
-                    ~data=Gl.Bigarray.of_array(Gl.Bigarray.Uint8, data)
+                    ~data=Gl.Bigarray.of_array(Gl.Bigarray.Uint8, intArray)
                 );
-                data
-            }
-            | None => [||]
+            | EmptyTexture => ()
             };
             let inited = {
                 texRef: texRef,
-                width: texture.width,
-                height: texture.height,
-                data: data,
+                data: texture.data,
                 update: false,
                 format: format
             };
@@ -613,18 +622,29 @@ module Texture = {
             ~target=Constants.texture_2d,
             ~texture=inited.texRef
         );
-        _texImage2D(
-            ~context,
-            ~target=Constants.texture_2d,
-            ~level=0,
-            ~internalFormat=inited.format,
-            ~width=inited.width,
-            ~height=inited.height,
-            ~border=0,
-            ~format=inited.format,
-            ~type_=RGLConstants.unsigned_byte,
-            ~data=Gl.Bigarray.of_array(Gl.Bigarray.Uint8, inited.data)
-        );
+        switch (inited.data) {
+        | ImageTexture(image) =>
+            Reasongl.Gl.texImage2DWithImage(
+                ~context,
+                ~target=Constants.texture_2d,
+                ~level=0,
+                ~image
+            );
+        | IntDataTexture(data, width, height) =>
+            _texImage2D(
+                ~context,
+                ~target=Constants.texture_2d,
+                ~level=0,
+                ~internalFormat=inited.format,
+                ~width=width,
+                ~height=height,
+                ~border=0,
+                ~format=inited.format,
+                ~type_=RGLConstants.unsigned_byte,
+                ~data=Gl.Bigarray.of_array(Gl.Bigarray.Uint8, data)
+            );
+        | EmptyTexture => ()
+        };
         inited.update = false;
     };
 };

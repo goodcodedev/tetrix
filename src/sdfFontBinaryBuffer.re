@@ -57,8 +57,8 @@ let fromBase64 = (base64) => {
             (revLookup[base64[i + 2]] lsl 6)) lor
             revLookup[base64[i + 3]]
         );
-        bin[j] = (tmp lsr 16) land 0xFF;
-        bin[j + 1] = (tmp lsr 8) land 0xFF;
+        bin[j] = (tmp asr 16) land 0xFF;
+        bin[j + 1] = (tmp asr 8) land 0xFF;
         bin[j + 2] = tmp land 0xFF;
         if (i + 4 < l) {
             loop(i + 4, j + 3)
@@ -68,15 +68,15 @@ let fromBase64 = (base64) => {
     };
     let (i, j) = loop(0, 0);
     if (placeholders == 2) {
-        let tmp = (revLookup[base64[i]] lsl 2) lor (revLookup[base64[i + 1]] lsr 4);
+        let tmp = (revLookup[base64[i]] lsl 2) lor (revLookup[base64[i + 1]] asr 4);
         bin[j] = tmp land 0xFF;
     } else if (placeholders == 1) {
         let tmp = (
             (revLookup[base64[i]] lsl 10) lor
             (revLookup[base64[i + 1]] lsl 4) lor
-            (revLookup[base64[i + 2]] lsr 2)
+            (revLookup[base64[i + 2]] asr 2)
         );
-        bin[j] = (tmp lsr 8) land 0xFF;
+        bin[j] = (tmp asr 8) land 0xFF;
         bin[j + 1] = tmp land 0xFF;
     };
     bin
@@ -97,7 +97,7 @@ let readInt32LE = (bytes, offset) => {
 };
 
 let readUInt16LE = (bytes, offset) => {
-    bytes[offset] lor (bytes[offset + 1] lsl 8)
+    bytes[offset] lor bytes[offset + 1] lsl 8
 };
 
 let readInt16LE = (bytes, offset) => {
@@ -110,9 +110,7 @@ let readInt16LE = (bytes, offset) => {
 };
 
 let readUInt8 = (bytes, offset) => {
-    let b = bytes[offset];
-    Js.log(b);
-    b
+    bytes[offset]
 };
 
 let readInt8 = (bytes, offset) => {
@@ -188,10 +186,10 @@ let utf8Slice = (bytes, start, last) => {
                 getCodePoints(i + 1, [codePoint^, ...codePoints])
             } else {
                 /* Encode to utf16 (surrogate dance) */
+                /* todo: Seems this should use the first
+                   codepoint when codepoint < 0x80 */
                 codePoint := codePoint^ - 0x10000;
-                /*let codePoint1 = codePoint^ >>> 10 land 0x3FF lor 0xD800;*/
-                /* todo: I think lsr is zero fill in ocaml? */
-                let codePoint1 = codePoint^ asr 10 land 0x3FF lor 0xD800;
+                let codePoint1 = codePoint^ lsr 10 land 0x3FF lor 0xD800;
                 let codePoint2 = 0xDC00 lor codePoint^ land 0x3FF;
                 getCodePoints(
                     i + bytesPerSequence,
@@ -203,7 +201,19 @@ let utf8Slice = (bytes, start, last) => {
     /* todo: from unicode code */
     List.fold_right((code, str) => {
         str ++ String.make(1, Char.chr(code))
-    }, getCodePoints(0, []), "")
+    }, getCodePoints(start, []), "")
+};
+
+let readStringSlice = (bytes, offset, last) => {
+    let rec stringFromCodes = (str, i) => {
+        let chr = String.make(1, Char.chr(bytes[i]));
+        if (i + 1 < last) {
+            stringFromCodes(str ++ chr, i + 1)
+        } else {
+            str ++ chr
+        }
+    };
+    stringFromCodes("", offset)
 };
 
 let readStringNT = (bytes, offset) => {
@@ -212,5 +222,7 @@ let readStringNT = (bytes, offset) => {
     while (pos^ < len && bytes[pos^] != 0x00) {
         pos := pos^ + 1;
     };
-    utf8Slice(bytes, offset, pos^)
+    /*utf8Slice(bytes, offset, pos^)*/
+    /* Todo: decode from utf8. */
+    readStringSlice(bytes, offset, pos^);
 };
