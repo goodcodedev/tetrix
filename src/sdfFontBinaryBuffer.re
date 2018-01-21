@@ -1,3 +1,10 @@
+/* Buf data could be TypedArray behind the scenes
+   (as is the case with xhr arraybuffer request)
+   Generated code should work.. but also
+   investigate ways to get bracket syntax
+   for typedarray
+   */
+
 /* https://github.com/beatgammit/base64-js/blob/master/index.js */
 let fromBase64 = (base64) => {
     let len = Array.length(base64);
@@ -32,9 +39,9 @@ let fromBase64 = (base64) => {
     revLookup[underscoreCode] = 63;
     /* There might be placeholders on the end of the string "=" */
     let equalCode = Char.code('=');
-    let placeholders = if (base64[len - 2] == int_of_char('=')) {
+    let placeholders = if (base64[len - 2] == equalCode) {
         2
-    } else if (base64[len - 1] == int_of_char('=')) {
+    } else if (base64[len - 1] == equalCode) {
         1
     } else {
         0
@@ -103,7 +110,9 @@ let readInt16LE = (bytes, offset) => {
 };
 
 let readUInt8 = (bytes, offset) => {
-    bytes[offset]
+    let b = bytes[offset];
+    Js.log(b);
+    b
 };
 
 let readInt8 = (bytes, offset) => {
@@ -182,7 +191,7 @@ let utf8Slice = (bytes, start, last) => {
                 codePoint := codePoint^ - 0x10000;
                 /*let codePoint1 = codePoint^ >>> 10 land 0x3FF lor 0xD800;*/
                 /* todo: I think lsr is zero fill in ocaml? */
-                let codePoint1 = codePoint^ lsr 10 land 0x3FF lor 0xD800;
+                let codePoint1 = codePoint^ asr 10 land 0x3FF lor 0xD800;
                 let codePoint2 = 0xDC00 lor codePoint^ land 0x3FF;
                 getCodePoints(
                     i + bytesPerSequence,

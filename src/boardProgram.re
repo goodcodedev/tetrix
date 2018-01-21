@@ -131,6 +131,7 @@ let currElVertices = VertexBuffer.make(
 let currElIndexes = IndexBuffer.make(IndexBuffer.makeQuadsData(1), DynamicDraw);
 
 let init = (canvas : Gpu.Canvas.t, tiles) => {
+    /*FontDraw.loadFont("arial");*/
     let context = canvas.context;
     /* Background */
     let background = Background.init(canvas);
