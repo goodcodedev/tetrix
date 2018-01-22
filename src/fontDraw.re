@@ -1,4 +1,4 @@
-let vertexSource = {|#version 300 es
+let vertexSource = {|
     precision mediump float;
     attribute vec2 position;
     attribute vec2 uv;
@@ -13,8 +13,55 @@ let vertexSource = {|#version 300 es
         gl_Position = vec4((pos - vec2(40.0, 0.0)) / 50., 0.0, 1.0);
     }
 |};
+let fragmentSource = {|
+    #ifdef GL_OES_standard_derivatives
+    #extension GL_OES_standard_derivatives : enable
+    #endif
+    precision mediump float;
+    uniform sampler2D map;
+    varying vec2 vUv;
 
-let fragmentSource = {|#version 300 es
+    float aastep(float value) {
+      #ifdef GL_OES_standard_derivatives
+        float afwidth = length(vec2(dFdx(value), dFdy(value))) * 0.70710678118654757;
+      #else
+        float afwidth = (1.0 / 32.0) * (1.4142135623730951 / (2.0 * gl_FragCoord.w));
+      #endif
+      return smoothstep(0.5 - afwidth, 0.5 + afwidth, value);
+    }
+
+    void main() {
+        float opacity = 0.5;
+        vec3 color = vec3(0.2, 0.5, 0.8);
+        float discardLimit = 0.0001;
+        vec4 texColor = 1.0 - texture2D(map, vUv);
+        float alpha = aastep(texColor.x);
+        //color = texColor.xyz;
+        float colorCoef = 1.0 - alpha;
+        color = vec3(colorCoef, colorCoef, colorCoef);
+        gl_FragColor = vec4(color, opacity * colorCoef);
+        if (alpha < discardLimit) {
+            discard;
+        }
+    }
+|};
+let msdfVertexSource = String.trim({|#version 300 es
+    precision mediump float;
+    attribute vec2 position;
+    attribute vec2 uv;
+    varying vec2 vUv;
+    
+    //uniform mat3 model;
+    
+    void main() {
+        vUv = uv;
+        //vec2 pos = vec3(model * vec3(position, 1.0)).xy;
+        vec2 pos = position;
+        gl_Position = vec4((pos - vec2(40.0, 0.0)) / 50., 0.0, 1.0);
+    }
+|});
+
+let msdfFragmentSource = String.trim({|#version 300 es
     #ifdef GL_OES_standard_derivatives
     #extension GL_OES_standard_derivatives : enable
     #endif
@@ -34,7 +81,7 @@ let fragmentSource = {|#version 300 es
         float alpha = clamp(sigDist/fwidth(sigDist) + 0.5, 0.0, 1.0);
         gl_FragColor = vec4(color.xyz, alpha * opacity);
     }
-|};
+|});
 
 open Gpu;
 
@@ -61,7 +108,7 @@ let init = (canvas : Gpu.Canvas.t, vertices, image) => {
         IndexBuffer.makeQuadsData(Array.length(vertices) / 16),
         StaticDraw
     );
-    let imageTexture = Texture.make(Texture.ImageTexture(image), Texture.RGBA);
+    let imageTexture = Texture.make(Texture.ImageTexture(image), Texture.RGBA, Texture.LinearFilter);
     /* Draw to framebuffer */
     let drawState = DrawState.init(
         context,
@@ -118,10 +165,10 @@ let updateVertices = (self, vertices) => {
 };
 
 let loadFont = (font, canvas) => {
-    FontFiles.request(font, (fontFiles) => {
+    FontFiles.request(font, "sheet0", (fontFiles) => {
         let font = SdfFont.BMFont.parse(fontFiles.bin);
         let layout = SdfFont.TextLayout.make(
-            "abc",
+            "gde",
             font,
             500,
             ()

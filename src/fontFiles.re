@@ -3,12 +3,12 @@ type t = {
     image: Reasongl.Gl.imageT
 };
 
-let request = (fontName, callback) => {
+let request = (fontName, sheet, callback) => {
     open AjaxLoader;
     loadFiles(
         [
-            BinaryAsset("fonts/" ++ fontName ++ "-sdf.bin"),
-            ImageAsset("fonts/" ++ fontName ++ "-sdf.png")
+            BinaryAsset("fonts/" ++ fontName ++ ".bin"),
+            ImageAsset("fonts/" ++ fontName ++ "_" ++ sheet ++ ".png")
         ],
         (results) => {
             switch (results[0], results[1]) {

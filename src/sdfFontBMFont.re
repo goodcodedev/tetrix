@@ -259,6 +259,19 @@ let parse = (buf) : bmFont => {
             chars: chars,
             charsById: charsById
         }
+        | (None,
+           Some(info),
+           Some(common),
+           Some(pages),
+           Some(chars),
+           Some(charsById)) => {
+            kernings: [],
+            info: info,
+            common: common,
+            pages: pages,
+            chars: chars,
+            charsById: charsById
+        }
         | _ => failwith("Could not parse font");
     }
 };

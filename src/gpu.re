@@ -472,6 +472,10 @@ module Texture = {
       | IntDataTexture(array(int), int, int)
       | EmptyTexture;
 
+    type filter =
+      | LinearFilter
+      | NearestFilter;
+
     type inited = {
         texRef: Gl.textureT,
         mutable data: data,
@@ -482,14 +486,16 @@ module Texture = {
     type t = {
         data: data,
         format: format,
+        filter: filter,
         mutable inited: option(inited)
     };
 
-    let make = (data, format) => {
+    let make = (data, format, filter) => {
         {
             data: data,
             format: format,
-            inited: None
+            inited: None,
+            filter
         }
     };
 
@@ -526,6 +532,10 @@ module Texture = {
         | Some(inited) => inited
         | None => {
             let texRef = Gl.createTexture(~context);
+            let filterConst = switch (texture.filter) {
+            | LinearFilter => Constants.linear
+            | NearestFilter => Constants.nearest
+            };
             Gl.bindTexture(
                 ~context,
                 ~target=Constants.texture_2d,
@@ -547,13 +557,13 @@ module Texture = {
                 ~context,
                 ~target=Constants.texture_2d,
                 ~pname=Constants.texture_min_filter,
-                ~param=Constants.nearest
+                ~param=filterConst
             );
             Gl.texParameteri(
                 ~context,
                 ~target=Constants.texture_2d,
                 ~pname=Constants.texture_mag_filter,
-                ~param=Constants.nearest
+                ~param=filterConst
             );
             let format = switch (texture.format) {
             | RGBA => Constants.rgba

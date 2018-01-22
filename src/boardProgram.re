@@ -131,13 +131,13 @@ let currElVertices = VertexBuffer.make(
 let currElIndexes = IndexBuffer.make(IndexBuffer.makeQuadsData(1), DynamicDraw);
 
 let init = (canvas : Gpu.Canvas.t, tiles) => {
-    /*FontDraw.loadFont("arial", canvas);*/
+    FontDraw.loadFont("MasterOfComics", canvas);
     let context = canvas.context;
     /* Background */
     let background = Background.init(canvas);
     let boardCoords = Coords.getBoardCoords(canvas);
     /* Sdf tiles */
-    let sdfTilesTex = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA);
+    let sdfTilesTex = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA, Texture.LinearFilter);
     let boardQuad = VertexBuffer.makeQuad(());
     let boardIndexes = IndexBuffer.makeQuad();
     let fbuffer = FrameBuffer.make(1024, 1024);
@@ -158,7 +158,7 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
     /* Tile beam program */
     let tileBeam = TileBeam.init(canvas);
     /* Tiles texture */
-    let tilesTexture = Texture.make(IntDataTexture(tiles, 12, 26), Texture.Luminance);
+    let tilesTexture = Texture.make(IntDataTexture(tiles, 12, 26), Texture.Luminance, Texture.NearestFilter);
     /* Tiles shadow */
     let tileShadows = TileShadows.init(canvas, boardCoords, tilesTexture);
     /* Grid */

@@ -30,7 +30,7 @@ type t = {
 /* Draws a "beams" to a framebuffer given coords and a color */
 let init = (canvas : Gpu.Canvas.t) => {
     let context = canvas.context;
-    let beams = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA);
+    let beams = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA, Texture.NearestFilter);
     let fbuffer = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
     let vertexQuad = VertexBuffer.makeQuad(());
     let indexQuad = IndexBuffer.makeQuad();

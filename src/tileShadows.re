@@ -118,7 +118,7 @@ type t = {
 let init = (canvas : Gpu.Canvas.t, boardCoords : Coords.boardCoords, tilesTex) => {
     let context = canvas.context;
     /* First draw unblurred */
-    let unblurred = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA);
+    let unblurred = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA, Texture.LinearFilter);
     let fbuffer1 = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
     let vertexQuad = VertexBuffer.makeQuad(());
     let indexQuad = IndexBuffer.makeQuad();
@@ -141,9 +141,9 @@ let init = (canvas : Gpu.Canvas.t, boardCoords : Coords.boardCoords, tilesTex) =
         |]
     );
     /* Blur draw */
-    let blurTex1 = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA);
+    let blurTex1 = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA, Texture.LinearFilter);
     let fbuffer2 = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
-    let blurTex2 = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA);
+    let blurTex2 = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA, Texture.LinearFilter);
     let fbuffer3 = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
     let blurProgram = Program.make(
         Shader.make(blurVertex),
