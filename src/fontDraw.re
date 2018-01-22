@@ -2,17 +2,19 @@ let vertexSource = {|
     precision mediump float;
     attribute vec2 position;
     attribute vec2 uv;
+
+    uniform mat3 model;
+
     varying vec2 vUv;
-    
-    //uniform mat3 model;
     
     void main() {
         vUv = uv;
-        //vec2 pos = vec3(model * vec3(position, 1.0)).xy;
-        vec2 pos = position;
-        gl_Position = vec4((pos - vec2(40.0, 0.0)) / 50., 0.0, 1.0);
+        vec2 pos = vec3(vec3(position, 0.0) * model).xy;
+        //pos = (position - vec2(80., 0)) / 80.;
+        gl_Position = vec4(pos, 0.0, 1.0);
     }
 |};
+/* https://github.com/libgdx/libgdx/wiki/Distance-field-fonts */
 let fragmentSource = {|
     #ifdef GL_OES_standard_derivatives
     #extension GL_OES_standard_derivatives : enable
@@ -32,14 +34,14 @@ let fragmentSource = {|
 
     void main() {
         float opacity = 0.5;
-        vec3 color = vec3(0.2, 0.5, 0.8);
+        vec3 color = vec3(0.5, 0.7, 0.8);
         float discardLimit = 0.0001;
         vec4 texColor = 1.0 - texture2D(map, vUv);
         float alpha = aastep(texColor.x);
         //color = texColor.xyz;
         float colorCoef = 1.0 - alpha;
-        color = vec3(colorCoef, colorCoef, colorCoef);
-        gl_FragColor = vec4(color, opacity * colorCoef);
+        color = color * alpha;
+        gl_FragColor = vec4(color, opacity * alpha);
         if (alpha < discardLimit) {
             discard;
         }
@@ -88,14 +90,19 @@ open Gpu;
 type t = {
     canvas: Canvas.t,
     drawState: Gpu.DrawState.t,
-    fbuffer: Gpu.FrameBuffer.inited
+    fbuffer: Gpu.FrameBuffer.inited,
+    fbTexture: Gpu.Texture.t,
+    model: Coords.Mat3.t,
+    mutable hasTexture: bool,
+    bgDraw: Gpu.DrawState.t,
 };
 
 
 /* Draws a color given quad coords and a color */
-let init = (canvas : Gpu.Canvas.t, vertices, image) => {
+let init = (canvas : Gpu.Canvas.t, vertices, image, model, bgDraw) => {
     let context = canvas.context;
     let fbuffer = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
+    let fbTexture = Texture.make(Texture.EmptyTexture, Texture.RGBA, Texture.LinearFilter);
     let vertexBuffer = VertexBuffer.make(
         vertices,
         [|
@@ -115,9 +122,11 @@ let init = (canvas : Gpu.Canvas.t, vertices, image) => {
         Program.make(
             Shader.make(vertexSource),
             Shader.make(fragmentSource),
-            [||]
+            [|
+                Uniform.make("model", GlType.Mat3f)
+            |]
         ),
-        [||],
+        [|Uniform.UniformMat3f(model)|],
         vertexBuffer,
         indexBuffer,
         [|
@@ -127,26 +136,40 @@ let init = (canvas : Gpu.Canvas.t, vertices, image) => {
     {
         canvas,
         drawState,
-        fbuffer
+        fbuffer,
+        fbTexture,
+        model,
+        hasTexture: false,
+        bgDraw
     }
 };
 
-let drawToTexture = (self, texture, color, ~clearColor=?, ()) => {
-    FrameBuffer.bindTexture(self.fbuffer, self.canvas.context, texture);
+/*
+    It would be nice to pack several renders into the same texture,
+    and associate positions with individual text draw instances.
+*/
+let drawToTexture = (self) => {
+    FrameBuffer.bindTexture(self.fbuffer, self.canvas.context, self.fbTexture);
     Canvas.setFramebuffer(self.canvas, self.fbuffer);
-    switch (clearColor) {
-    | Some(color) =>
-        Canvas.clear(self.canvas, color[0], color[1], color[2]);
-    | None => ()
-    };
-    self.drawState.uniforms[0] = Uniform.UniformVec4f(color);
+    Canvas.clear(self.canvas, 0.0, 0.0, 0.0);
     DrawState.draw(self.drawState, self.canvas);
     Canvas.clearFramebuffer(self.canvas);
+    self.hasTexture = true;
+};
+
+let getTexture = (self) => {
+    if (!self.hasTexture) {
+        drawToTexture(self);
+    };
+    self.fbTexture
 };
 
 let draw = (self) => {
+    let context = self.canvas.context;
+    Gl.enable(~context, Constants.blend);
+    Gl.blendFunc(~context, Constants.src_alpha, Constants.one_minus_src_alpha);
     DrawState.draw(self.drawState, self.canvas);
-    [%debugger];
+    Gl.disable(~context, Constants.blend);
 };
 
 /* Vertices assumed to be quads. Renders to framebuffer,
@@ -164,19 +187,21 @@ let updateVertices = (self, vertices) => {
     };
 };
 
-let loadFont = (font, canvas) => {
+let loadFont = (font, canvas, bgDraw) => {
     FontFiles.request(font, "sheet0", (fontFiles) => {
         let font = SdfFont.BMFont.parse(fontFiles.bin);
         let layout = SdfFont.TextLayout.make(
-            "gde",
+            "Vimtris",
             font,
             500,
             ()
         );
         let glyphs = SdfFont.TextLayout.update(layout);
         let vd = SdfFont.TextLayout.vertexData(layout, glyphs);
-        Js.log(vd);
-        let fontDraw = init(canvas, vd, fontFiles.image);
+        let scale = Coords.Mat3.scaleMat(1.0  /. 80.0, 1.0  /. -80.0);
+        let vpTrans = Coords.Mat3.transMat(-1.0, 0.0);
+        let model = Coords.Mat3.matmul(scale, vpTrans);
+        let fontDraw = init(canvas, vd, fontFiles.image, model, bgDraw);
         draw(fontDraw);
     });
 };

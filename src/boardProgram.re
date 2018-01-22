@@ -131,10 +131,10 @@ let currElVertices = VertexBuffer.make(
 let currElIndexes = IndexBuffer.make(IndexBuffer.makeQuadsData(1), DynamicDraw);
 
 let init = (canvas : Gpu.Canvas.t, tiles) => {
-    FontDraw.loadFont("MasterOfComics", canvas);
     let context = canvas.context;
     /* Background */
     let background = Background.init(canvas);
+    FontDraw.loadFont("MasterOfComics", canvas, background.drawState);
     let boardCoords = Coords.getBoardCoords(canvas);
     /* Sdf tiles */
     let sdfTilesTex = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA, Texture.LinearFilter);
