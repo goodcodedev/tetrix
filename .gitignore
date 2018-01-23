@@ -4,3 +4,4 @@ node_modules
 *.cmo
 *.cmx
 *.o
+.DS_Store
