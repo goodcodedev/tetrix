@@ -7,7 +7,10 @@ type fragCoords =
 type t = {
     sdfDist: string,
     fragCoords: fragCoords,
-    model: option(Coords.Mat3.t)
+    model: option(Coords.Mat3.t),
+    color: Color.t,
+    opacity: option(float),
+    alphaLimit: option(float)
 };
 
 type inited = {
@@ -58,6 +61,14 @@ let makeFragmentSource = (self) => {
     | (_, ZeroToOne) => "(vPosition + vec2(1.0, -1.0)) * vec2(0.5, -0.5)"
     | (None, ByModel) => failwith("ByModel fragCoords requested, but no model provided")
     };
+    let sf = string_of_float;
+    let glColor = "vec3(" ++ sf(self.color.r) ++ "," ++ sf(self.color.g) ++ "," ++ sf(self.color.b) ++ ")";
+    let glAlpha = switch(self.alphaLimit, self.opacity) {
+    | (Some(alphaLimit), Some(opacity)) => "(pixelEye.z - dist < " ++ sf(alphaLimit) ++ ") ? 0.0 : " ++ sf(opacity)
+    | (Some(alphaLimit), None) => "(pixelEye.z - dist < " ++ sf(alphaLimit) ++ ") ? 0.0 : 1.0"
+    | (None, Some(opacity)) => sf(opacity)
+    | (None, None) => "1.0"
+    };
     let source = {|
         precision mediump float;
         varying vec2 vPosition;
@@ -96,7 +107,7 @@ let makeFragmentSource = (self) => {
             return end;
         }
 
-        vec3 lighting(vec3 surfacePoint) {
+        float lighting(vec3 surfacePoint) {
             vec3 N = estimateNormal(surfacePoint);
             vec3 diffuseDir = vec3(0.4, -0.3, 0.3);
             float NdotD = max(dot(diffuseDir, N), 0.0);
@@ -104,11 +115,11 @@ let makeFragmentSource = (self) => {
             vec3 pointVec = pointPos - surfacePoint;
             vec3 pointDir = normalize(pointVec);
             float NdotP = max(dot(pointDir, N), 0.0);
-            float ambient = 0.1;
+            float ambient = 0.0;
             float c = NdotD * 0.1 + ambient + NdotP * 0.6 * max(0.0, 1.0 - length(pointVec));
             //c = NdotD;
             //c = NdotP;
-            return vec3(c, c, c);
+            return c;
         }
         
         void main() {
@@ -119,7 +130,11 @@ let makeFragmentSource = (self) => {
             float dist = shortestDistance(pixelEye, vec3(0.0, 0.0, -1.0));
             // All points should hit a shape in this shader
             vec3 p = pixelEye + dist * vec3(0.0, 0.0, -1.0);
-            gl_FragColor = vec4(lighting(p), 1.0);
+            vec3 color = |} ++ glColor  ++ {|;
+            float light = lighting(p);
+            color = mix(mix(color, vec3(1.0, 1.0, 1.0), max(light - 0.5, 0.0)) * 0.9, vec3(0.0, 0.0, 0.0), max(0.5 + light * -1.0, 0.0) * 1.5);
+            float alpha = |} ++ glAlpha  ++ {|;
+            gl_FragColor = vec4(color, alpha);
         }
     |};
     source
@@ -152,15 +167,26 @@ let makeDrawState = (self, canvas : Canvas.t) => {
     )
 };
 
-let draw = (self) => {
-    DrawState.draw(self.drawState, self.canvas);
+let draw = (self : inited) => {
+    switch (self.self.opacity, self.self.alphaLimit) {
+    | (None, None) => DrawState.draw(self.drawState, self.canvas)
+    | _ =>
+        let context = self.canvas.context;
+        Gl.enable(~context, Constants.blend);
+        Gl.blendFunc(~context, Constants.src_alpha, Constants.one_minus_src_alpha);
+        DrawState.draw(self.drawState, self.canvas);
+        Gl.disable(~context, Constants.blend);
+    };
 };
 
-let make = (sdfDist, fragCoords, model) => {
+let make = (sdfDist, fragCoords, model, ~color=Color.fromFloats(0.6, 0.6, 0.6), ~opacity=?, ~alphaLimit=?, ()) => {
     {
         sdfDist,
         fragCoords,
-        model
+        model,
+        color,
+        opacity,
+        alphaLimit
     }
 };
 

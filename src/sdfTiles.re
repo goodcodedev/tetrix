@@ -37,7 +37,7 @@ type t = {
 };
 
 let make = (canvas: Canvas.t) => {
-    let sdfProgram = SdfProgram.init(SdfProgram.make(sdfDist, SdfProgram.ZeroToOne, None), canvas);
+    let sdfProgram = SdfProgram.init(SdfProgram.make(sdfDist, SdfProgram.ZeroToOne, None, ()), canvas);
     let texture = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA, Texture.LinearFilter);
     let fbuffer = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
     {
