@@ -114,12 +114,11 @@ type t = {
     colorDraw: ColorDraw.t,
     tileBeam: TileBeam.t,
     canvas: Gpu.Canvas.t,
-    frameBuffer: Gpu.FrameBuffer.t,
     tileShadows: TileShadows.t,
     blinkRows: BlinkRows.t,
     rowsDone: int,
     background: Background.t,
-    uiBox: UiBox.t,
+    uiBox: SdfProgram.inited,
     mutable doneInitDraw: bool
 };
 
@@ -138,25 +137,12 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
     let background = Background.init(canvas);
     FontDraw.loadFont("MasterOfComics", canvas, background.drawState);
     let boardCoords = Coords.getBoardCoords(canvas);
-    /* Sdf tiles */
-    let sdfTilesTex = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA, Texture.LinearFilter);
     let boardQuad = VertexBuffer.makeQuad(());
     let boardIndexes = IndexBuffer.makeQuad();
-    let fbuffer = FrameBuffer.make(1024, 1024);
-    let fbufferInit = FrameBuffer.init(fbuffer, canvas.context);
-    /* Draw to framebuffer */
-    let sdfTilesDrawState = DrawState.init(
-        context,
-        SdfTiles.createProgram(),
-        [||],
-        boardQuad,
-        boardIndexes,
-        [||]
-    );
-    FrameBuffer.bindTexture(fbufferInit, canvas.context, sdfTilesTex);
-    Canvas.setFramebuffer(canvas, fbufferInit);
-    DrawState.draw(sdfTilesDrawState, canvas);
-    Canvas.clearFramebuffer(canvas);
+    /* Sdf tiles */
+    let sdfTiles = SdfTiles.make(canvas);
+    SdfTiles.drawToTexture(sdfTiles);
+    SdfTiles.createCanvas();
     /* Tile beam program */
     let tileBeam = TileBeam.init(canvas);
     /* Tiles texture */
@@ -189,7 +175,7 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
                 "tiles",
                 tilesTexture
             ),
-            ProgramTexture.make("sdfTiles", sdfTilesTex)
+            ProgramTexture.make("sdfTiles", sdfTiles.texture)
         |]
     );
     let currElDraw = DrawState.init(
@@ -211,16 +197,17 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
         currElVertices,
         currElIndexes,
         [|
-            ProgramTexture.make("sdfTiles", sdfTilesTex)
+            ProgramTexture.make("sdfTiles", sdfTiles.texture)
         |]
     );
     let colorDraw = ColorDraw.init(canvas, boardCoords);
 
-    let boxTrans = Coords.Mat3.transMat(0., 0.0);
-    let boxScale = Coords.Mat3.scaleMat(0.8, 0.4);
-    let boxModel = Coords.Mat3.matmul(boxScale, boxTrans);
-    Js.log(boxModel);
-    let uiBox = UiBox.make(canvas, boxModel);
+    module M3 = Coords.Mat3;
+    let boxTrans = M3.trans(0.6, 0.0);
+    let boxScale = M3.scale(0.13, 0.2);
+    let boxModel = M3.matmul(boxTrans, boxScale);
+    /*let uiBox = UiBox.make(canvas, boxModel);*/
+    let uiBox = UiBox.makeSdfProgram(canvas, boxModel);
     let self = {
         tiles,
         currElTiles: [||],
@@ -234,7 +221,6 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
         tileBeam,
         canvas,
         updateTiles: false,
-        frameBuffer: fbuffer,
         tileShadows,
         blinkRows: BlinkRows.make(),
         rowsDone: 0,
@@ -247,7 +233,7 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
 
 let drawBackground = (self) => {
     Background.draw(self.background);
-    UiBox.draw(self.uiBox);
+    SdfProgram.draw(self.uiBox);
 };
 
 let initDraw = (self) => {

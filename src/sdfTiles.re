@@ -1,14 +1,4 @@
-let vertexSource = {|
-    precision mediump float;
-    attribute vec2 position;
-    varying vec2 vPosition;
-    void main() {
-        vPosition = position;
-        gl_Position = vec4(position, 0.0, 1.0);
-    }
-|};
-
-let fragmentSource = SdfShader.createFragmentSource({|
+let sdfDist = {|
     point.x = mod(point.x, 1.0 / 12.0) - 1.0 / 24.0;
     point.y = mod(point.y, 1.0 / 26.0) - 1.0 / 52.0;
     float boxWidth = 1.0 / 24.0;
@@ -35,43 +25,38 @@ let fragmentSource = SdfShader.createFragmentSource({|
     // Intersection
     //return o;
     return max(o, box);
-|});
-
-type t = {
-    drawState: Gpu.DrawState.t,
-    canvas: Gpu.Canvas.t
-};
+|};
 
 open Gpu;
 
-let createProgram = () => {
-    Program.make(
-        Shader.make(vertexSource),
-        Shader.make(fragmentSource),
-        [||]
-    )
+type t = {
+    sdfProgram: SdfProgram.inited,
+    texture: Texture.t,
+    fbuffer: FrameBuffer.inited,
+    canvas: Canvas.t
 };
 
-let createDrawState = (canvas : Canvas.t) => {
-    DrawState.init(
-        canvas.context,
-        createProgram(),
-        [||],
-        VertexBuffer.makeQuad(()),
-        IndexBuffer.makeQuad(),
-        [||]
-    )
-};
-let createCanvas = () => {
-    let canvas = Canvas.init(240, 580);
-    let drawState = createDrawState(canvas);
-    DrawState.draw(drawState, canvas);
+let make = (canvas: Canvas.t) => {
+    let sdfProgram = SdfProgram.init(SdfProgram.make(sdfDist, SdfProgram.ZeroToOne, None), canvas);
+    let texture = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA, Texture.LinearFilter);
+    let fbuffer = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
     {
-        drawState: drawState,
-        canvas: canvas
+        sdfProgram,
+        texture,
+        fbuffer,
+        canvas
     }
 };
 
-let draw = (bp) => {
-    DrawState.draw(bp.drawState, bp.canvas);
+let drawToTexture = (self) => {
+    FrameBuffer.bindTexture(self.fbuffer, self.canvas.context, self.texture);
+    Canvas.setFramebuffer(self.canvas, self.fbuffer);
+    SdfProgram.draw(self.sdfProgram);
+    Canvas.clearFramebuffer(self.canvas);
+};
+
+let createCanvas = () => {
+    let canvas = Canvas.init(240, 580);
+    let p = make(canvas);
+    SdfProgram.draw(p.sdfProgram);
 };

@@ -197,8 +197,8 @@ let loadFont = (font, canvas, bgDraw) => {
         );
         let glyphs = SdfFont.TextLayout.update(layout);
         let vd = SdfFont.TextLayout.vertexData(layout, glyphs);
-        let scale = Coords.Mat3.scaleMat(1.0  /. 80.0, 1.0  /. -80.0);
-        let vpTrans = Coords.Mat3.transMat(-1.0, 0.0);
+        let scale = Coords.Mat3.scale(1.0  /. 80.0, 1.0  /. -80.0);
+        let vpTrans = Coords.Mat3.trans(-1.0, 0.0);
         let model = Coords.Mat3.matmul(scale, vpTrans);
         let fontDraw = init(canvas, vd, fontFiles.image, model, bgDraw);
         draw(fontDraw);

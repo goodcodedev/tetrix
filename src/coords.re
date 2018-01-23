@@ -16,7 +16,7 @@ module Mat3 {
             mat1[6] *. mat2[2] +. mat1[7] *. mat2[5] +. mat1[8] *. mat2[8]
         |]
     };
-    let scaleMat = (scaleX, scaleY) : t => {
+    let scale = (scaleX, scaleY) : t => {
         [|
             scaleX, 0., 0.,
             0., scaleY, 0.,
@@ -24,7 +24,7 @@ module Mat3 {
         |]
     };
 
-    let transMat = (translateX, translateY) : t => {
+    let trans = (translateX, translateY) : t => {
         [|
             1., 0., translateX,
             0., 1., translateY,
@@ -32,7 +32,7 @@ module Mat3 {
         |]
     };
 
-    let idMat = () : t => {
+    let id = () : t => {
         [|
             1., 0., 0.,
             0., 1., 0.,
@@ -69,7 +69,7 @@ module Mat4 {
             mat1[12] *. mat2[3] +. mat1[13] *. mat2[5] +. mat1[14] *. mat2[11] +. mat1[15] *. mat2[15]
         |]
     };
-    let scaleMat = (scaleX, scaleY, scaleZ) : t => {
+    let scale = (scaleX, scaleY, scaleZ) : t => {
         [|
             scaleX, 0., 0., 0.,
             0., scaleY, 0., 0.,
@@ -78,7 +78,7 @@ module Mat4 {
         |]
     };
 
-    let transMat = (translateX, translateY, translateZ) : t => {
+    let trans = (translateX, translateY, translateZ) : t => {
         [|
             1., 0., 0., translateX,
             0., 1., 0., translateY,
@@ -87,7 +87,7 @@ module Mat4 {
         |]
     };
 
-    let idMat = () : t => {
+    let id = () : t => {
         [|
             1., 0., 0., 0.,
             0., 1., 0., 0.,
@@ -134,8 +134,8 @@ let getBoardCoords = (canvas : Gpu.Canvas.t) => {
     let glY = 0.0;
     let scaleX = boardWidth /. vpWidth;
     let scaleY = boardHeight /. vpHeight;
-    let scaleMat = Mat3.scaleMat(scaleX, scaleY);
-    let transMat = Mat3.transMat(glX, glY);
+    let scaleMat = Mat3.scale(scaleX, scaleY);
+    let transMat = Mat3.trans(glX, glY);
     let mat = Mat3.matmul(transMat, scaleMat);
     {
         pixelWidth: boardWidth,
