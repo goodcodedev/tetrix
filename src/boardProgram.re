@@ -5,7 +5,7 @@ let vertexSource = {|
     varying vec2 vPosition;
     void main() {
         vPosition = position;
-        vec3 transformed = vec3(position, 0.0) * mat;
+        vec3 transformed = vec3(position, 1.0) * mat;
         gl_Position = vec4(transformed.xy, 0.0, 1.0);
     }
 |};
@@ -50,7 +50,7 @@ let currElVertex = {|
     uniform mat3 mat;
     void main() {
         vPosition = position + translation;
-        vec3 transformed = vec3(vPosition, 0.0) * mat;
+        vec3 transformed = vec3(vPosition, 1.0) * mat;
         gl_Position = vec4(transformed.xy, 0.0, 1.0);
     }
 |};
@@ -118,7 +118,9 @@ type t = {
     tileShadows: TileShadows.t,
     blinkRows: BlinkRows.t,
     rowsDone: int,
-    background: Background.t
+    background: Background.t,
+    uiBox: UiBox.t,
+    mutable doneInitDraw: bool
 };
 
 open Gpu;
@@ -213,8 +215,13 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
         |]
     );
     let colorDraw = ColorDraw.init(canvas, boardCoords);
-    Background.draw(background);
-    {
+
+    let boxTrans = Coords.Mat3.transMat(0., 0.0);
+    let boxScale = Coords.Mat3.scaleMat(0.8, 0.4);
+    let boxModel = Coords.Mat3.matmul(boxScale, boxTrans);
+    Js.log(boxModel);
+    let uiBox = UiBox.make(canvas, boxModel);
+    let self = {
         tiles,
         currElTiles: [||],
         updateCurrEl: false,
@@ -231,8 +238,20 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
         tileShadows,
         blinkRows: BlinkRows.make(),
         rowsDone: 0,
-        background
-    }
+        background,
+        uiBox,
+        doneInitDraw: false
+    };
+    self
+};
+
+let drawBackground = (self) => {
+    Background.draw(self.background);
+    UiBox.draw(self.uiBox);
+};
+
+let initDraw = (self) => {
+    drawBackground(self);
 };
 
 let onResize = (self) => {
@@ -250,11 +269,14 @@ let onResize = (self) => {
     self.colorDraw.drawState.uniforms[1] = matUniform;
     self.gridDraw.uniforms[3] = screenUniform;
     self.gridDraw.uniforms[4] = matUniform;
-    Background.draw(self.background);
+    drawBackground(self);
 };
 
 let drawScene = (self) => {
     let context = self.canvas.context;
+    if (!self.doneInitDraw) {
+        initDraw(self);
+    };
     /*Canvas.clear(self.canvas, 0.0, 0.0, 0.0);*/
     DrawState.draw(self.gridDraw, self.canvas);
     Gl.enable(~context, Constants.blend);

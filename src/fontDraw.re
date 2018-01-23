@@ -9,8 +9,7 @@ let vertexSource = {|
     
     void main() {
         vUv = uv;
-        vec2 pos = vec3(vec3(position, 0.0) * model).xy;
-        //pos = (position - vec2(80., 0)) / 80.;
+        vec2 pos = vec3(vec3(position, 1.0) * model).xy;
         gl_Position = vec4(pos, 0.0, 1.0);
     }
 |};
