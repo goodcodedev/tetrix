@@ -26,12 +26,10 @@ type t = {
     canvas: Canvas.t,
     drawState: Gpu.DrawState.t
 };
-/* Draws a color given quad coords and a color */
 let init = (canvas : Gpu.Canvas.t) => {
     let context = canvas.context;
     let vertexQuad = VertexBuffer.makeQuad(());
     let indexQuad = IndexBuffer.makeQuad();
-    /* Draw to framebuffer */
     let drawState = DrawState.init(
         context,
         Program.make(
@@ -52,4 +50,27 @@ let init = (canvas : Gpu.Canvas.t) => {
 
 let draw = (self) => {
     DrawState.draw(self.drawState, self.canvas);
+};
+
+let makeItem = (canvas : Canvas.t) => {
+    let context = canvas.context;
+    let vertexQuad = VertexBuffer.makeQuad(());
+    let indexQuad = IndexBuffer.makeQuad();
+    let drawState = DrawState.init(
+        context,
+        Program.make(
+            Shader.make(vertexSource),
+            Shader.make(fragmentSource),
+            [||]
+        ),
+        [||],
+        vertexQuad,
+        indexQuad,
+        [||]
+    );
+    Scene.makeItem(
+        (state, flags) => DrawState.draw(drawState, canvas),
+        UpdateFlags.([Frame]),
+        []
+    )
 };

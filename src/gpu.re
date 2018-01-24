@@ -821,7 +821,6 @@ module Canvas = {
                 userState := draw(userState^, canvas);
             },
             ~windowResize = () => {
-
                 switch (resize) {
                 | Some(resize) => resize(userState^)
                 | None => ()
