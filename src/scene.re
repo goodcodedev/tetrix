@@ -1,26 +1,90 @@
+type texture =
+  | TextureItem(Gpu.Texture.t)
+  | TextureRef(string);
+
+type vertices =
+  | VerticesItem(Gpu.VertexBuffer.t)
+  | VerticesRef(string);
+
+type indices =
+  | IndicesItem(Gpu.IndexBuffer.t)
+  | IndicesRef(string);
+
+type uniform =
+  | UniformItem(Gpu.Uniform.t)
+  | UniformRef(string);
+
+type uniformVal =
+  | UniformValItem(Gpu.Uniform.uniformValue)
+  | UniformValRef(string);
+
 /* user defined state and update flags */
 type t('state, 'flags) = {
     state: 'state,
-    root: item('state, 'flags),
-    updateLists: Hashtbl.t(list('flags), list(item('state, 'flags)))
+    root: node('state, 'flags),
+    updateLists: Hashtbl.t(list('flags), list(node('state, 'flags)))
 }
-and item('state, 'flags) = {
+and node('state, 'flags) = {
     update: ('state, list('flags)) => unit,
     updateOn: list('flags),
     width: float,
     height: float,
-    children: list(item('state, 'flags))
+    deps: list(node('state, 'flags)),
+    children: list(node('state, 'flags)),
+    vertShader: Gpu.Shader.t,
+    fragShader: Gpu.Shader.t,
+    textures: Hashtbl.t(string, texture),
+    vertices: Hashtbl.t(string, vertices),
+    indices: Hashtbl.t(string, indices),
+    uniforms: Hashtbl.t(string, uniform),
+    uniformVals: Hashtbl.t(string, uniformVal),
+    mutable parent: option(node('state, 'flags))
 };
 
-let makeItem = (update, updateOn, children, ~width=1.0, ~height=1.0, ()) => {
+let makeItem = (
+    update,
+    updateOn,
+    children,
+    ~vertShader,
+    ~fragShader,
+    ~textures=[],
+    ~vertices=[],
+    ~indices=[],
+    ~uniforms=[],
+    ~uniformVals=[],
+    ~width=1.0,
+    ~height=1.0,
+    ()
+    ) => {
+        let listToTbl = (list) => {
+            let listLen = List.length(list);
+            let tbl = Hashtbl.create((listLen > 0) ? listLen : 1);
+            List.iter(((key, item)) => Hashtbl.add(tbl, key, item), list);
+            tbl
+        };
+        let textures = listToTbl(textures);
+        let vertices = listToTbl(vertices);
+        let indices = listToTbl(indices);
+        let uniforms = listToTbl(uniforms);
+        let uniformVals = listToTbl(uniformVals);
     {
         update,
         updateOn,
         width,
         height,
-        children
+        children,
+        deps: [],
+        vertShader,
+        fragShader,
+        textures,
+        vertices,
+        indices,
+        uniforms,
+        uniformVals,
+        parent: None
     }
 };
+
 let make = (state, root) => {
     {
         state,
@@ -29,13 +93,109 @@ let make = (state, root) => {
     }
 };
 
-let getSceneItemsToUpdate = (flags, root) => {
-    let rec loop = (item, list) => {
-        let hasAnyFlag = List.exists((updateOn) => List.exists((flag) => flag == updateOn, flags), item.updateOn);
+let setNodeParents = (node) => {
+    let rec loop = (node, parent) => {
+        node.parent = parent;
+        List.iter((dep) => loop(dep, Some(node)), node.deps);
+        List.iter((child) => loop(child, Some(node)), node.children);
+    };
+    loop(node, None)
+};
+
+let getTblRef = (node, key, getTbl, resolve) => {
+    let rec findInDeps = (deps, key) => {
+        switch (deps) {
+        | [] => None
+        | [dep, ...rest] =>
+            let tbl = getTbl(dep);
+            if (Hashtbl.mem(tbl, key)) {
+                resolve(dep, Hashtbl.find(tbl, key))
+            } else {
+                findInDeps(rest, key)
+            }
+        }
+    };
+    let rec findInParents = (parent, key) => {
+        switch (parent) {
+        | None => None
+        | Some(parent) =>
+            let tbl = getTbl(parent);
+            if (Hashtbl.mem(tbl, key)) {
+                resolve(parent, Hashtbl.find(tbl, key))
+            } else {
+                switch (findInDeps(parent.deps, key)) {
+                | None => findInParents(parent.parent, key)
+                | Some(tex) => Some(tex)
+                }
+            }
+        }
+    };
+    findInParents(node, key)
+};
+
+let getTextureRef = (node, key) => {
+    let getTbl = (node) => node.textures;
+    let rec resolve = (node, resource) => {
+        switch (resource) {
+        | TextureItem(item) => Some(item)
+        | TextureRef(key) => getTblRef(Some(node), key, getTbl, resolve)
+        }
+    };
+    getTblRef(Some(node), key, getTbl, resolve)
+};
+
+let getVerticesRef = (node, key) => {
+    let getTbl = (node) => node.vertices;
+    let rec resolve = (node, resource) => {
+        switch (resource) {
+        | VerticesItem(item) => Some(item)
+        | VerticesRef(key) => getTblRef(Some(node), key, getTbl, resolve)
+        }
+    };
+    getTblRef(node, key, getTbl, resolve)
+};
+
+let getIndicesRef = (node, key) => {
+    let getTbl = (node) => node.indices;
+    let rec resolve = (node, resource) => {
+        switch (resource) {
+        | IndicesItem(item) => Some(item)
+        | IndicesRef(key) => getTblRef(Some(node), key, getTbl, resolve)
+        }
+    };
+    getTblRef(node, key, getTbl, resolve)
+};
+
+let getUniformRef = (node, key) => {
+    let getTbl = (node) => node.uniforms;
+    let rec resolve = (node, resource) => {
+        switch (resource) {
+        | UniformItem(item) => Some(item)
+        | UniformRef(key) => getTblRef(Some(node), key, getTbl, resolve)
+        }
+    };
+    getTblRef(node, key, getTbl, resolve)
+};
+
+let getUniformValRef = (node, key) => {
+    let getTbl = (node) => node.uniformVals;
+    let rec resolve = (node, resource) => {
+        switch (resource) {
+        | UniformValItem(item) => Some(item)
+        | UniformValRef(key) => getTblRef(Some(node), key, getTbl, resolve)
+        }
+    };
+    getTblRef(node, key, getTbl, resolve)
+};
+
+let getSceneNodesToUpdate = (flags, root) => {
+    let rec loop = (node, list) => {
+        let hasAnyFlag = List.exists((updateOn) => List.exists((flag) => flag == updateOn, flags), node.updateOn);
         /* todo: tail recursive? */
-        let childList = List.fold_left((list, child) => loop(child, list), list, item.children);
+        let depsList = List.fold_left((list, dep) => loop(dep, list), list, node.deps);
+        let childList = List.fold_left((list, child) => loop(child, list), depsList, node.children);
         if (hasAnyFlag) {
-            [item, ...childList]
+            [node, ...childList]
         } else {
             childList
         }
@@ -46,9 +206,9 @@ let getSceneItemsToUpdate = (flags, root) => {
 let update = (self, updateFlags) => {
     let sortedFlags = List.sort((a, b) => (a < b) ? -1 : 1, updateFlags);
     if (!Hashtbl.mem(self.updateLists, sortedFlags)) {
-        Hashtbl.add(self.updateLists, sortedFlags, getSceneItemsToUpdate(sortedFlags, self.root));
+        Hashtbl.add(self.updateLists, sortedFlags, getSceneNodesToUpdate(sortedFlags, self.root));
     };
-    List.iter((item) => item.update(self.state, sortedFlags), Hashtbl.find(self.updateLists, sortedFlags));
+    List.iter((node) => node.update(self.state, sortedFlags), Hashtbl.find(self.updateLists, sortedFlags));
 };
 
 module Gl = Reasongl.Gl;

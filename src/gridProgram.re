@@ -104,3 +104,27 @@ let createDrawState = (canvas : Canvas.t, boardCoords : Coords.boardCoords, tile
 let draw = (ds, canvas) => {
     DrawState.draw(ds, canvas);
 };
+
+
+let makeItem = (canvas : Canvas.t) => {
+    let context = canvas.context;
+    let vertexQuad = VertexBuffer.makeQuad(());
+    let indexQuad = IndexBuffer.makeQuad();
+    let drawState = DrawState.init(
+        context,
+        Program.make(
+            Shader.make(vertexSource),
+            Shader.make(fragmentSource),
+            [||]
+        ),
+        [||],
+        vertexQuad,
+        indexQuad,
+        [||]
+    );
+    Scene.makeItem(
+        (state, flags) => DrawState.draw(drawState, canvas),
+        UpdateFlags.([Frame]),
+        []
+    )
+};

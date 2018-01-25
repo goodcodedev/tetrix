@@ -23,7 +23,11 @@ let setup = (canvas) => {
 };
 
 let createScene = (canvas, state) => {
-  Scene.make(state, Background.makeItem(canvas, ()));
+
+  Scene.make(
+    state,
+    Background.makeItem(canvas, ())
+  );
 };
 
 let draw = (state, scene, canvas) => {
