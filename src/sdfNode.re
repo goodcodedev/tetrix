@@ -25,9 +25,10 @@ let makeVertexSource = (self) => {
         precision mediump float;
         attribute vec2 position;
         uniform mat3 model;
+        uniform mat3 layout;
         varying vec2 vPosition;
         void main() {
-            vec2 pos = (vec3(position, 1.0) * model).xy;
+            vec2 pos = (vec3(position, 1.0) * (layout * model)).xy;
             vPosition = pos;
             gl_Position = vec4(pos, 0.0, 1.0);
         }
@@ -36,9 +37,10 @@ let makeVertexSource = (self) => {
         precision mediump float;
         attribute vec2 position;
         uniform mat3 model;
+        uniform mat3 layout;
         varying vec2 vPosition;
         void main() {
-            vec2 pos = (vec3(position, 1.0) * model).xy;
+            vec2 pos = (vec3(position, 1.0) * (layout * model)).xy;
             vPosition = position;
             gl_Position = vec4(pos, 0.0, 1.0);
         }
@@ -46,10 +48,12 @@ let makeVertexSource = (self) => {
     | (None, _) => {|
         precision mediump float;
         attribute vec2 position;
+        uniform mat3 layout;
         varying vec2 vPosition;
         void main() {
             vPosition = position;
-            gl_Position = vec4(position, 0.0, 1.0);
+            vec2 pos = (vec3(position, 1.0) * layout).xy;
+            gl_Position = vec4(pos, 0.0, 1.0);
         }
     |}
     }
@@ -198,7 +202,7 @@ let init = (self, canvas : Canvas.t) => {
     }
 };
 
-let makeNode = (self) => {
+let makeNode = (self, ~aspect=?, ()) => {
     let transparent = switch((self.opacity, self.alphaLimit)) {
     | (_, Some(_alphaLimit)) => true
     | (Some(opacity), _) => (opacity < 1.0)
@@ -206,10 +210,10 @@ let makeNode = (self) => {
     };
     let (uniforms, uniformVals) = switch(self.model) {
     | Some(model) => (
-        [Scene.makeUniform("model", GlType.Mat3f)],
+        [Scene.makeUniform("model", GlType.Mat3f), Scene.makeUniform("layout", GlType.Mat3f)],
         [Scene.makeUniformMat3f("model", model)]
     )
-    | None => ([], [])
+    | None => ([Scene.makeUniform("layout", GlType.Mat3f)], [])
     };
     Scene.makeNode(
         "sdfNode",
@@ -219,6 +223,7 @@ let makeNode = (self) => {
         ~transparent,
         ~uniforms,
         ~uniformVals,
+        ~aspect=?aspect,
         ()
     )
 };

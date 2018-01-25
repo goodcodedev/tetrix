@@ -30,7 +30,7 @@ let createScene = (canvas, state) => {
     UpdateFlags.Frame,
     UpdateFlags.Resize,
     Background.makeNode([
-      UiBox.makeNode(Coords.Mat3.scale(0.3, 0.3), ())
+      UiBox.makeNode(Coords.Mat3.scale(1.0, 1.0), ())
     ])
   );
 };

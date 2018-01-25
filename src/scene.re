@@ -345,6 +345,39 @@ let createDrawStates = (self) => {
     loop(self.root)
 };
 
+let calcLayout = (self) => {
+    let vpWidth = float_of_int(self.canvas.width);
+    let vpHeight = float_of_int(self.canvas.height);
+    let rec calcNodeLayout = (node, padding, width, height) => {
+        let (padWidth, padHeight) = switch (padding) {
+        | None => (width, height)
+        | Some(padding) =>
+            (width -. (width *. padding), height -. (height *. padding))
+        };
+        let (nodeWidth, nodeHeight) = switch (node.aspect) {
+        | None => (padWidth, padHeight)
+        | Some(aspect) =>
+            let parentAspect = padWidth /. padHeight;
+            if (aspect < parentAspect) {
+                /* Limit by height */
+                let width = padHeight *. aspect;
+                (width, padHeight)
+            } else {
+                /* Limit by width */
+                let height = padWidth /. aspect;
+                (padWidth, height)
+            }
+        };
+        let scale = Coords.Mat3.scale(nodeWidth /. vpWidth, nodeHeight /. vpHeight);
+        if (Hashtbl.mem(node.uniforms, "layout")) {
+            Hashtbl.replace(node.uniformVals, "layout", UniformValItem(Gpu.Uniform.UniformMat3f(scale)));
+        };
+        List.iter((dep) => calcNodeLayout(dep, padding, width, height), node.deps);
+        List.iter((child) => calcNodeLayout(child, node.padding, nodeWidth, nodeHeight), node.children);
+    };
+    calcNodeLayout(self.root, None, vpWidth, vpHeight);
+};
+
 let draw = (self, node) => {
     switch (node.drawState) {
     | Some(drawState) =>
@@ -365,7 +398,6 @@ let update = (self, updateFlags) => {
     let sortedFlags = List.sort((a, b) => (a < b) ? -1 : 1, updateFlags);
     if (!Hashtbl.mem(self.updateLists, sortedFlags)) {
         Hashtbl.add(self.updateLists, sortedFlags, getSceneNodesToUpdate(sortedFlags, self.root));
-        Js.log(Hashtbl.find(self.updateLists, sortedFlags));
     };
     /* todo: possibly optimize with a second transformed data structure
        so the drawstate etc is readily available */
@@ -384,6 +416,7 @@ let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()
     let userState = ref(setup(canvas));
     let scene = createScene(canvas, userState^);
     setNodeParents(scene.root);
+    calcLayout(scene);
     createDrawStates(scene);
     /* Start render loop */
     Gl.render(

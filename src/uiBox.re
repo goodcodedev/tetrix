@@ -33,5 +33,9 @@ let makeNode = (model, ~color=?, ()) => {
         ~opacity=0.5,
         ()
     );
-    SdfNode.makeNode(sdfNode)
+    SdfNode.makeNode(
+        sdfNode,
+        ~aspect=(12.0 /. 26.0),
+        ()
+    )
 };
