@@ -11,6 +11,27 @@ let sdfDist = {|
 open Gpu;
 
 let makeSdfProgram = (canvas: Canvas.t, model, ~color=?, ()) => {
-    let sdfProgram = SdfProgram.make(sdfDist, SdfProgram.ZeroToOne, Some(model), ~color=?color, ~alphaLimit=0.0, ~opacity=0.5, ());
-    SdfProgram.init(sdfProgram, canvas)
+    let sdfNode = SdfNode.make(
+        sdfDist,
+        SdfNode.ZeroToOne,
+        Some(model),
+        ~color=?color,
+        ~alphaLimit=0.0,
+        ~opacity=0.5,
+        ()
+    );
+    SdfNode.init(sdfNode, canvas)
+};
+
+let makeNode = (model, ~color=?, ()) => {
+    let sdfNode = SdfNode.make(
+        sdfDist,
+        SdfNode.ZeroToOne,
+        Some(model),
+        ~color=?color,
+        ~alphaLimit=0.0,
+        ~opacity=0.5,
+        ()
+    );
+    SdfNode.makeNode(sdfNode)
 };

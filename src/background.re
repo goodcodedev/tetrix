@@ -52,12 +52,14 @@ let draw = (self) => {
     DrawState.draw(self.drawState, self.canvas);
 };
 
-let makeNode = () => {
+let makeNode = (children) => {
     Scene.makeNode(
         "background",
         ~updateOn=UpdateFlags.([Frame]),
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
+        ~padding=0.15,
+        ~children,
         ()
     )
 };

@@ -118,7 +118,7 @@ type t = {
     blinkRows: BlinkRows.t,
     rowsDone: int,
     background: Background.t,
-    uiBox: SdfProgram.inited,
+    uiBox: SdfNode.inited,
     mutable doneInitDraw: bool
 };
 
@@ -233,7 +233,7 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
 
 let drawBackground = (self) => {
     Background.draw(self.background);
-    SdfProgram.draw(self.uiBox);
+    SdfNode.draw(self.uiBox);
 };
 
 let initDraw = (self) => {

@@ -197,3 +197,28 @@ let init = (self, canvas : Canvas.t) => {
         drawState: makeDrawState(self, canvas)
     }
 };
+
+let makeNode = (self) => {
+    let transparent = switch((self.opacity, self.alphaLimit)) {
+    | (_, Some(_alphaLimit)) => true
+    | (Some(opacity), _) => (opacity < 1.0)
+    | _ => false
+    };
+    let (uniforms, uniformVals) = switch(self.model) {
+    | Some(model) => (
+        [Scene.makeUniform("model", GlType.Mat3f)],
+        [Scene.makeUniformMat3f("model", model)]
+    )
+    | None => ([], [])
+    };
+    Scene.makeNode(
+        "sdfNode",
+        ~updateOn=[UpdateFlags.Frame],
+        ~vertShader=Shader.make(makeVertexSource(self)),
+        ~fragShader=Shader.make(makeFragmentSource(self)),
+        ~transparent,
+        ~uniforms,
+        ~uniformVals,
+        ()
+    )
+};

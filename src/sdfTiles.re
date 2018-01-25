@@ -30,14 +30,14 @@ let sdfDist = {|
 open Gpu;
 
 type t = {
-    sdfProgram: SdfProgram.inited,
+    sdfProgram: SdfNode.inited,
     texture: Texture.t,
     fbuffer: FrameBuffer.inited,
     canvas: Canvas.t
 };
 
 let make = (canvas: Canvas.t) => {
-    let sdfProgram = SdfProgram.init(SdfProgram.make(sdfDist, SdfProgram.ZeroToOne, None, ()), canvas);
+    let sdfProgram = SdfNode.init(SdfNode.make(sdfDist, SdfNode.ZeroToOne, None, ()), canvas);
     let texture = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA, Texture.LinearFilter);
     let fbuffer = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
     {
@@ -51,12 +51,12 @@ let make = (canvas: Canvas.t) => {
 let drawToTexture = (self) => {
     FrameBuffer.bindTexture(self.fbuffer, self.canvas.context, self.texture);
     Canvas.setFramebuffer(self.canvas, self.fbuffer);
-    SdfProgram.draw(self.sdfProgram);
+    SdfNode.draw(self.sdfProgram);
     Canvas.clearFramebuffer(self.canvas);
 };
 
 let createCanvas = () => {
     let canvas = Canvas.init(240, 580);
     let p = make(canvas);
-    SdfProgram.draw(p.sdfProgram);
+    SdfNode.draw(p.sdfProgram);
 };

@@ -34,6 +34,9 @@ and node('state, 'flags) = {
     update: option((node('state, 'flags), 'state, list('flags)) => unit),
     width: float,
     height: float,
+    padding: option(float),
+    aspect: option(float),
+    transparent: bool,
     deps: list(node('state, 'flags)),
     children: list(node('state, 'flags)),
     vertShader: Gpu.Shader.t,
@@ -65,6 +68,9 @@ let makeNode = (
     ~uniformVals=[],
     ~width=1.0,
     ~height=1.0,
+    ~padding=?,
+    ~aspect=?,
+    ~transparent=false,
     ~deps=[],
     ()
     ) => {
@@ -94,6 +100,9 @@ let makeNode = (
         drawState: None,
         width,
         height,
+        padding,
+        aspect,
+        transparent,
         children,
         deps,
         vertShader,
@@ -254,7 +263,7 @@ let getSceneNodesToUpdate = (flags, root) => {
             childList
         }
     };
-    List.rev(loop(root, []))
+    loop(root, [])
 };
 
 let createDrawStates = (self) => {
@@ -338,7 +347,16 @@ let createDrawStates = (self) => {
 
 let draw = (self, node) => {
     switch (node.drawState) {
-    | Some(drawState) => Gpu.DrawState.draw(drawState, self.canvas)
+    | Some(drawState) =>
+        if (node.transparent) {
+            let context = self.canvas.context;
+            Gpu.Gl.enable(~context, Gpu.Constants.blend);
+            Gpu.Gl.blendFunc(~context, Gpu.Constants.src_alpha, Gpu.Constants.one_minus_src_alpha);
+            Gpu.DrawState.draw(drawState, self.canvas);
+            Gpu.Gl.disable(~context, Gpu.Constants.blend);
+        } else {
+            Gpu.DrawState.draw(drawState, self.canvas);
+        };
     | None => failwith("Drawstate not found")
     };
 };
@@ -347,9 +365,10 @@ let update = (self, updateFlags) => {
     let sortedFlags = List.sort((a, b) => (a < b) ? -1 : 1, updateFlags);
     if (!Hashtbl.mem(self.updateLists, sortedFlags)) {
         Hashtbl.add(self.updateLists, sortedFlags, getSceneNodesToUpdate(sortedFlags, self.root));
+        Js.log(Hashtbl.find(self.updateLists, sortedFlags));
     };
     /* todo: possibly optimize with a second transformed data structure
-       so the drawstate is readily available */
+       so the drawstate etc is readily available */
     List.iter((node) => {
         switch (node.update) {
         | Some(update) => update(node, self.state, sortedFlags)
@@ -397,4 +416,24 @@ let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()
         },
         ()
     );
+};
+
+let makeUniform = (name, glType) => {
+    (name, UniformItem(Gpu.Uniform.make(name, glType)))
+};
+
+let makeUniformFloat = (name, floatVal) => {
+    (name, UniformValItem(Gpu.Uniform.UniformFloat(floatVal)))
+};
+
+let makeUniformVec2f = (name, vec2vals) => {
+    (name, UniformValItem(Gpu.Uniform.UniformVec2f(vec2vals)))
+};
+
+let makeUniformVec3f = (name, vec3vals) => {
+    (name, UniformValItem(Gpu.Uniform.UniformVec3f(vec3vals)))
+};
+
+let makeUniformMat3f = (name, mat3Vals) => {
+    (name, UniformValItem(Gpu.Uniform.UniformMat3f(mat3Vals)))
 };
