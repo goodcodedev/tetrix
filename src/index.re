@@ -25,8 +25,11 @@ let setup = (canvas) => {
 let createScene = (canvas, state) => {
 
   Scene.make(
+    canvas,
     state,
-    Background.makeItem(canvas, ())
+    UpdateFlags.Frame,
+    UpdateFlags.Resize,
+    Background.makeNode()
   );
 };
 

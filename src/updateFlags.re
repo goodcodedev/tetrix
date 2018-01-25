@@ -1,2 +1,3 @@
 type updateFlags =
-  | Frame;
+  | Frame
+  | Resize;

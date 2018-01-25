@@ -21,39 +21,51 @@ type uniformVal =
 /* user defined state and update flags */
 type t('state, 'flags) = {
     state: 'state,
+    canvas: Gpu.Canvas.t,
     root: node('state, 'flags),
+    frameFlag: 'flags,
+    resizeFlag: 'flags,
     updateLists: Hashtbl.t(list('flags), list(node('state, 'flags)))
 }
 and node('state, 'flags) = {
-    update: ('state, list('flags)) => unit,
+    key: string,
     updateOn: list('flags),
+    mutable drawState: option(Gpu.DrawState.t),
+    update: option((node('state, 'flags), 'state, list('flags)) => unit),
     width: float,
     height: float,
     deps: list(node('state, 'flags)),
     children: list(node('state, 'flags)),
     vertShader: Gpu.Shader.t,
     fragShader: Gpu.Shader.t,
+    textureList: list(string),
     textures: Hashtbl.t(string, texture),
-    vertices: Hashtbl.t(string, vertices),
-    indices: Hashtbl.t(string, indices),
+    vertices: vertices,
+    indices: indices,
+    uniformList: list(string),
     uniforms: Hashtbl.t(string, uniform),
     uniformVals: Hashtbl.t(string, uniformVal),
     mutable parent: option(node('state, 'flags))
 };
 
-let makeItem = (
-    update,
-    updateOn,
-    children,
+let quadVertices = Gpu.VertexBuffer.makeQuad(());
+let quadIndices = Gpu.IndexBuffer.makeQuad();
+
+let makeNode = (
+    key,
     ~vertShader,
     ~fragShader,
+    ~updateOn=[],
+    ~update=?,
+    ~children=[],
     ~textures=[],
-    ~vertices=[],
-    ~indices=[],
+    ~vertices=?,
+    ~indices=?,
     ~uniforms=[],
     ~uniformVals=[],
     ~width=1.0,
     ~height=1.0,
+    ~deps=[],
     ()
     ) => {
         let listToTbl = (list) => {
@@ -62,44 +74,59 @@ let makeItem = (
             List.iter(((key, item)) => Hashtbl.add(tbl, key, item), list);
             tbl
         };
+        let textureList = List.map(((key, _texture)) => key, textures);
         let textures = listToTbl(textures);
-        let vertices = listToTbl(vertices);
-        let indices = listToTbl(indices);
+        let uniformList = List.map(((key, _uniform)) => key, uniforms);
         let uniforms = listToTbl(uniforms);
         let uniformVals = listToTbl(uniformVals);
+        let vertices = switch(vertices) {
+        | Some(vertices) => vertices
+        | None => VerticesItem(quadVertices)
+        };
+        let indices = switch(indices) {
+        | Some(indices) => indices
+        | None => IndicesItem(quadIndices)
+        };
     {
+        key,
         update,
         updateOn,
+        drawState: None,
         width,
         height,
         children,
-        deps: [],
+        deps,
         vertShader,
         fragShader,
+        textureList,
         textures,
         vertices,
         indices,
+        uniformList,
         uniforms,
         uniformVals,
         parent: None
     }
 };
 
-let make = (state, root) => {
+let make = (canvas, state, frameFlag, resizeFlag, root) => {
     {
         state,
+        canvas,
         root,
+        frameFlag,
+        resizeFlag,
         updateLists: Hashtbl.create(5)
     }
 };
 
-let setNodeParents = (node) => {
+let setNodeParents = (root) => {
     let rec loop = (node, parent) => {
         node.parent = parent;
         List.iter((dep) => loop(dep, Some(node)), node.deps);
         List.iter((child) => loop(child, Some(node)), node.children);
     };
-    loop(node, None)
+    loop(root, None)
 };
 
 let getTblRef = (node, key, getTbl, resolve) => {
@@ -125,7 +152,7 @@ let getTblRef = (node, key, getTbl, resolve) => {
             } else {
                 switch (findInDeps(parent.deps, key)) {
                 | None => findInParents(parent.parent, key)
-                | Some(tex) => Some(tex)
+                | Some(resource) => Some(resource)
                 }
             }
         }
@@ -133,7 +160,36 @@ let getTblRef = (node, key, getTbl, resolve) => {
     findInParents(node, key)
 };
 
-let getTextureRef = (node, key) => {
+let getNodeRef = (node, key, resolve) => {
+    let rec findInDeps = (deps, key) => {
+        switch (deps) {
+        | [] => None
+        | [dep, ...rest] =>
+            if (dep.key == key) {
+                resolve(dep)
+            } else {
+                findInDeps(rest, key)
+            }
+        }
+    };
+    let rec findInParents = (parent, key) => {
+        switch (parent) {
+        | None => None
+        | Some(parent) =>
+            if (parent.key == key) {
+                resolve(parent)
+            } else {
+                switch (findInDeps(parent.deps, key)) {
+                | None => findInParents(parent.parent, key)
+                | Some(resource) => Some(resource)
+                }
+            }
+        }
+    };
+    findInParents(node, key)
+};
+
+let resolveTexture = (node, key) => {
     let getTbl = (node) => node.textures;
     let rec resolve = (node, resource) => {
         switch (resource) {
@@ -144,29 +200,27 @@ let getTextureRef = (node, key) => {
     getTblRef(Some(node), key, getTbl, resolve)
 };
 
-let getVerticesRef = (node, key) => {
-    let getTbl = (node) => node.vertices;
-    let rec resolve = (node, resource) => {
-        switch (resource) {
+let resolveVertices = (node, key) => {
+    let rec resolve = (node) => {
+        switch (node.vertices) {
         | VerticesItem(item) => Some(item)
-        | VerticesRef(key) => getTblRef(Some(node), key, getTbl, resolve)
+        | VerticesRef(key) => getNodeRef(Some(node), key, resolve)
         }
     };
-    getTblRef(node, key, getTbl, resolve)
+    getNodeRef(Some(node), key, resolve)
 };
 
-let getIndicesRef = (node, key) => {
-    let getTbl = (node) => node.indices;
-    let rec resolve = (node, resource) => {
-        switch (resource) {
+let resolveIndices = (node, key) => {
+    let rec resolve = (node) => {
+        switch (node.indices) {
         | IndicesItem(item) => Some(item)
-        | IndicesRef(key) => getTblRef(Some(node), key, getTbl, resolve)
+        | IndicesRef(key) => getNodeRef(Some(node), key, resolve)
         }
     };
-    getTblRef(node, key, getTbl, resolve)
+    getNodeRef(Some(node), key, resolve)
 };
 
-let getUniformRef = (node, key) => {
+let resolveUniform = (node, key) => {
     let getTbl = (node) => node.uniforms;
     let rec resolve = (node, resource) => {
         switch (resource) {
@@ -174,10 +228,10 @@ let getUniformRef = (node, key) => {
         | UniformRef(key) => getTblRef(Some(node), key, getTbl, resolve)
         }
     };
-    getTblRef(node, key, getTbl, resolve)
+    getTblRef(Some(node), key, getTbl, resolve)
 };
 
-let getUniformValRef = (node, key) => {
+let resolveUniformVal = (node, key) => {
     let getTbl = (node) => node.uniformVals;
     let rec resolve = (node, resource) => {
         switch (resource) {
@@ -185,7 +239,7 @@ let getUniformValRef = (node, key) => {
         | UniformValRef(key) => getTblRef(Some(node), key, getTbl, resolve)
         }
     };
-    getTblRef(node, key, getTbl, resolve)
+    getTblRef(Some(node), key, getTbl, resolve)
 };
 
 let getSceneNodesToUpdate = (flags, root) => {
@@ -203,12 +257,105 @@ let getSceneNodesToUpdate = (flags, root) => {
     List.rev(loop(root, []))
 };
 
+let createDrawStates = (self) => {
+    let rec loop = (node) => {
+        let uniforms = Array.of_list(List.map(
+            (key) => {
+                switch (Hashtbl.find(node.uniforms, key)) {
+                | UniformItem(uniform) => uniform
+                | UniformRef(key) =>
+                    switch (resolveUniform(node, key)) {
+                    | Some(uniform) => uniform
+                    | None => failwith("Uniform not found: " ++ key)
+                    }
+                }
+            },
+            node.uniformList
+        ));
+        let uniformVals = Array.of_list(List.map(
+            (key) => {
+                if (Hashtbl.mem(node.uniformVals, key)) {
+                    switch (Hashtbl.find(node.uniformVals, key)) {
+                    | UniformValItem(uniformVal) => uniformVal
+                    | UniformValRef(key) =>
+                        switch (resolveUniformVal(node, key)) {
+                        | Some(uniformVal) => uniformVal
+                        | None => failwith("Uniform value not found: " ++ key);
+                        }
+                    }
+                } else {
+                    switch (resolveUniformVal(node, key)) {
+                    | Some(uniformVal) => uniformVal
+                    | None => failwith("Uniform value not found: " ++ key);
+                    }
+                }
+            },
+            node.uniformList
+        ));
+        let vertices = switch (node.vertices) {
+        | VerticesItem(vertices) => vertices
+        | VerticesRef(key) => switch (resolveVertices(node, key)) {
+        | Some(vertices) => vertices
+        | None => failwith("Vertices not found: " ++ key)
+        }
+        };
+        let indices = switch (node.indices) {
+        | IndicesItem(vertices) => vertices
+        | IndicesRef(key) => switch (resolveIndices(node, key)) {
+        | Some(indices) => indices
+        | None => failwith("Indices not found: " ++ key)
+        }
+        };
+        let textures = Array.of_list(List.map(
+            (key) => {
+                switch (Hashtbl.find(node.textures, key)) {
+                | TextureItem(item) => Gpu.ProgramTexture.make(key, item)
+                | TextureRef(refKey) => switch (resolveTexture(node, refKey)) {
+                | Some(item) => Gpu.ProgramTexture.make(key, item)
+                | None => failwith("Texture not found: " ++ refKey ++ ", on: " ++ key)
+                }
+                }
+            },
+            node.textureList
+        ));
+        node.drawState = Some(Gpu.DrawState.init(
+            self.canvas.context,
+            Gpu.Program.make(
+                node.vertShader,
+                node.fragShader,
+                uniforms
+            ),
+            uniformVals,
+            vertices,
+            indices,
+            textures
+        ));
+        List.iter((dep) => loop(dep), node.deps);
+        List.iter((child) => loop(child), node.children);
+    };
+    loop(self.root)
+};
+
+let draw = (self, node) => {
+    switch (node.drawState) {
+    | Some(drawState) => Gpu.DrawState.draw(drawState, self.canvas)
+    | None => failwith("Drawstate not found")
+    };
+};
+
 let update = (self, updateFlags) => {
     let sortedFlags = List.sort((a, b) => (a < b) ? -1 : 1, updateFlags);
     if (!Hashtbl.mem(self.updateLists, sortedFlags)) {
         Hashtbl.add(self.updateLists, sortedFlags, getSceneNodesToUpdate(sortedFlags, self.root));
     };
-    List.iter((node) => node.update(self.state, sortedFlags), Hashtbl.find(self.updateLists, sortedFlags));
+    /* todo: possibly optimize with a second transformed data structure
+       so the drawstate is readily available */
+    List.iter((node) => {
+        switch (node.update) {
+        | Some(update) => update(node, self.state, sortedFlags)
+        | None => draw(self, node)
+        };
+    }, Hashtbl.find(self.updateLists, sortedFlags));
 };
 
 module Gl = Reasongl.Gl;
@@ -217,6 +364,8 @@ let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()
     let canvas = Gpu.Canvas.init(width, height);
     let userState = ref(setup(canvas));
     let scene = createScene(canvas, userState^);
+    setNodeParents(scene.root);
+    createDrawStates(scene);
     /* Start render loop */
     Gl.render(
         ~window = canvas.window,

@@ -122,9 +122,4 @@ let makeItem = (canvas : Canvas.t) => {
         indexQuad,
         [||]
     );
-    Scene.makeItem(
-        (state, flags) => DrawState.draw(drawState, canvas),
-        UpdateFlags.([Frame]),
-        []
-    )
 };
