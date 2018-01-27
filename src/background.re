@@ -55,10 +55,10 @@ let draw = (self) => {
 let makeNode = (children) => {
     Scene.makeNode(
         "background",
-        ~updateOn=UpdateFlags.([Frame]),
+        ~updateOn=UpdateFlags.([Init]),
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
-        ~padding=0.15,
+        ~padding=Scale(0.15),
         ~children,
         ()
     )

@@ -22,16 +22,26 @@ let setup = (canvas) => {
   }
 };
 
+let createRootNode = () => {
+    Background.makeNode([
+      UiBox.makeNode(()),
+      Layout.vertical(
+        ~width=0.2,
+        ~spacing=Scale(0.1),
+        []
+      )
+    ])
+};
+
 let createScene = (canvas, state) => {
 
   Scene.make(
     canvas,
     state,
+    UpdateFlags.Init,
     UpdateFlags.Frame,
     UpdateFlags.Resize,
-    Background.makeNode([
-      UiBox.makeNode(Coords.Mat3.scale(1.0, 1.0), ())
-    ])
+    createRootNode()
   );
 };
 

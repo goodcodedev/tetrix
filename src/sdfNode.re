@@ -7,6 +7,8 @@ type fragCoords =
 type t = {
     sdfDist: string,
     fragCoords: fragCoords,
+    width: float,
+    height: float,
     model: option(Coords.Mat3.t),
     color: Color.t,
     opacity: option(float),
@@ -183,10 +185,12 @@ let draw = (self : inited) => {
     };
 };
 
-let make = (sdfDist, fragCoords, model, ~color=Color.fromFloats(0.6, 0.6, 0.6), ~opacity=?, ~alphaLimit=?, ()) => {
+let make = (sdfDist, fragCoords, model, ~width=1.0, ~height=1.0, ~color=Color.fromFloats(0.6, 0.6, 0.6), ~opacity=?, ~alphaLimit=?, ()) => {
     {
         sdfDist,
         fragCoords,
+        width,
+        height,
         model,
         color,
         opacity,
@@ -215,15 +219,19 @@ let makeNode = (self, ~aspect=?, ()) => {
     )
     | None => ([Scene.makeUniform("layout", GlType.Mat3f)], [])
     };
+    let size = switch (aspect) {
+    | Some(aspect) => Scene.Aspect(aspect)
+    | None => Dimensions(Scale(self.width), Scale(self.height))
+    };
     Scene.makeNode(
         "sdfNode",
-        ~updateOn=[UpdateFlags.Frame],
+        ~updateOn=[UpdateFlags.Init],
         ~vertShader=Shader.make(makeVertexSource(self)),
         ~fragShader=Shader.make(makeFragmentSource(self)),
+        ~size,
         ~transparent,
         ~uniforms,
         ~uniformVals,
-        ~aspect=?aspect,
         ()
     )
 };

@@ -23,11 +23,13 @@ let makeSdfProgram = (canvas: Canvas.t, model, ~color=?, ()) => {
     SdfNode.init(sdfNode, canvas)
 };
 
-let makeNode = (model, ~color=?, ()) => {
+let makeNode = (~width=1.0, ~height=1.0, ~color=?, ()) => {
     let sdfNode = SdfNode.make(
         sdfDist,
         SdfNode.ZeroToOne,
-        Some(model),
+        None,
+        ~width,
+        ~height,
         ~color=?color,
         ~alphaLimit=0.0,
         ~opacity=0.5,
