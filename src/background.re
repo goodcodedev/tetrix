@@ -58,7 +58,7 @@ let makeNode = (children) => {
         ~updateOn=UpdateFlags.([Init]),
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
-        ~padding=Scale(0.15),
+        ~padding=Scale(0.05),
         ~children,
         ()
     )

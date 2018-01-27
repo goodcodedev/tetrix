@@ -76,7 +76,7 @@ and node('state, 'flags) = {
     mutable drawState: option(Gpu.DrawState.t),
     update: option((node('state, 'flags), 'state, list('flags)) => unit),
     layout: layout,
-    calcedLayout: calcedLayout,
+    calcLayout: calcLayout,
     selfDraw: bool,
     transparent: bool,
     deps: list(node('state, 'flags)),
@@ -100,11 +100,11 @@ and layout = {
     hAlign: hAlign,
     vAlign: vAlign
 }
-and calcedLayout = {
-    mutable pixelWidth: float,
-    mutable pixelHeight: float,
-    mutable pixelXOffset: float,
-    mutable pixelYOffset: float
+and calcLayout = {
+    mutable pWidth: float,
+    mutable pHeight: float,
+    mutable pXOffset: float,
+    mutable pYOffset: float
 };
 
 let quadVertices = Gpu.VertexBuffer.makeQuad(());
@@ -184,11 +184,11 @@ let makeNode = (
         updateOn,
         drawState: None,
         layout,
-        calcedLayout: {
-            pixelWidth: 0.0,
-            pixelHeight: 0.0,
-            pixelXOffset: 0.0,
-            pixelYOffset: 0.0
+        calcLayout: {
+            pWidth: 0.0,
+            pHeight: 0.0,
+            pXOffset: 0.0,
+            pYOffset: 0.0
         },
         selfDraw,
         transparent,
@@ -451,8 +451,11 @@ let createDrawStates = (self) => {
 };
 
 let calcLayout = (self) => {
+    let debug = true;
     let vpWidth = float_of_int(self.canvas.width);
     let vpHeight = float_of_int(self.canvas.height);
+    let vpWidthCenter = vpWidth /. 2.0;
+    let vpHeightMiddle = vpHeight /. 2.0;
     let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
         let (nodeWidth, nodeHeight) = switch (node.layout.size) {
         | Aspect(ratio) =>
@@ -478,123 +481,159 @@ let calcLayout = (self) => {
                 }
             )
         };
-        node.calcedLayout.pixelWidth = nodeWidth;
-        node.calcedLayout.pixelHeight = nodeHeight;
+        node.calcLayout.pWidth = nodeWidth;
+        node.calcLayout.pHeight = nodeHeight;
     };
-    let rec calcNodeLayout = (node, padding, constrainWidth, constrainHeight, x, y) => {
-        let (paddedWidth, paddedHeight) = switch (padding) {
-        | None => (constrainWidth, constrainHeight)
+    let rec calcNodeLayout = (node) => {
+        let layout = node.layout;
+        let calcLayout = node.calcLayout;
+        /* Calc padding */
+        let (paddedWidth, paddedHeight, x, y) = switch (layout.padding) {
+        | None => (calcLayout.pWidth, calcLayout.pHeight, calcLayout.pXOffset, calcLayout.pYOffset)
         | Some(Pixel(padding)) => 
-            (constrainWidth -. padding, constrainHeight -. padding)
+            (
+                calcLayout.pWidth -. padding *. 2.0,
+                calcLayout.pHeight -. padding *. 2.0,
+                calcLayout.pXOffset +. padding,
+                calcLayout.pYOffset +. padding
+            )
         | Some(Scale(padding)) =>
-            (constrainWidth -. (constrainWidth *. padding), constrainHeight -. (constrainHeight *. padding))
+            let scaledXPadding = (calcLayout.pWidth *. padding);
+            let scaledYPadding = (calcLayout.pHeight *. padding);
+            (
+                calcLayout.pWidth -. scaledXPadding *. 2.0,
+                calcLayout.pHeight -. scaledYPadding *. 2.0,
+                calcLayout.pXOffset +. scaledXPadding,
+                calcLayout.pYOffset +. scaledYPadding
+            )
         };
+        /* Set width/height of children and deps */
         List.iter((dep) => calcNodeDimensions(dep, paddedWidth, paddedHeight), node.deps);
         List.iter((child) => calcNodeDimensions(child, paddedWidth, paddedHeight), node.children);
+        /* Todo: allow to set a pixel value or something for one child,
+           then allow one of the other elements to stretch to available space */
         /* Handle aligns */
-        switch (node.layout.childLayout) {
+        switch (layout.childLayout) {
         | Horizontal =>
-            let spacing = switch (node.layout.spacing) {
+            let spacing = switch (layout.spacing) {
             | Some(Pixel(pixel)) => pixel
             | Some(Scale(scale)) => paddedWidth *. scale
             | None => 0.0
             };
             /* Set xoffset */
-            switch (node.layout.hAlign) {
+            switch (layout.hAlign) {
             | AlignLeft =>
                 let _ = List.fold_left((xOffset, child) => {
-                    child.calcedLayout.pixelXOffset = xOffset;
-                    xOffset +. spacing +. child.calcedLayout.pixelWidth
+                    child.calcLayout.pXOffset = xOffset;
+                    xOffset +. spacing +. child.calcLayout.pWidth
                 }, x, node.children);
             | AlignCenter =>
-                /* Get total width and start from paddedWidth + ((paddedWidth - totalWidth) / 2) */
+                /* Get total width and start from (paddedWidth  - totalWidth) / 2) */
                 let totalWidth = List.fold_left((totalWidth, child) => {
-                    totalWidth +. spacing +. child.calcedLayout.pixelWidth
-                }, 0.0, node.children);
-                let xOffset = paddedWidth +. ((paddedWidth -. totalWidth) /. 2.0);
+                    totalWidth +. child.calcLayout.pWidth
+                }, 0.0, node.children) +. spacing *. float_of_int(List.length(node.children) - 1);
+                let xOffset = (paddedWidth -. totalWidth) /. 2.0;
                 let _ = List.fold_left((xOffset, child) => {
-                    child.calcedLayout.pixelXOffset = xOffset;
-                    xOffset +. spacing +. child.calcedLayout.pixelWidth
+                    child.calcLayout.pXOffset = xOffset;
+                    xOffset +. spacing +. child.calcLayout.pWidth
                 }, x +. xOffset, node.children);
             | AlignRight =>
                 let _ = List.fold_right((child, xOffset) => {
-                    child.calcedLayout.pixelXOffset = xOffset -. child.calcedLayout.pixelWidth;
-                    child.calcedLayout.pixelXOffset -. spacing
+                    child.calcLayout.pXOffset = xOffset -. child.calcLayout.pWidth;
+                    child.calcLayout.pXOffset -. spacing
                 }, node.children, x +. paddedWidth);
             };
-            switch (node.layout.vAlign) {
-            | AlignTop => ()
+            switch (layout.vAlign) {
+            | AlignTop =>
+                List.iter((child) => {
+                    child.calcLayout.pYOffset = y;
+                }, node.children);
             | AlignMiddle =>
                 List.iter((child) => {
-                    child.calcedLayout.pixelYOffset = y +. (paddedHeight -. child.calcedLayout.pixelHeight) /. 2.0;
+                    child.calcLayout.pYOffset = y +. (paddedHeight -. child.calcLayout.pHeight) /. 2.0;
                 }, node.children);
             | AlignBottom =>
                 List.iter((child) => {
-                    child.calcedLayout.pixelYOffset = y +. paddedHeight -. child.calcedLayout.pixelHeight;
+                    child.calcLayout.pYOffset = y +. paddedHeight -. child.calcLayout.pHeight;
                 }, node.children);
             };
             /* Get total width */
         | Vertical =>
-            let spacing = switch (node.layout.spacing) {
+            let spacing = switch (layout.spacing) {
             | Some(Pixel(pixel)) => pixel
             | Some(Scale(scale)) => paddedHeight *. scale
             | None => 0.0
             };
-            switch (node.layout.hAlign) {
+            switch (layout.hAlign) {
             | AlignLeft => 
                 List.iter((child) => {
-                    child.calcedLayout.pixelXOffset = x;
+                    child.calcLayout.pXOffset = x;
                 }, node.children);
             | AlignCenter =>
                 List.iter((child) => {
-                    child.calcedLayout.pixelXOffset = x +. (paddedWidth -. child.calcedLayout.pixelWidth) /. 2.0;
+                    child.calcLayout.pXOffset = x +. (paddedWidth -. child.calcLayout.pWidth) /. 2.0;
                 }, node.children);
             | AlignRight =>
                 List.iter((child) => {
-                    child.calcedLayout.pixelXOffset = x +. paddedWidth -. child.calcedLayout.pixelWidth;
+                    child.calcLayout.pXOffset = x +. paddedWidth -. child.calcLayout.pWidth;
                 }, node.children);
             };
-            switch (node.layout.vAlign) {
-            | AlignTop => ()
+            switch (layout.vAlign) {
+            | AlignTop =>
+                let _ = List.fold_left((yOffset, child) => {
+                    child.calcLayout.pYOffset = yOffset;
+                    yOffset +. child.calcLayout.pHeight +. spacing
+                }, y, node.children);
             | AlignMiddle =>
-                List.iter((child) => {
-                    child.calcedLayout.pixelYOffset = y +. (paddedHeight -. child.calcedLayout.pixelHeight) /. 2.0;
-                }, node.children);
+                let totalHeight = List.fold_left((totalHeight, child) => {
+                    totalHeight +. child.calcLayout.pHeight
+                }, 0.0, node.children) +. spacing *. float_of_int(List.length(node.children) - 1);
+                let _ = List.fold_left((yOffset, child) => {
+                    child.calcLayout.pYOffset = yOffset;
+                    yOffset +. child.calcLayout.pYOffset +. spacing
+                }, y +. (paddedHeight -. totalHeight) /. 2.0 ,node.children);
             | AlignBottom =>
-                List.iter((child) => {
-                    child.calcedLayout.pixelYOffset = y +. paddedHeight -. child.calcedLayout.pixelHeight;
-                }, node.children);
+                let _ = List.fold_right((child, yOffset) => {
+                    child.calcLayout.pYOffset = yOffset -. child.calcLayout.pHeight;
+                    child.calcLayout.pYOffset -. spacing
+                }, node.children, y +. paddedHeight);
             };
         };
-        let scale = Coords.Mat3.scale(node.calcedLayout.pixelWidth /. vpWidth, node.calcedLayout.pixelHeight /. vpHeight);
-        let translate = Coords.Mat3.trans(node.calcedLayout.pixelXOffset /. vpWidth, node.calcedLayout.pixelYOffset /. vpHeight);
+        let scale = Coords.Mat3.scale(calcLayout.pWidth /. vpWidth, calcLayout.pHeight /. vpHeight);
+        /* Can this be simplified? */
+        let translate = Coords.Mat3.trans(
+            ((calcLayout.pXOffset +. (calcLayout.pWidth /. 2.0) -. vpWidthCenter) /. vpWidth *. 2.0),
+            ((calcLayout.pYOffset +. (calcLayout.pHeight /. 2.0) -. vpHeightMiddle) /. vpHeight *. -2.0)
+        );
         let layoutMat = Coords.Mat3.matmul(translate, scale);
+        if (debug) {
+            Js.log("Layout for " ++ node.key);
+            Js.log2("pWidth: ", calcLayout.pWidth);
+            Js.log2("pHeight: ", calcLayout.pHeight);
+            Js.log2("xOff: ", calcLayout.pXOffset);
+            Js.log2("yOff: ", calcLayout.pYOffset);
+            Js.log2("Scale: ", scale);
+            Js.log2("Translate: ", translate);
+            Js.log2("Layout: ", layoutMat);
+        };
         if (Hashtbl.mem(node.uniforms, "layout")) {
             Hashtbl.replace(node.uniformVals, "layout", UniformValItem(Gpu.Uniform.UniformMat3f(layoutMat)));
         };
         List.iter((dep) => {
-            calcNodeLayout(
-                dep,
-                node.layout.padding,
-                node.calcedLayout.pixelWidth,
-                node.calcedLayout.pixelHeight,
-                node.calcedLayout.pixelXOffset,
-                node.calcedLayout.pixelYOffset
-            )
+            calcNodeLayout(dep);
         }, node.deps);
         List.iter((child) => {
-            calcNodeLayout(
-                child,
-                node.layout.padding,
-                node.calcedLayout.pixelWidth,
-                node.calcedLayout.pixelHeight,
-                node.calcedLayout.pixelXOffset,
-                node.calcedLayout.pixelYOffset
-            )
+            calcNodeLayout(child);
         }, node.children);
     };
+    if (debug) {
+        Js.log2("vpWidth", vpWidth);
+        Js.log2("vpHeight", vpHeight);
+    };
     calcNodeDimensions(self.root, vpWidth, vpHeight);
-    calcNodeLayout(self.root, None, vpWidth, vpHeight, 0.0, 0.0);
+    self.root.calcLayout.pXOffset = 0.0;
+    self.root.calcLayout.pYOffset = 0.0;
+    calcNodeLayout(self.root);
 };
 
 let draw = (self, node) => {

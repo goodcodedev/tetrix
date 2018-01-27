@@ -28,7 +28,9 @@ let createRootNode = () => {
       Layout.vertical(
         ~width=0.2,
         ~spacing=Scale(0.1),
-        []
+        [
+          UiBox.makeNode(())
+        ]
       )
     ])
 };

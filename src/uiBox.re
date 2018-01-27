@@ -1,9 +1,9 @@
 let sdfDist = {|
     point -= 0.5;
-    float boxWidth = 0.43;
-    float boxHeight = 0.43;
-    float boxDepth = 0.2;
     float rounding = 0.03;
+    float boxWidth = 0.47;
+    float boxHeight = 0.47;
+    float boxDepth = 0.2;
     float box = length(max(abs(point) - vec3(boxWidth, boxHeight, boxDepth), vec3(0.0, 0.0, 0.0))) - rounding;
     return box;
 |};
