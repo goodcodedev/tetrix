@@ -372,7 +372,8 @@ module IndexBuffer = {
         mutable data: array(int),
         mutable update: bool,
         mutable count: int,
-        usage: bufferUsage
+        usage: bufferUsage,
+        context: Gl.contextT
     };
     type t = {
         data: array(int),
@@ -414,7 +415,8 @@ module IndexBuffer = {
         inited.count = Array.length(data);
         inited.update = true;
     };
-    let updateData = (inited : inited, context) => {
+    let updateData = (inited : inited) => {
+        let context = inited.context;
         inited.count = Array.length(inited.data);
         Gl.bufferData(
             ~context,
@@ -452,7 +454,8 @@ module IndexBuffer = {
                 data: buffer.data,
                 update: false,
                 count: Array.length(buffer.data),
-                usage: buffer.usage
+                usage: buffer.usage,
+                context
             };
             buffer.inited = Some(inited);
             inited
@@ -480,7 +483,8 @@ module Texture = {
         texRef: Gl.textureT,
         mutable data: data,
         mutable update: bool,
-        format: int
+        format: int,
+        context: Gl.contextT
     };
 
     type t = {
@@ -603,7 +607,8 @@ module Texture = {
                 texRef: texRef,
                 data: texture.data,
                 update: false,
-                format: format
+                format: format,
+                context
             };
             texture.inited = Some(inited);
             inited
@@ -626,7 +631,8 @@ module Texture = {
         }
         }
     };
-    let updateData = (inited : inited, context) => {
+    let updateData = (inited : inited) => {
+        let context = inited.context;
         Gl.bindTexture(
             ~context,
             ~target=Constants.texture_2d,
@@ -937,7 +943,7 @@ module Canvas = {
                 ~buffer=indexBuffer.elBufferRef
             );
             if (indexBuffer.update) {
-                IndexBuffer.updateData(indexBuffer, context);
+                IndexBuffer.updateData(indexBuffer);
             };
             canvas.currIndexBuffer = Some(indexBuffer);
         }
@@ -959,7 +965,7 @@ module Canvas = {
                     Gl.activeTexture(~context, tex0 + i);
                     Gl.bindTexture(~context, ~target=Constants.texture_2d, ~texture=pInit.texture.texRef);
                 };
-                Texture.updateData(pInit.texture, context);
+                Texture.updateData(pInit.texture);
             };
             pInit
         }, textures);

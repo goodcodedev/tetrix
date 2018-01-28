@@ -24,12 +24,19 @@ let setup = (canvas) => {
 
 let createRootNode = () => {
     Background.makeNode([
-      UiBox.makeNode(()),
+      UiBox.makeNode([]),
       Layout.vertical(
         ~width=0.2,
         ~spacing=Scale(0.1),
         [
-          UiBox.makeNode(())
+          UiBox.makeNode([
+            FontDraw.makeNode(
+              "Text and more and more text comes here",
+              "digitalt",
+              ~align=SdfFont.TextLayout.AlignLeft,
+              ()
+            )
+          ])
         ]
       )
     ])

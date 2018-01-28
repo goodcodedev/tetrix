@@ -249,8 +249,10 @@ let vertexData = (self, glyphs) => {
     /* Top left positions */
     let u0 = float_of_int(bitmap.x) /. texWidth;
     let u1 = bw /. texWidth;
-    let v1 = (self.flipY) ? (texHeight -. float_of_int(bitmap.y)) /. texHeight : float_of_int(bitmap.y) /. texHeight;
-    let v0 = (self.flipY) ? (texHeight -. bh) /. texHeight : bh /. texHeight;
+    /* Todo: I switched these to make it work with regular coord system, v0 = v1, v1 = v0
+       Consider removing flipY and use this simply */
+    let v0 = (self.flipY) ? (texHeight -. float_of_int(bitmap.y)) /. texHeight : float_of_int(bitmap.y) /. texHeight;
+    let v1 = (self.flipY) ? (texHeight -. bh) /. texHeight : bh /. texHeight;
     /* Register positions x, y, and uvs */
     /* Bottom left */
     let idx = i * 16;

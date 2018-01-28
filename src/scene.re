@@ -68,7 +68,8 @@ type t('state, 'flags) = {
     initFlag: 'flags,
     frameFlag: 'flags,
     resizeFlag: 'flags,
-    updateLists: Hashtbl.t(list('flags), list(node('state, 'flags)))
+    updateLists: Hashtbl.t(list('flags), list(node('state, 'flags))),
+    mutable loadingNodes: list((list('flags), node('state, 'flags)))
 }
 and node('state, 'flags) = {
     key: string,
@@ -79,6 +80,7 @@ and node('state, 'flags) = {
     calcLayout: calcLayout,
     selfDraw: bool,
     transparent: bool,
+    mutable loading: bool,
     deps: list(node('state, 'flags)),
     children: list(node('state, 'flags)),
     vertShader: option(Gpu.Shader.t),
@@ -147,6 +149,7 @@ let makeNode = (
     ~hAlign=AlignCenter,
     ~vAlign=AlignTop,
     ~selfDraw=true,
+    ~loading=false,
     ~transparent=false,
     ~deps=[],
     ()
@@ -191,6 +194,7 @@ let makeNode = (
             pYOffset: 0.0
         },
         selfDraw,
+        loading,
         transparent,
         children,
         deps,
@@ -216,7 +220,8 @@ let make = (canvas, state, initFlag, frameFlag, resizeFlag, root) => {
         initFlag,
         frameFlag,
         resizeFlag,
-        updateLists: Hashtbl.create(5)
+        updateLists: Hashtbl.create(5),
+        loadingNodes: []
     }
 };
 
@@ -450,8 +455,24 @@ let createDrawStates = (self) => {
     loop(self.root)
 };
 
+let setUniformVal = (node, key, value) => {
+    let rec getUniformIndex = (list, idx) => {
+        switch (list) {
+        | [] => failwith("Key not found in setUniformVal: " ++ key);
+        | [item, ...rest] => (item == key) ? idx : getUniformIndex(rest, idx + 1)
+        }
+    };
+    let idx = getUniformIndex(node.uniformList, 0);
+    switch (node.drawState) {
+    | Some(drawState) =>
+        drawState.uniforms[idx] = value;
+    | None =>
+        Hashtbl.add(node.uniformVals, key, UniformValItem(value));
+    };
+};
+
 let calcLayout = (self) => {
-    let debug = true;
+    let debug = false;
     let vpWidth = float_of_int(self.canvas.width);
     let vpHeight = float_of_int(self.canvas.height);
     let vpWidthCenter = vpWidth /. 2.0;
@@ -599,25 +620,33 @@ let calcLayout = (self) => {
                 }, node.children, y +. paddedHeight);
             };
         };
-        let scale = Coords.Mat3.scale(calcLayout.pWidth /. vpWidth, calcLayout.pHeight /. vpHeight);
-        /* Can this be simplified? */
-        let translate = Coords.Mat3.trans(
-            ((calcLayout.pXOffset +. (calcLayout.pWidth /. 2.0) -. vpWidthCenter) /. vpWidth *. 2.0),
-            ((calcLayout.pYOffset +. (calcLayout.pHeight /. 2.0) -. vpHeightMiddle) /. vpHeight *. -2.0)
-        );
-        let layoutMat = Coords.Mat3.matmul(translate, scale);
         if (debug) {
             Js.log("Layout for " ++ node.key);
             Js.log2("pWidth: ", calcLayout.pWidth);
             Js.log2("pHeight: ", calcLayout.pHeight);
             Js.log2("xOff: ", calcLayout.pXOffset);
             Js.log2("yOff: ", calcLayout.pYOffset);
-            Js.log2("Scale: ", scale);
-            Js.log2("Translate: ", translate);
-            Js.log2("Layout: ", layoutMat);
         };
         if (Hashtbl.mem(node.uniforms, "layout")) {
-            Hashtbl.replace(node.uniformVals, "layout", UniformValItem(Gpu.Uniform.UniformMat3f(layoutMat)));
+            let scale = Coords.Mat3.scale(calcLayout.pWidth /. vpWidth, calcLayout.pHeight /. vpHeight);
+            /* Can this be simplified? */
+            let translate = Coords.Mat3.trans(
+                ((calcLayout.pXOffset +. (calcLayout.pWidth /. 2.0) -. vpWidthCenter) /. vpWidth *. 2.0),
+                ((calcLayout.pYOffset +. (calcLayout.pHeight /. 2.0) -. vpHeightMiddle) /. vpHeight *. -2.0)
+            );
+            let layoutMat = Coords.Mat3.matmul(translate, scale);
+            setUniformVal(node, "layout", Gpu.Uniform.UniformMat3f(layoutMat));
+            if (debug) {
+                Js.log2("Scale: ", scale);
+                Js.log2("Translate: ", translate);
+                Js.log2("Layout: ", layoutMat);
+            };
+        };
+        if (Hashtbl.mem(node.uniforms, "pixelSize")) {
+            setUniformVal(node, "pixelSize", Gpu.Uniform.UniformVec2f([|
+                node.calcLayout.pWidth,
+                node.calcLayout.pHeight,
+            |]));
         };
         List.iter((dep) => {
             calcNodeLayout(dep);
@@ -658,12 +687,34 @@ let update = (self, updateFlags) => {
     if (!Hashtbl.mem(self.updateLists, sortedFlags)) {
         Hashtbl.add(self.updateLists, sortedFlags, getSceneNodesToUpdate(sortedFlags, self.root));
     };
+    /* Check if any node in loadingNodes is loaded */
+    let rec checkLoaded = (loadingNodes) => {
+        switch (loadingNodes) {
+        | [] => []
+        | [(_updateList, node) as item, ...rest] =>
+            if (!node.loading) {
+                /* Todo: Draw with updateList for the area of the node or something */
+                switch (node.update) {
+                | Some(update) => update(node, self.state, sortedFlags)
+                | None => draw(self, node)
+                };
+                checkLoaded(rest)
+            } else {
+                [item, ...checkLoaded(rest)]
+            }
+        }
+    };
+    self.loadingNodes = checkLoaded(self.loadingNodes);
     /* todo: possibly optimize with a second transformed data structure
        so the drawstate etc is readily available */
     List.iter((node) => {
-        switch (node.update) {
-        | Some(update) => update(node, self.state, sortedFlags)
-        | None => draw(self, node)
+        if (node.loading) {
+            self.loadingNodes = [(updateFlags, node), ...self.loadingNodes]
+        } else {
+            switch (node.update) {
+            | Some(update) => update(node, self.state, sortedFlags)
+            | None => draw(self, node)
+            };
         };
     }, Hashtbl.find(self.updateLists, sortedFlags));
 };

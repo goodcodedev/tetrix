@@ -4,12 +4,17 @@ let vertexSource = {|
     attribute vec2 uv;
 
     uniform mat3 model;
+    uniform mat3 layout;
+    uniform vec2 pixelSize;
 
     varying vec2 vUv;
+    varying float smoothFactor;
     
     void main() {
+        // todo: Not sure how to model this. todo better understand aastep afwidth
+        smoothFactor = 0.00005 * (pixelSize.y * pixelSize.y);
         vUv = uv;
-        vec2 pos = vec3(vec3(position, 1.0) * model).xy;
+        vec2 pos = vec3(vec3(position, 1.0) * model * layout).xy;
         gl_Position = vec4(pos, 0.0, 1.0);
     }
 |};
@@ -20,27 +25,28 @@ let fragmentSource = {|
     #endif
     precision mediump float;
     uniform sampler2D map;
+    uniform vec3 color;
+    uniform float opacity;
     varying vec2 vUv;
+    varying float smoothFactor;
 
-    float aastep(float value) {
+    float aastep(float value, float smooth) {
       #ifdef GL_OES_standard_derivatives
         float afwidth = length(vec2(dFdx(value), dFdy(value))) * 0.70710678118654757;
       #else
-        float afwidth = (1.0 / 32.0) * (1.4142135623730951 / (2.0 * gl_FragCoord.w));
+        float afwidth = (1.0 / smooth) * (1.4142135623730951 / (2.0 * gl_FragCoord.w));
       #endif
       return smoothstep(0.5 - afwidth, 0.5 + afwidth, value);
     }
 
     void main() {
-        float opacity = 0.5;
-        vec3 color = vec3(0.5, 0.7, 0.8);
         float discardLimit = 0.0001;
         vec4 texColor = 1.0 - texture2D(map, vUv);
-        float alpha = aastep(texColor.x);
+        float alpha = aastep(texColor.x, smoothFactor);
         //color = texColor.xyz;
         float colorCoef = 1.0 - alpha;
-        color = color * alpha;
-        gl_FragColor = vec4(color, opacity * alpha);
+        vec3 c = color * alpha;
+        gl_FragColor = vec4(c, opacity * alpha);
         if (alpha < discardLimit) {
             discard;
         }
@@ -203,4 +209,94 @@ let loadFont = (font, canvas, bgDraw) => {
         let fontDraw = init(canvas, vd, fontFiles.image, model, bgDraw);
         draw(fontDraw);
     });
+};
+
+let makeNode = (
+    text,
+    font,
+    ~height=0.2,
+    ~align=SdfFont.TextLayout.AlignLeft,
+    ~color=Color.fromFloats(1.0, 1.0, 1.0),
+    ~opacity=1.0,
+    ()
+) => {
+    let fontTexture = Texture.make(Texture.EmptyTexture, Texture.RGBA, Texture.LinearFilter);
+    let vertexBuffer = VertexBuffer.make(
+        [||],
+        [|
+            VertexAttrib.make("position", GlType.Vec2f),
+            VertexAttrib.make("uv", GlType.Vec2f)
+        |],
+        StaticDraw
+    );
+    let indexBuffer = IndexBuffer.make([||], StaticDraw);
+    let node = Scene.makeNode(
+        "fontDraw",
+        ~vertShader=Shader.make(vertexSource),
+        ~fragShader=Shader.make(fragmentSource),
+        ~updateOn=[UpdateFlags.Init],
+        ~textures=[("map", Scene.TextureItem(fontTexture))],
+        ~vertices=VerticesItem(vertexBuffer),
+        ~indices=IndicesItem(indexBuffer),
+        ~uniforms=[
+            Scene.makeUniform("model", GlType.Mat3f),
+            Scene.makeUniform("layout", GlType.Mat3f),
+            Scene.makeUniform("pixelSize", GlType.Vec2f),
+            Scene.makeUniform("color", GlType.Vec3f),
+            Scene.makeUniform("opacity", GlType.Float)
+        ],
+        ~uniformVals=[
+            Scene.makeUniformMat3f("model", Coords.Mat3.id()),
+            Scene.makeUniformVec3f("color", Color.toArray(color)),
+            Scene.makeUniformFloat("opacity", opacity),
+        ],
+        ~transparent=true,
+        ~loading=true,
+        ~size=Scene.Aspect(1.0),
+        ()
+    );
+    FontFiles.request(font, "sheet0", (fontFiles) => {
+        let font = SdfFont.BMFont.parse(fontFiles.bin);
+        let scale = 2.0 /. float_of_int(font.common.lineHeight) *. height;
+        let width = 2.0 /. scale;
+        /* todo: move to nodes update function */
+        let layout = SdfFont.TextLayout.make(
+            text,
+            font,
+            int_of_float(width),
+            ~align,
+            ()
+        );
+        let glyphs = SdfFont.TextLayout.update(layout);
+        let vertices = SdfFont.TextLayout.vertexData(layout, glyphs);
+        /* Update vertex buffer */
+        switch (vertexBuffer.inited) {
+        | Some(inited) =>
+            inited.data = vertices;
+            inited.update = true;
+        | None => failwith("Font vertex buffer not initialized");
+        };
+        /* Update index buffer */
+        switch (indexBuffer.inited) {
+        | Some(inited) =>
+            inited.data = IndexBuffer.makeQuadsData(Array.length(vertices) / 16);
+            inited.update = true;
+        | None => failwith("Font index buffer not initialized");
+        };
+        /* Update texture */
+        switch (fontTexture.inited) {
+        | Some(inited) =>
+            inited.data = Texture.ImageTexture(fontFiles.image);
+            inited.update = true;
+        | None => failwith("Font texture not initialized");
+        };
+        /* Update model matrix value */
+        let modelMat = Coords.Mat3.matmul(
+            Coords.Mat3.trans(-1.0, 1.0 -. height),
+            Coords.Mat3.scale(scale, scale)
+        );
+        Scene.setUniformVal(node, "model", Uniform.UniformMat3f(modelMat));
+        node.loading = false;
+    });
+    node
 };

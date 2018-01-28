@@ -206,7 +206,7 @@ let init = (self, canvas : Canvas.t) => {
     }
 };
 
-let makeNode = (self, ~aspect=?, ()) => {
+let makeNode = (self, ~aspect=?, ~children=[], ()) => {
     let transparent = switch((self.opacity, self.alphaLimit)) {
     | (_, Some(_alphaLimit)) => true
     | (Some(opacity), _) => (opacity < 1.0)
@@ -232,6 +232,7 @@ let makeNode = (self, ~aspect=?, ()) => {
         ~transparent,
         ~uniforms,
         ~uniformVals,
+        ~children,
         ()
     )
 };
