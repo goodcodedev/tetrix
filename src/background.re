@@ -7,8 +7,9 @@ let vertexSource = {|
     void main() {
         float aspect = pixelSize.x / pixelSize.y;
         vPosition = (aspect > 1.0) ? vec2(position.x, position.y / aspect) : vec2(position.x * aspect, position.y);
+        vPosition = vec2(position.x * aspect, position.y);
         // Normalize to 0.0 to 1.0
-        vPosition = vec2((vPosition.x + 1.0) * 0.5, (vPosition.y + 1.0) * 0.5);
+        //vPosition = vec2((vPosition.x + 1.0) * 0.5, (vPosition.y + 1.0) * 0.5);
         pixelPos = (position + vec2(1.0, -1.0)) * vec2(0.5, -0.5) * pixelSize;
         gl_Position = vec4(position, 0.0, 1.0);
     }
@@ -26,7 +27,7 @@ let fragmentSource = {|
         15.0, 7.0, 13.0, 5.0
     );
 
-    const float colorInterval = 0.02;
+    const float colorInterval = 0.04;
 
     float indexVal() {
         int xMod = int(mod(pixelPos.x * 0.5, 4.0));
@@ -58,7 +59,10 @@ let fragmentSource = {|
     void main() {
         // Index value for this pixel
         float idxVal = indexVal();
-        float colorCoef = max(1.0 - distance(vec2(0.5, 0.8), vPosition), 0.0);
+        vec2 lightPos = vec2(0.0, 0.75);
+        float dist = distance(lightPos, vPosition * vec2(1.0, 1.6)) / 2.5;
+        // Distance in increasing power outwards
+        float colorCoef = max(1.0 - (pow(4.0, dist) - 1.0) / 6.0, 0.0);
         float cMod = mod(colorCoef, colorInterval);
         float diffDown = cMod / colorInterval;
         bool isClosestDown = (diffDown < 0.5) ? true : false;

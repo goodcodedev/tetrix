@@ -1,3 +1,35 @@
+module Vec2 {
+    type t = array(float);
+
+    let asArray = (v : t) : array(float) => {
+        v
+    };
+
+    let make = (a, b) => {
+        [|a, b|]
+    };
+
+    let toGlsl = (v : t) => {
+        "vec2(" ++ string_of_float(v[0]) ++ "," ++ string_of_float(v[1]) ++ ")"
+    }
+};
+
+module Vec3 {
+    type t = array(float);
+
+    let asArray = (v : t) : array(float) => {
+        v
+    };
+
+    let make = (a, b, c) => {
+        [|a, b, c|]
+    };
+
+    let toGlsl = (v : t) => {
+        "vec3(" ++ string_of_float(v[0]) ++ "," ++ string_of_float(v[1]) ++ "," ++ string_of_float(v[2]) ++ ")"
+    }
+};
+
 module Mat3 {
     type t = array(float);
     let asArray = (mat: t) : array(float) => {

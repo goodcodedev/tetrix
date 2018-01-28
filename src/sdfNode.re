@@ -12,7 +12,8 @@ type t = {
     model: option(Coords.Mat3.t),
     color: Color.t,
     opacity: option(float),
-    alphaLimit: option(float)
+    alphaLimit: option(float),
+    lightPos: Coords.Vec3.t
 };
 
 type inited = {
@@ -30,8 +31,9 @@ let makeVertexSource = (self) => {
         uniform mat3 layout;
         varying vec2 vPosition;
         void main() {
-            vec2 pos = (vec3(position, 1.0) * (layout * model)).xy;
-            vPosition = pos;
+            vec3 toModel = vec3(position, 1.0) * model;
+            vec2 pos = (vec3(position, 1.0) * layout).xy;
+            vPosition = toModel.xy;
             gl_Position = vec4(pos, 0.0, 1.0);
         }
     |}
@@ -117,7 +119,7 @@ let makeFragmentSource = (self) => {
             vec3 N = estimateNormal(surfacePoint);
             vec3 diffuseDir = vec3(0.4, -0.3, 0.3);
             float NdotD = max(dot(diffuseDir, N), 0.0);
-            vec3 pointPos = vec3(0.6, 0.2, 0.4);
+            vec3 pointPos = |} ++ Coords.Vec3.toGlsl(self.lightPos) ++ {|;
             vec3 pointVec = pointPos - surfacePoint;
             vec3 pointDir = normalize(pointVec);
             float NdotP = max(dot(pointDir, N), 0.0);
@@ -185,7 +187,18 @@ let draw = (self : inited) => {
     };
 };
 
-let make = (sdfDist, fragCoords, model, ~width=1.0, ~height=1.0, ~color=Color.fromFloats(0.6, 0.6, 0.6), ~opacity=?, ~alphaLimit=?, ()) => {
+let make = (
+    sdfDist,
+    fragCoords,
+    model,
+    ~width=1.0,
+    ~height=1.0,
+    ~color=Color.fromFloats(0.6, 0.6, 0.6),
+    ~opacity=?,
+    ~alphaLimit=?,
+    ~lightPos=Coords.Vec3.make(0.6, 0.2, 0.4),
+    ()
+    ) => {
     {
         sdfDist,
         fragCoords,
@@ -194,7 +207,8 @@ let make = (sdfDist, fragCoords, model, ~width=1.0, ~height=1.0, ~color=Color.fr
         model,
         color,
         opacity,
-        alphaLimit
+        alphaLimit,
+        lightPos
     }
 };
 

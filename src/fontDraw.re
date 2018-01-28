@@ -255,6 +255,7 @@ let makeNode = (
         ~size=Scene.Aspect(1.0),
         ()
     );
+    
     FontFiles.request(font, "sheet0", (fontFiles) => {
         let font = SdfFont.BMFont.parse(fontFiles.bin);
         let scale = 2.0 /. float_of_int(font.common.lineHeight) *. height;
