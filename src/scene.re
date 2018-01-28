@@ -59,6 +59,18 @@ type blockSize =
   | Dimensions(dimension, dimension)
   | Aspect(float);
 
+type easing =
+  | Linear;
+
+let currNodeId = ref(0);
+
+/* Not thread safe :) */
+let nextNodeId = () => {
+    let nodeId = currNodeId^;
+    currNodeId := nodeId + 1;
+    nodeId
+};
+
 /* user defined state and update flags */
 type t('state, 'flags) = {
     state: 'state,
@@ -68,11 +80,17 @@ type t('state, 'flags) = {
     initFlag: 'flags,
     frameFlag: 'flags,
     resizeFlag: 'flags,
-    updateLists: Hashtbl.t(list('flags), list(node('state, 'flags))),
-    mutable loadingNodes: list((list('flags), node('state, 'flags)))
+    updateLists: Hashtbl.t(updateState('flags), list(node('state, 'flags))),
+    mutable loadingNodes: list((list('flags), node('state, 'flags))),
+    mutable anims: list(anim('state, 'flags))
+}
+and updateState('flags) = {
+    flags: list('flags),
+    anims: list(int)
 }
 and node('state, 'flags) = {
     key: string,
+    id: int,
     updateOn: list('flags),
     mutable drawState: option(Gpu.DrawState.t),
     update: option((node('state, 'flags), 'state, list('flags)) => unit),
@@ -92,7 +110,8 @@ and node('state, 'flags) = {
     uniformList: list(string),
     uniforms: Hashtbl.t(string, uniform),
     uniformVals: Hashtbl.t(string, uniformVal),
-    mutable parent: option(node('state, 'flags))
+    mutable parent: option(node('state, 'flags)),
+    mutable scene: option(t('state, 'flags))
 }
 and layout = {
     size: blockSize,
@@ -107,6 +126,13 @@ and calcLayout = {
     mutable pHeight: float,
     mutable pXOffset: float,
     mutable pYOffset: float
+}
+and anim('state, 'flags) = {
+    node: node('state, 'flags),
+    onFrame: (t('state, 'flags), node('state, 'flags), anim('state, 'flags)) => unit,
+    duration: float,
+    mutable elapsed: float,
+    next: option(anim('state, 'flags))
 };
 
 let quadVertices = Gpu.VertexBuffer.makeQuad(());
@@ -183,6 +209,7 @@ let makeNode = (
         };
     {
         key,
+        id: nextNodeId(),
         update,
         updateOn,
         drawState: None,
@@ -207,7 +234,8 @@ let makeNode = (
         uniformList,
         uniforms,
         uniformVals,
-        parent: None
+        parent: None,
+        scene: None
     }
 };
 
@@ -221,17 +249,29 @@ let make = (canvas, state, initFlag, frameFlag, resizeFlag, root) => {
         frameFlag,
         resizeFlag,
         updateLists: Hashtbl.create(5),
-        loadingNodes: []
+        loadingNodes: [],
+        anims: []
     }
 };
 
-let setNodeParents = (root) => {
+let makeAnim = (node, onFrame, duration, ~next=?, ()) => {
+    {
+        node,
+        onFrame,
+        duration,
+        elapsed: 0.0,
+        next
+    }
+};
+
+let setNodeParentsAndScene = (self) => {
     let rec loop = (node, parent) => {
         node.parent = parent;
+        node.scene = Some(self);
         List.iter((dep) => loop(dep, Some(node)), node.deps);
         List.iter((child) => loop(child, Some(node)), node.children);
     };
-    loop(root, None)
+    loop(self.root, None)
 };
 
 let getTblRef = (node, key, getTbl, resolve) => {
@@ -347,19 +387,20 @@ let resolveUniformVal = (node, key) => {
     getTblRef(Some(node), key, getTbl, resolve)
 };
 
-let getSceneNodesToUpdate = (flags, root) => {
-    let rec loop = (node, list) => {
+let getSceneNodesToUpdate = (flags, animIds, root) => {
+    let rec loop = (node, list, inAnims) => {
+        let inAnims = (inAnims || List.exists((animId) => node.id == animId, animIds));
         let hasAnyFlag = List.exists((updateOn) => List.exists((flag) => flag == updateOn, flags), node.updateOn);
         /* todo: tail recursive? */
-        let depsList = List.fold_left((list, dep) => loop(dep, list), list, node.deps);
-        let childList = List.fold_left((list, child) => loop(child, list), depsList, node.children);
-        if (hasAnyFlag) {
+        let depsList = List.fold_left((list, dep) => loop(dep, list, inAnims), list, node.deps);
+        let childList = List.fold_left((list, child) => loop(child, list, inAnims), depsList, node.children);
+        if ((hasAnyFlag || inAnims) && node.selfDraw) {
             [node, ...childList]
         } else {
             childList
         }
     };
-    loop(root, [])
+    loop(root, [], List.exists((animId) => root.id == animId, animIds))
 };
 
 let createNodeDrawState = (self, node) => {
@@ -453,6 +494,58 @@ let createDrawStates = (self) => {
         List.iter((child) => loop(child), node.children);
     };
     loop(self.root)
+};
+
+/* Not really breadth first, which may be most intuitive
+   but with a little overhead. OCaml lists should be
+   good for it though.
+   Breadth first is also confusing wrt deps vs children.
+   Should deps be searched completely before children,
+   or same level wise, maybe after children altogether.
+   For global search, maybe a better solution is to
+   maintain a key map maybe with level.
+*/
+let getNode = (self, key) => {
+    let rec searchList = (list) => {
+        switch (list) {
+        | [] => None
+        | [node, ...rest] => if (node.key == key) {
+            Some(node)
+        } else {
+            searchList(rest)
+        }
+        }
+    }
+    and traverseList = (list) => {
+        switch (list) {
+        | [] => None
+        | [node, ...rest] =>
+            switch (traverse(node)) {
+            | Some(node) => Some(node)
+            | None => traverseList(rest)
+            }
+        }
+    }
+    and traverse = (node) => {
+        switch (searchList(node.children)) {
+        | Some(node) => Some(node)
+        | None =>
+            switch (searchList(node.deps)) {
+            | Some(node) => Some(node)
+            | None =>
+                switch (traverseList(node.children)) {
+                | Some(node) => Some(node)
+                | None =>
+                    traverseList(node.deps)
+                }
+            }
+        }
+    };
+    if (self.root.key == key) {
+        Some(self.root)
+    } else {
+        traverse(self.root)
+    }
 };
 
 let setUniformVal = (node, key, value) => {
@@ -683,9 +776,29 @@ let draw = (self, node) => {
 };
 
 let update = (self, updateFlags) => {
+    /* Anims */
+    let animIds = List.sort((a, b) => (a < b) ? -1 : 1, List.map((anim) => anim.node.id, self.anims));
+    let rec doAnims = (anims) => {
+        switch (anims) {
+        | [] => []
+        | [anim, ...rest] =>
+            anim.elapsed = anim.elapsed +. self.canvas.deltaTime;
+            anim.onFrame(self, anim.node, anim);
+            if (anim.elapsed >= anim.duration) {
+                doAnims(rest)
+            } else {
+                [anim, ...doAnims(rest)]
+            }
+        }
+    };
+    self.anims = doAnims(self.anims);
     let sortedFlags = List.sort((a, b) => (a < b) ? -1 : 1, updateFlags);
-    if (!Hashtbl.mem(self.updateLists, sortedFlags)) {
-        Hashtbl.add(self.updateLists, sortedFlags, getSceneNodesToUpdate(sortedFlags, self.root));
+    let updateState = {
+        flags: sortedFlags,
+        anims: animIds
+    };
+    if (!Hashtbl.mem(self.updateLists, updateState)) {
+        Hashtbl.add(self.updateLists, updateState, getSceneNodesToUpdate(sortedFlags, animIds, self.root));
     };
     /* Check if any node in loadingNodes is loaded */
     let rec checkLoaded = (loadingNodes) => {
@@ -716,7 +829,7 @@ let update = (self, updateFlags) => {
             | None => draw(self, node)
             };
         };
-    }, Hashtbl.find(self.updateLists, sortedFlags));
+    }, Hashtbl.find(self.updateLists, updateState));
 };
 
 module Gl = Reasongl.Gl;
@@ -725,7 +838,7 @@ let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()
     let canvas = Gpu.Canvas.init(width, height);
     let userState = ref(setup(canvas));
     let scene = createScene(canvas, userState^);
-    setNodeParents(scene.root);
+    setNodeParentsAndScene(scene);
     calcLayout(scene);
     createDrawStates(scene);
     /* Start render loop */
@@ -783,4 +896,9 @@ let makeUniformVec3f = (name, vec3vals) => {
 
 let makeUniformMat3f = (name, mat3Vals) => {
     (name, UniformValItem(Gpu.Uniform.UniformMat3f(mat3Vals)))
+};
+
+
+let doAnim = (scene, anim) => {
+    scene.anims = [anim, ...scene.anims];
 };

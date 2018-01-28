@@ -17,6 +17,7 @@ let vertexSource = {|
 /* http://alex-charlton.com/posts/Dithering_on_the_GPU/ */
 let fragmentSource = {|
     precision mediump float;
+    uniform float anim;
     varying vec2 vPosition;
     varying vec2 pixelPos;
 
@@ -75,7 +76,7 @@ let fragmentSource = {|
             : (isClosestDown ? closestUp : closestDown);
         vec3 color = vec3(0.4, 0.7, 0.8);
         color = mix(vec3(0.0, 0.0, 0.0), color, colorCoef);
-        gl_FragColor = vec4(color, 1.0);
+        gl_FragColor = vec4(color * anim, 1.0);
     }
 |};
 
@@ -119,6 +120,10 @@ let makeNode = (children) => {
         ~fragShader=Shader.make(fragmentSource),
         ~uniforms=[
             Scene.makeUniform("pixelSize", GlType.Vec2f),
+            Scene.makeUniform("anim", GlType.Float)
+        ],
+        ~uniformVals=[
+            Scene.makeUniformFloat("anim", 0.0)
         ],
         ~padding=Scale(0.05),
         ~children,

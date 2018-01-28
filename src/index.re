@@ -43,8 +43,7 @@ let createRootNode = () => {
 };
 
 let createScene = (canvas, state) => {
-
-  Scene.make(
+  let scene = Scene.make(
     canvas,
     state,
     UpdateFlags.Init,
@@ -52,6 +51,13 @@ let createScene = (canvas, state) => {
     UpdateFlags.Resize,
     createRootNode()
   );
+  switch (Scene.getNode(scene, "background")) {
+  | Some(bg) =>
+    let anim = Animate.uniform(bg, "anim", ~from=0.0, ~last=1.0, ());
+    Scene.doAnim(scene, anim);
+  | None => ()
+  };
+  scene
 };
 
 let draw = (state, scene, canvas) => {
