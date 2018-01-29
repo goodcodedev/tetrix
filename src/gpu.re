@@ -563,6 +563,10 @@ module Texture = {
         }
     };
 
+    let makeEmptyRgba = (~width=1024, ~height=1024, ~filter=LinearFilter, ()) => {
+        make(IntDataTexture(Array.make(width*height*4, 0), width, height), RGBA, filter);
+    };
+
     let luminance = 6409;
     
     [@bs.send]

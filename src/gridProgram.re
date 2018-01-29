@@ -99,25 +99,30 @@ let draw = (ds, canvas) => {
     DrawState.draw(ds, canvas);
 };
 
-
-let makeNode = () => {
+let makeNode = (tilesTex, tileShadowTex, beamTex, elPos, elColor, deps) => {
     open UpdateFlags;
     open Scene;
-    /*
-
-            ("lineColor", GlType.Vec3f),
-            ("elPos", GlType.Vec2f),
-            ("elColor", GlType.Vec3f),
-            ("pixelSize", GlType.Vec2f),
-            ("layout", GlType.Mat3f)
-    */
     makeNode(
         "grid",
         ~updateOn=[Init,ElPosChanged],
+        ~size=Scene.Aspect(
+            float_of_int(Config.tileCols) /. float_of_int(Config.tileRows)
+        ),
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~uniforms=[
-            
-        ]
+            UVec3f.zeros("lineColor"),
+            UVec2f.uniform("elPos", elPos),
+            UVec3f.uniform("elColor", elColor),
+            UVec2f.zeros("pixelSize"),
+            UMat3f.id("layout")
+        ],
+        ~textures=[
+            ("tiles", tilesTex),
+            ("tileShadows", tileShadowTex),
+            ("beams", beamTex)
+        ],
+        ~deps,
+        ()
     )
 };

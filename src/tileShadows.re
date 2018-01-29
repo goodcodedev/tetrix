@@ -214,3 +214,49 @@ let draw = (ts) => {
     DrawState.draw(ts.blurDraw2, ts.canvas);
     Canvas.clearFramebuffer(ts.canvas);
 };
+
+let makeNode = (tilesTex, shadowTex) => {
+    /* First draw unblurred */
+    let unblurredTex = Texture.makeEmptyRgba();
+    let unblurred = Scene.makeNode(
+        "unblurred",
+        ~vertShader=Shader.make(vertexSource),
+        ~fragShader=Shader.make(fragmentSource),
+        ~textures=[
+            ("tiles", tilesTex)
+        ],
+        ~drawToTexture=unblurredTex,
+        ()
+    );
+    /* First blur */
+    let blurTex1 = Texture.makeEmptyRgba();
+    let blur1 = Scene.makeNode(
+        "blur1",
+        ~vertShader=Shader.make(blurVertex),
+        ~fragShader=Shader.make(blurFragment),
+        ~uniforms=[
+            Scene.UFloat.make("pDistance", 10.0),
+            Scene.UVec2f.zeros("pixelSize")
+        ],
+        ~textures=[("unblurred", unblurredTex)],
+        ~drawToTexture=blurTex1,
+        ()
+    );
+    /* Second blur */
+    Scene.makeNode(
+        "blur2",
+        ~vertShader=Shader.make(blurVertex),
+        ~fragShader=Shader.make(blurFragment),
+        ~uniforms=[
+            Scene.UFloat.make("pDistance", 1.0),
+            Scene.UVec2f.zeros("pixelSize")
+        ],
+        ~textures=[("unblurred", blurTex1)],
+        ~drawToTexture=shadowTex,
+        ~deps=[
+            unblurred,
+            blur1
+        ],
+        ()
+    );
+};

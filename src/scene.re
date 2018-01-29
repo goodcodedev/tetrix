@@ -15,21 +15,6 @@
    user defined "flags". These are meant to signal which part
    of the scene needs to be redrawn.
 */
-type texture =
-  | TextureItem(Gpu.Texture.t)
-  | TextureRef(string);
-
-type vertices =
-  | VerticesItem(Gpu.VertexBuffer.t)
-  | VerticesRef(string);
-
-type indices =
-  | IndicesItem(Gpu.IndexBuffer.t)
-  | IndicesRef(string);
-
-type uniform =
-  | UniformItem(Gpu.Uniform.t)
-  | UniformRef(string);
 
 type childLayout =
   | Horizontal
@@ -67,6 +52,11 @@ let nextNodeId = () => {
     nodeId
 };
 
+type fbufferConfig = {
+    width: int,
+    height: int
+};
+
 /* user defined state and update flags */
 type t('state, 'flags) = {
     state: 'state,
@@ -78,7 +68,8 @@ type t('state, 'flags) = {
     resizeFlag: 'flags,
     updateLists: Hashtbl.t(updateState('flags), list(node('state, 'flags))),
     mutable loadingNodes: list((list('flags), node('state, 'flags))),
-    mutable anims: list(anim('state, 'flags))
+    mutable anims: list(anim('state, 'flags)),
+    fbuffer: Hashtbl.t(fbufferConfig, Gpu.FrameBuffer.inited)
 }
 and updateState('flags) = {
     flags: list('flags),
@@ -100,11 +91,12 @@ and node('state, 'flags) = {
     vertShader: option(Gpu.Shader.t),
     fragShader: option(Gpu.Shader.t),
     textureList: list(string),
-    textures: Hashtbl.t(string, texture),
-    vertices: vertices,
-    indices: indices,
+    textures: Hashtbl.t(string, Gpu.Texture.t),
+    vertices: Gpu.VertexBuffer.t,
+    indices: Gpu.IndexBuffer.t,
     uniformList: list(string),
     uniforms: Hashtbl.t(string, Gpu.uniform),
+    drawToTexture: option(Gpu.Texture.t),
     mutable parent: option(node('state, 'flags)),
     mutable scene: option(t('state, 'flags))
 }
@@ -172,6 +164,7 @@ let makeNode = (
     ~loading=false,
     ~transparent=false,
     ~deps=[],
+    ~drawToTexture=?,
     ()
     ) => {
         let listToTbl = (list) => {
@@ -186,11 +179,11 @@ let makeNode = (
         let uniforms = listToTbl(uniforms);
         let vertices = switch(vertices) {
         | Some(vertices) => vertices
-        | None => VerticesItem(quadVertices)
+        | None => quadVertices
         };
         let indices = switch(indices) {
         | Some(indices) => indices
-        | None => IndicesItem(quadIndices)
+        | None => quadIndices
         };
         let layout = {
             size,
@@ -226,6 +219,7 @@ let makeNode = (
         indices,
         uniformList,
         uniforms,
+        drawToTexture,
         parent: None,
         scene: None
     }
@@ -242,7 +236,8 @@ let make = (canvas, state, initFlag, frameFlag, resizeFlag, root) => {
         resizeFlag,
         updateLists: Hashtbl.create(5),
         loadingNodes: [],
-        anims: []
+        anims: [],
+        fbuffer: Hashtbl.create(1)
     }
 };
 
@@ -326,61 +321,6 @@ let getNodeRef = (node, key, resolve) => {
     findInParents(node, key)
 };
 
-let resolveTexture = (node, key) => {
-    let getTbl = (node) => node.textures;
-    let rec resolve = (node, resource) => {
-        switch (resource) {
-        | TextureItem(item) => Some(item)
-        | TextureRef(key) => getTblRef(Some(node), key, getTbl, resolve)
-        }
-    };
-    getTblRef(Some(node), key, getTbl, resolve)
-};
-
-let resolveVertices = (node, key) => {
-    let rec resolve = (node) => {
-        switch (node.vertices) {
-        | VerticesItem(item) => Some(item)
-        | VerticesRef(key) => getNodeRef(Some(node), key, resolve)
-        }
-    };
-    getNodeRef(Some(node), key, resolve)
-};
-
-let resolveIndices = (node, key) => {
-    let rec resolve = (node) => {
-        switch (node.indices) {
-        | IndicesItem(item) => Some(item)
-        | IndicesRef(key) => getNodeRef(Some(node), key, resolve)
-        }
-    };
-    getNodeRef(Some(node), key, resolve)
-};
-
-/*
-let resolveUniform = (node, key) => {
-    let getTbl = (node) => node.uniforms;
-    let rec resolve = (node, resource) => {
-        switch (resource) {
-        | UniformItem(item) => Some(item)
-        | UniformRef(key) => getTblRef(Some(node), key, getTbl, resolve)
-        }
-    };
-    getTblRef(Some(node), key, getTbl, resolve)
-};
-
-let resolveUniformVal = (node, key) => {
-    let getTbl = (node) => node.uniformVals;
-    let rec resolve = (node, resource) => {
-        switch (resource) {
-        | UniformValItem(item) => Some(item)
-        | UniformValRef(key) => getTblRef(Some(node), key, getTbl, resolve)
-        }
-    };
-    getTblRef(Some(node), key, getTbl, resolve)
-};
-*/
-
 let getSceneNodesToUpdate = (flags, animIds, root) => {
     let rec loop = (node, list, inAnims) => {
         let inAnims = (inAnims || List.exists((animId) => node.id == animId, animIds));
@@ -426,29 +366,10 @@ let createNodeDrawState = (self, node) => {
         node.uniformList
     ));
     */
-    let vertices = switch (node.vertices) {
-    | VerticesItem(vertices) => vertices
-    | VerticesRef(key) => switch (resolveVertices(node, key)) {
-    | Some(vertices) => vertices
-    | None => failwith("Vertices not found: " ++ key)
-    }
-    };
-    let indices = switch (node.indices) {
-    | IndicesItem(vertices) => vertices
-    | IndicesRef(key) => switch (resolveIndices(node, key)) {
-    | Some(indices) => indices
-    | None => failwith("Indices not found: " ++ key)
-    }
-    };
     let textures = Array.of_list(List.map(
         (key) => {
-            switch (Hashtbl.find(node.textures, key)) {
-            | TextureItem(item) => Gpu.ProgramTexture.make(key, item)
-            | TextureRef(refKey) => switch (resolveTexture(node, refKey)) {
-            | Some(item) => Gpu.ProgramTexture.make(key, item)
-            | None => failwith("Texture not found: " ++ refKey ++ ", on: " ++ key)
-            }
-            }
+            let texture = Hashtbl.find(node.textures, key);
+            Gpu.ProgramTexture.make(key, texture)
         },
         node.textureList
     ));
@@ -467,8 +388,8 @@ let createNodeDrawState = (self, node) => {
             fragShader,
             uniforms
         ),
-        vertices,
-        indices,
+        node.vertices,
+        node.indices,
         textures
     ));
 };
@@ -745,10 +666,36 @@ let calcLayout = (self) => {
     calcNodeLayout(self.root);
 };
 
+
+let getFBuffer = (self, config : fbufferConfig) => {
+    if (Hashtbl.mem(self.fbuffer, config)) {
+        Hashtbl.find(self.fbuffer, config)
+    } else {
+        let fbuffer = Gpu.FrameBuffer.init(
+            Gpu.FrameBuffer.make(config.width, config.height),
+            self.canvas.context
+        );
+        Hashtbl.add(self.fbuffer, config, fbuffer);
+        fbuffer
+    }
+};
+
 let draw = (self, node) => {
     /*Js.log("Drawing " ++ node.key);*/
     switch (node.drawState) {
     | Some(drawState) =>
+        let drawToTexture = switch (node.drawToTexture) {
+        | Some(texture) =>
+            let config = {
+                width: 1024,
+                height: 1024
+            };
+            let fbuffer = getFBuffer(self, config);
+            Gpu.FrameBuffer.bindTexture(fbuffer, self.canvas.context, texture);
+            Gpu.Canvas.setFramebuffer(self.canvas, fbuffer);
+            true
+        | None => false
+        };
         if (node.transparent) {
             let context = self.canvas.context;
             Gpu.Gl.enable(~context, Gpu.Constants.blend);
@@ -757,6 +704,9 @@ let draw = (self, node) => {
             Gpu.Gl.disable(~context, Gpu.Constants.blend);
         } else {
             Gpu.DrawState.draw(drawState, self.canvas);
+        };
+        if (drawToTexture) {
+            Gpu.Canvas.clearFramebuffer(self.canvas);
         };
     | None => failwith("Drawstate not found")
     };
@@ -867,4 +817,38 @@ let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()
 
 let doAnim = (scene, anim) => {
     scene.anims = [anim, ...scene.anims];
+};
+
+module UFloat {
+    let make = (name, value) => (name, Gpu.UniformFloat(ref(value)));
+    let zero = (name) => (name, Gpu.UniformFloat(ref(0.0)));
+    let one = (name) => (name, Gpu.UniformFloat(ref(1.0)));
+    let uniform = (name, uniform : Gpu.uniform) => (name, uniform);
+};
+
+module UVec2f {
+    let zeros = (name) => (name, Gpu.UniformVec2f(ref(Data.Vec2.zeros())));
+    let values = (name, a, b, c) => (name, Gpu.UniformVec2f(ref(Data.Vec2.make(a, b))));
+    let fromArray = (name, arr) => (name, Gpu.UniformVec2f(ref(Data.Vec2.fromArray(arr))));
+    let uniform = (name, uniform : Gpu.uniform) => (name, uniform);
+};
+
+module UVec3f {
+    let zeros = (name) => (name, Gpu.UniformVec3f(ref(Data.Vec3.zeros())));
+    let values = (name, a, b, c) => (name, Gpu.UniformVec3f(ref(Data.Vec3.make(a, b, c))));
+    let fromArray = (name, arr) => (name, Gpu.UniformVec3f(ref(Data.Vec3.fromArray(arr))));
+    let uniform = (name, uniform : Gpu.uniform) => (name, uniform);
+};
+
+module UVec4f {
+    let zeros = (name) => (name, Gpu.UniformVec4f(ref(Data.Vec4.zeros())));
+    let values = (name, a, b, c, d) => (name, Gpu.UniformVec4f(ref(Data.Vec4.make(a, b, c, d))));
+    let fromArray = (name, arr) => (name, Gpu.UniformVec4f(ref(Data.Vec4.fromArray(arr))));
+    let uniform = (name, uniform : Gpu.uniform) => (name, uniform);
+};
+
+module UMat3f {
+    let id = (name) => (name, Gpu.UniformMat3f(ref(Data.Mat3.id())));
+    let mat = (name, mat) => (name, Gpu.UniformMat3f(ref(mat)));
+    let uniform = (name, uniform : Gpu.uniform) => (name, uniform);
 };

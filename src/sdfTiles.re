@@ -60,3 +60,14 @@ let createCanvas = () => {
     let p = make(canvas);
     SdfNode.draw(p.sdfProgram);
 };
+
+let makeNode = (sdfNodeTex) => {
+    let aspect = (12.0 /. 26.0);
+    let sdfNode = SdfNode.make(sdfDist, SdfNode.ZeroToOne, None, ());
+    SdfNode.makeNode(
+        sdfNode,
+        ~aspect,
+        ~drawToTexture=sdfNodeTex,
+        ()
+    )
+};

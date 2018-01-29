@@ -8,12 +8,12 @@ module Document = {
 [@bs.get] external lastKeyCode : 'a => int = "__lastKeyCode";
 [@bs.get] external getWhich : 'eventT => int = "which";
 
+open Config;
+
 let tickDuration = 0.5;
 let elColorOffset = 2;
 let boardOffsetX = 50;
 let boardOffsetY = 20;
-let tileCols = 12;
-let tileRows = 26;
 let tileWidth = 20;
 let tileHeight = 20;
 let tilePadding = 3;

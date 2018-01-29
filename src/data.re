@@ -5,6 +5,13 @@ module Vec2 {
         v
     };
 
+    let fromArray = (a : array(float)) : t => {
+        if (Array.length(a) != 2) {
+            failwith("Array does not have 2 elements for vec2");
+        };
+        a
+    };
+
     let make = (a, b) => {
         [|a, b|]
     };

@@ -235,9 +235,9 @@ let makeNode = (
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~updateOn=[UpdateFlags.Init],
-        ~textures=[("map", Scene.TextureItem(fontTexture))],
-        ~vertices=VerticesItem(vertexBuffer),
-        ~indices=IndicesItem(indexBuffer),
+        ~textures=[("map", fontTexture)],
+        ~vertices=vertexBuffer,
+        ~indices=indexBuffer,
         ~uniforms=[
             ("model", UniformMat3f(ref(Mat3.id()))),
             ("layout", UniformMat3f(ref(Mat3.id()))),

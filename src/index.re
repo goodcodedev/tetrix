@@ -1,6 +1,6 @@
 open Game;
 open Gpu;
-
+open Config;
 
 type sceneState = {
   quadVertices: VertexBuffer.t,
@@ -18,11 +18,44 @@ let setup = (canvas) => {
   {
     quadVertices: VertexBuffer.makeQuad(),
     quadIndices: IndexBuffer.makeQuad(),
-    tiles: Array.make(10, 0)
+    tiles: Array.make(tileRows * tileCols, 0)
   }
 };
 
-let createRootNode = () => {
+let createBoardNode = (state) => {
+  /* Texture with tiles data */
+  let tilesTex = Texture.make(IntDataTexture(state.tiles, tileCols, tileRows), Texture.Luminance, Texture.NearestFilter);
+  /* Sdf tiles give 3d texture to tiles */
+  let sdfTilesTex = Texture.makeEmptyRgba(());
+  let sdfTiles = SdfTiles.makeNode(sdfTilesTex);
+  /* Beam from current element downwards */
+  let beamTex = Texture.makeEmptyRgba(());
+  let beamNode = TileBeam.makeNode(beamTex);
+  /* Shadow of tiles */
+  let shadowTex = Texture.makeEmptyRgba(());
+  let tileShadows = TileShadows.makeNode(tilesTex, shadowTex);
+  /* Element position and color uniforms */
+  let elPos = UniformVec2f(ref(Data.Vec2.zeros()));
+  let elColor = UniformVec3f(ref(Data.Vec3.zeros()));
+  /* Grid node draws background to board */
+  /* Just passing deps for now, maybe it
+     would be nice to wire textures to nodes
+     or something */
+  GridProgram.makeNode(
+    tilesTex,
+    shadowTex,
+    beamTex,
+    elPos,
+    elColor,
+    [
+      sdfTiles,
+      beamNode,
+      tileShadows
+    ]
+  );
+};
+
+let createRootNode = (state) => {
     Background.makeNode([
       Layout.horizontal(
         ~size=Scene.Aspect((14.0 +. 10.0) /. 26.0),
@@ -43,7 +76,7 @@ let createRootNode = () => {
               ])
             ]
           ),
-          UiBox.makeNode([]),
+          createBoardNode(state),
           Layout.vertical(
             ~size=Scene.Dimensions(Scale(0.22), Scale(1.0)),
             ~spacing=Scale(0.1),
@@ -71,7 +104,7 @@ let createScene = (canvas, state) => {
     UpdateFlags.Init,
     UpdateFlags.Frame,
     UpdateFlags.Resize,
-    createRootNode()
+    createRootNode(state)
   );
   switch (Scene.getNode(scene, "background")) {
   | Some(bg) =>
