@@ -235,8 +235,8 @@ let makeNode = (tilesTex, shadowTex) => {
         ~vertShader=Shader.make(blurVertex),
         ~fragShader=Shader.make(blurFragment),
         ~uniforms=[
-            Scene.UFloat.make("pDistance", 10.0),
-            Scene.UVec2f.zeros("pixelSize")
+            ("pDistance", Scene.UFloat.make(10.0)),
+            ("pixelSize", Scene.UVec2f.zeros())
         ],
         ~textures=[("unblurred", unblurredTex)],
         ~drawToTexture=blurTex1,
@@ -248,8 +248,8 @@ let makeNode = (tilesTex, shadowTex) => {
         ~vertShader=Shader.make(blurVertex),
         ~fragShader=Shader.make(blurFragment),
         ~uniforms=[
-            Scene.UFloat.make("pDistance", 1.0),
-            Scene.UVec2f.zeros("pixelSize")
+            ("pDistance", Scene.UFloat.make(1.0)),
+            ("pixelSize", Scene.UVec2f.zeros())
         ],
         ~textures=[("unblurred", blurTex1)],
         ~drawToTexture=shadowTex,

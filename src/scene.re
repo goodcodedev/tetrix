@@ -18,7 +18,8 @@
 
 type childLayout =
   | Horizontal
-  | Vertical;
+  | Vertical
+  | Stacked;
 
 type hAlign =
   | AlignCenter
@@ -344,28 +345,6 @@ let createNodeDrawState = (self, node) => {
         },
         node.uniformList
     ));
-    /*
-    let uniformVals = Array.of_list(List.map(
-        (key) => {
-            if (Hashtbl.mem(node.uniformVals, key)) {
-                switch (Hashtbl.find(node.uniformVals, key)) {
-                | UniformValItem(uniformVal) => uniformVal
-                | UniformValRef(key) =>
-                    switch (resolveUniformVal(node, key)) {
-                    | Some(uniformVal) => uniformVal
-                    | None => failwith("Uniform value not found: " ++ key);
-                    }
-                }
-            } else {
-                switch (resolveUniformVal(node, key)) {
-                | Some(uniformVal) => uniformVal
-                | None => failwith("Uniform value not found: " ++ key);
-                }
-            }
-        },
-        node.uniformList
-    ));
-    */
     let textures = Array.of_list(List.map(
         (key) => {
             let texture = Hashtbl.find(node.textures, key);
@@ -536,6 +515,11 @@ let calcLayout = (self) => {
            then allow one of the other elements to stretch to available space */
         /* Handle aligns */
         switch (layout.childLayout) {
+        | Stacked =>
+            List.iter((child) => {
+                child.calcLayout.pXOffset = x;
+                child.calcLayout.pYOffset = y;
+            }, node.children);
         | Horizontal =>
             let spacing = switch (layout.spacing) {
             | Some(Pixel(pixel)) => pixel
@@ -820,35 +804,30 @@ let doAnim = (scene, anim) => {
 };
 
 module UFloat {
-    let make = (name, value) => (name, Gpu.UniformFloat(ref(value)));
-    let zero = (name) => (name, Gpu.UniformFloat(ref(0.0)));
-    let one = (name) => (name, Gpu.UniformFloat(ref(1.0)));
-    let uniform = (name, uniform : Gpu.uniform) => (name, uniform);
+    let make = (value) => Gpu.UniformFloat(ref(value));
+    let zero = () => Gpu.UniformFloat(ref(0.0));
+    let one = () => Gpu.UniformFloat(ref(1.0));
 };
 
 module UVec2f {
-    let zeros = (name) => (name, Gpu.UniformVec2f(ref(Data.Vec2.zeros())));
-    let values = (name, a, b, c) => (name, Gpu.UniformVec2f(ref(Data.Vec2.make(a, b))));
-    let fromArray = (name, arr) => (name, Gpu.UniformVec2f(ref(Data.Vec2.fromArray(arr))));
-    let uniform = (name, uniform : Gpu.uniform) => (name, uniform);
+    let zeros = () => Gpu.UniformVec2f(ref(Data.Vec2.zeros()));
+    let vals = (a, b, c) => Gpu.UniformVec2f(ref(Data.Vec2.make(a, b)));
+    let fromArray = (arr) => Gpu.UniformVec2f(ref(Data.Vec2.fromArray(arr)));
 };
 
 module UVec3f {
-    let zeros = (name) => (name, Gpu.UniformVec3f(ref(Data.Vec3.zeros())));
-    let values = (name, a, b, c) => (name, Gpu.UniformVec3f(ref(Data.Vec3.make(a, b, c))));
-    let fromArray = (name, arr) => (name, Gpu.UniformVec3f(ref(Data.Vec3.fromArray(arr))));
-    let uniform = (name, uniform : Gpu.uniform) => (name, uniform);
+    let zeros = () => Gpu.UniformVec3f(ref(Data.Vec3.zeros()));
+    let vals = (a, b, c) => Gpu.UniformVec3f(ref(Data.Vec3.make(a, b, c)));
+    let fromArray = (arr) => Gpu.UniformVec3f(ref(Data.Vec3.fromArray(arr)));
 };
 
 module UVec4f {
-    let zeros = (name) => (name, Gpu.UniformVec4f(ref(Data.Vec4.zeros())));
-    let values = (name, a, b, c, d) => (name, Gpu.UniformVec4f(ref(Data.Vec4.make(a, b, c, d))));
-    let fromArray = (name, arr) => (name, Gpu.UniformVec4f(ref(Data.Vec4.fromArray(arr))));
-    let uniform = (name, uniform : Gpu.uniform) => (name, uniform);
+    let zeros = () => Gpu.UniformVec4f(ref(Data.Vec4.zeros()));
+    let vals = (a, b, c, d) => Gpu.UniformVec4f(ref(Data.Vec4.make(a, b, c, d)));
+    let fromArray = (arr) => Gpu.UniformVec4f(ref(Data.Vec4.fromArray(arr)));
 };
 
 module UMat3f {
-    let id = (name) => (name, Gpu.UniformMat3f(ref(Data.Mat3.id())));
-    let mat = (name, mat) => (name, Gpu.UniformMat3f(ref(mat)));
-    let uniform = (name, uniform : Gpu.uniform) => (name, uniform);
+    let id = () => Gpu.UniformMat3f(ref(Data.Mat3.id()));
+    let mat = (mat) => Gpu.UniformMat3f(ref(mat));
 };

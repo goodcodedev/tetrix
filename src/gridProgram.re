@@ -99,7 +99,7 @@ let draw = (ds, canvas) => {
     DrawState.draw(ds, canvas);
 };
 
-let makeNode = (tilesTex, tileShadowTex, beamTex, elPos, elColor, deps) => {
+let makeNode = (tilesTex, tileShadowTex, beamTex, elPos, elColor, deps, children) => {
     open UpdateFlags;
     open Scene;
     makeNode(
@@ -111,11 +111,11 @@ let makeNode = (tilesTex, tileShadowTex, beamTex, elPos, elColor, deps) => {
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~uniforms=[
-            UVec3f.zeros("lineColor"),
-            UVec2f.uniform("elPos", elPos),
-            UVec3f.uniform("elColor", elColor),
-            UVec2f.zeros("pixelSize"),
-            UMat3f.id("layout")
+            ("lineColor", UVec3f.vals(0.15, 0.2, 0.3)),
+            ("elPos", elPos),
+            ("elColor", elColor),
+            ("pixelSize", UVec2f.zeros()),
+            ("layout", UMat3f.id())
         ],
         ~textures=[
             ("tiles", tilesTex),
@@ -123,6 +123,8 @@ let makeNode = (tilesTex, tileShadowTex, beamTex, elPos, elColor, deps) => {
             ("beams", beamTex)
         ],
         ~deps,
+        ~childLayout=Scene.Stacked,
+        ~children,
         ()
     )
 };

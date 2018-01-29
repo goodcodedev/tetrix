@@ -18,6 +18,7 @@ let vertexSource = {|
 let fragmentSource = {|
     precision mediump float;
     uniform float anim;
+    uniform vec3 color;
     varying vec2 vPosition;
     varying vec2 pixelPos;
 
@@ -74,9 +75,8 @@ let fragmentSource = {|
         colorCoef = useClosest ?
             (isClosestDown ? closestDown : closestUp)
             : (isClosestDown ? closestUp : closestDown);
-        vec3 color = vec3(0.4, 0.7, 0.8);
-        color = mix(vec3(0.0, 0.0, 0.0), color, colorCoef);
-        gl_FragColor = vec4(color * anim, 1.0);
+        vec3 c = mix(vec3(0.0, 0.0, 0.0), color, colorCoef);
+        gl_FragColor = vec4(c * anim, 1.0);
     }
 |};
 
@@ -112,15 +112,16 @@ let draw = (self) => {
 };
 
 let makeNode = (children) => {
-    open Data;
+    open Scene;
     Scene.makeNode(
         "background",
         ~updateOn=UpdateFlags.([Init]),
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~uniforms=[
-            ("pixelSize", Gpu.UniformVec2f(ref(Vec2.zeros()))),
-            ("anim", Gpu.UniformFloat(ref(0.0)))
+            ("color", UVec3f.vals(0.14, 0.09, 0.20)),
+            ("pixelSize", UVec2f.zeros()),
+            ("anim", UFloat.make(0.0))
         ],
         ~padding=Scale(0.05),
         ~children,

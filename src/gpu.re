@@ -322,7 +322,7 @@ module VertexBuffer = {
         usage: bufferUsage
     };
     type t = {
-        data: array(float),
+        mutable data: array(float),
         attributes: array(VertexAttrib.t),
         usage: bufferUsage,
         mutable inited: option(inited)
@@ -366,7 +366,15 @@ module VertexBuffer = {
         inited.count = Array.length(data);
         inited.update = true;
     };
-    let updateData = (inited : inited, context) => {
+
+    let setDataT = (self : t, data) => {
+        switch (self.inited) {
+        | Some(inited) => setData(inited, data);
+        | None => self.data = data;
+        };
+    };
+
+    let updateGpuData = (inited : inited, context) => {
         inited.count = Array.length(inited.data);
         Gl.bufferData(
             ~context,
@@ -436,7 +444,7 @@ module IndexBuffer = {
         context: Gl.contextT
     };
     type t = {
-        data: array(int),
+        mutable data: array(int),
         usage: bufferUsage,
         mutable inited: option(inited)
     };
@@ -475,7 +483,13 @@ module IndexBuffer = {
         inited.count = Array.length(data);
         inited.update = true;
     };
-    let updateData = (inited : inited) => {
+    let setDataT = (self: t, data) => {
+        switch (self.inited) {
+        | Some(inited) => setData(inited, data);
+        | None => self.data = data;
+        };
+    };
+    let updateGpuData = (inited : inited) => {
         let context = inited.context;
         inited.count = Array.length(inited.data);
         Gl.bufferData(
@@ -695,7 +709,7 @@ module Texture = {
         }
         }
     };
-    let updateData = (inited : inited) => {
+    let updateGpuData = (inited : inited) => {
         let context = inited.context;
         Gl.bindTexture(
             ~context,
@@ -985,7 +999,7 @@ module Canvas = {
                 ~buffer=vertexBuffer.bufferRef
             );
             if (vertexBuffer.update) {
-                VertexBuffer.updateData(vertexBuffer, context);
+                VertexBuffer.updateGpuData(vertexBuffer, context);
             };
             Array.iter((attrib : VertexAttrib.inited) => {
                 VertexAttrib.setPointer(attrib, context);
@@ -1004,7 +1018,7 @@ module Canvas = {
                 ~buffer=indexBuffer.elBufferRef
             );
             if (indexBuffer.update) {
-                IndexBuffer.updateData(indexBuffer);
+                IndexBuffer.updateGpuData(indexBuffer);
             };
             canvas.currIndexBuffer = Some(indexBuffer);
         }
@@ -1026,7 +1040,7 @@ module Canvas = {
                     Gl.activeTexture(~context, tex0 + i);
                     Gl.bindTexture(~context, ~target=Constants.texture_2d, ~texture=pInit.texture.texRef);
                 };
-                Texture.updateData(pInit.texture);
+                Texture.updateGpuData(pInit.texture);
             };
             pInit
         }, textures);

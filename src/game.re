@@ -102,6 +102,36 @@ type gameState =
 
 let beamNone = -2;
 
+/* Todo: see if this can be refactored */
+module BlinkRows {
+    type blinkState =
+      | NotBlinking
+      | Blinking
+      | JustBlinked;
+
+    type t = {
+        mutable state: blinkState,
+        mutable drawn: bool,
+        mutable rows: array(int),
+        mutable elapsed: float
+    };
+
+    let make = () => {
+        {
+            state: NotBlinking,
+            drawn: false,
+            rows: [||],
+            elapsed: 0.0
+        }
+    };
+
+    let endBlink = (self) => {
+        self.state = JustBlinked;
+        self.drawn = false;
+        self.elapsed = 0.0;
+    };
+};
+
 type stateT = {
   action: inputAction,
   curEl: curEl,
@@ -110,11 +140,13 @@ type stateT = {
   lastTick: float,
   curTime: float,
   tiles: array(array(int)),
+  sceneTiles: array(int),
+  updateTiles: bool,
   beams: array((int, int)),
   gameState: gameState,
   paused: bool,
-  boardProgram: BoardProgram.t,
-  lastCompletedRows: array(int)
+  lastCompletedRows: array(int),
+  blinkRows: BlinkRows.t
 };
 
 
@@ -176,32 +208,9 @@ let updateBeams = (state) => {
       state.beams[i] = (beamFrom, beamTo^);
     };
   }, state.beams);
-  /* Create vertices for beams */
-  let rowHeight = 2.0 /. float_of_int(tileRows);
-  let colWidth = 2.0 /. float_of_int(tileCols);
-  let (_, vertices) = Array.fold_left(((i, vertices), (beamFrom, beamTo)) => {
-    if (beamFrom > beamNone) {
-      let beamVertices = [|
-        -1.0 +. float_of_int(i) *. colWidth,
-        1.0 -. (float_of_int(beamTo) *. rowHeight +. rowHeight),
-        -1.0 +. float_of_int(i) *. colWidth,
-        1.0 -. float_of_int(beamFrom) *. rowHeight,
-        -1.0 +. (float_of_int(i) *. colWidth +. colWidth),
-        1.0 -. float_of_int(beamFrom) *. rowHeight,
-        -1.0 +. (float_of_int(i) *. colWidth +. colWidth),
-        1.0 -. (float_of_int(beamTo) *. rowHeight +. rowHeight),
-      |];
-      (i + 1, Array.append(vertices, beamVertices))
-    } else {
-      (i + 1, vertices)
-    };
-  }, (0, [||]), state.beams);
-  let elColor = tileColors2[state.curEl.color];
-  Gpu.Uniform.setVec3f(state.boardProgram.tileBeam.drawState.program.uniforms[0].uniform, Data.Vec3.fromArray(elColor));
-  TileBeam.updateVertices(state.boardProgram.tileBeam, vertices, state.boardProgram.canvas);
 };
 
-let setup = (canvas) : stateT => {
+let setup = (canvas, tiles) : stateT => {
   Document.addEventListener(
     Document.window,
     "keydown",
@@ -210,26 +219,25 @@ let setup = (canvas) : stateT => {
     }
   );
   Random.self_init();
-  let tiles = Array.make(tileRows * tileCols, 0);
-  let bp = BoardProgram.init(canvas, tiles);
   /*Mandelbrot.createCanvas();*/
   /*let sdf = SdfTiles.createCanvas();
   SdfTiles.draw(sdf);*/
   let state = {
     action: None,
-    boardProgram: bp,
     curEl: newElement(),
     posChanged: true,
     rotateChanged: true,
     lastTick: 0.,
     curTime: 0.,
     tiles: Array.make_matrix(tileRows, tileCols, 0),
+    sceneTiles: tiles,
+    updateTiles: true,
     beams: Array.make(tileCols, (beamNone, 0)),
     gameState: Running,
     paused: false,
-    lastCompletedRows: [||]
+    lastCompletedRows: [||],
+    blinkRows: BlinkRows.make()
   };
-  state.boardProgram.updateTiles = true;
   state
 };
 
@@ -237,16 +245,16 @@ let newGame = (state) => {
   for (y in 0 to tileRows - 1) {
     for (x in 0 to tileCols - 1) {
       state.tiles[y][x] = 0;
-      state.boardProgram.tiles[tileCols*y + x] = 0;
+      state.sceneTiles[tileCols*y + x] = 0;
     }
   };
-  state.boardProgram.updateTiles = true;
   {
     ...state,
     action: None,
     curEl: newElement(),
     posChanged: true,
     rotateChanged: true,
+    updateTiles: true,
     lastTick: 0.,
     curTime: 0.,
     gameState: Running
@@ -393,9 +401,8 @@ let elToTiles = (state) => {
     let posy = state.curEl.pos.y + tileY;
     let posx = state.curEl.pos.x + tileX;
     state.tiles[state.curEl.pos.y + tileY][state.curEl.pos.x + tileX] = state.curEl.color;
-    state.boardProgram.tiles[posy * tileCols + posx] = state.curEl.color - 1;
+    state.sceneTiles[posy * tileCols + posx] = state.curEl.color - 1;
   }, elTiles(state.curEl.el, state.curEl.rotation));
-  state.boardProgram.updateTiles = true;
 };
 
 let listRange = (countDown) => {
@@ -486,58 +493,30 @@ let processAction = (state) => {
   }
 };
 
-let drawElTiles2 = (tiles, color, x, y, state) => {
-    Gpu.Uniform.setVec3f(state.boardProgram.currElDraw.program.uniforms[0].uniform, color);
-    Gpu.Uniform.setVec3f(state.boardProgram.gridDraw.program.uniforms[0].uniform, color);
-    /* Translate to -1.0 to 1.0 coords */
-    let tileHeight = 2.0 /. float_of_int(tileRows);
-    let tileWidth = 2.0 /. float_of_int(tileCols);
-    /* Translation */
-    let elPos = [|
-      -1. +. float_of_int(x) *. tileWidth,
-      1. +. float_of_int(y) *. -.tileHeight
-    |];
-    Gpu.Uniform.setVec2f(state.boardProgram.currElDraw.program.uniforms[1].uniform, elPos);
-    Gpu.Uniform.setVec2f(state.boardProgram.gridDraw.program.uniforms[1].uniform, elPos);
-    state.boardProgram.currElTiles = Array.concat(List.map(((tileX, tileY)) => {
-      /* 2x coord system with y 1.0 at top and -1.0 at bottom */
-      let tileYScaled = float_of_int(tileY * -1) *. tileHeight;
-      let tileXScaled = float_of_int(tileX) *. tileWidth;
-      /* Bottom left, Top left, Top right, Bottom right */
-      [|
-        tileXScaled, tileYScaled -. tileHeight,
-        tileXScaled, tileYScaled,
-        tileXScaled +. tileWidth, tileYScaled,
-        tileXScaled +. tileWidth, tileYScaled -. tileHeight
-      |]
-    }, tiles));
-    state.boardProgram.updateCurrEl = true;
-};
 
 let afterTouchdown = (state, canvas : Gpu.Canvas.t) => {
   let curTime = state.curTime +. canvas.deltaTime;
-  if (Array.length(state.lastCompletedRows) > 0) {
+  let state = if (Array.length(state.lastCompletedRows) > 0) {
     /* Move rows above completed down */
     Array.iter((currentRow) => {
       for (y in currentRow downto 1) {
         state.tiles[y] = Array.copy(state.tiles[y - 1]);
         for (tileIdx in (y * tileCols) to (y * tileCols + tileCols) - 1) {
-          state.boardProgram.tiles[tileIdx] = state.boardProgram.tiles[tileIdx - tileCols];
+          state.sceneTiles[tileIdx] = state.sceneTiles[tileIdx - tileCols];
         };
       };
     }, state.lastCompletedRows);
-    state.boardProgram.updateTiles = true;
+    {
+      ...state,
+      updateTiles: true
+    }
+  } else {
+    state
   };
   let state = {
     ...state,
     curEl: newElement()
   };
-  drawElTiles2(
-    elTiles(state.curEl.el, state.curEl.rotation),
-    tileColors2[state.curEl.color],
-    state.curEl.pos.x, state.curEl.pos.y,
-    state
-  );
   updateBeams(state);
   if (isCollision(state)) {
     {
@@ -572,22 +551,6 @@ let drawGame = (state, canvas : Gpu.Canvas.t) => {
   } else {
     (state, false)
   };
-  let state = if (state.posChanged || state.rotateChanged) {
-    drawElTiles2(
-      elTiles(state.curEl.el, state.curEl.rotation),
-      tileColors2[state.curEl.color],
-      state.curEl.pos.x, state.curEl.pos.y,
-      state
-    );
-    updateBeams(state);
-    {
-      ...state,
-      posChanged: false,
-      rotateChanged: false
-    }
-  } else {
-    state
-  };
   /* Handle element has touched down */
   switch (isTouchdown) {
   | false =>
@@ -599,6 +562,10 @@ let drawGame = (state, canvas : Gpu.Canvas.t) => {
   | true =>
     /* Put element into tiles */
     elToTiles(state);
+    let state = {
+      ...state,
+      updateTiles: true
+    };
     /* Check for completed rows */
     let completedRows = Array.map(
       tileRow => {
@@ -618,8 +585,8 @@ let drawGame = (state, canvas : Gpu.Canvas.t) => {
       lastCompletedRows: completedRowIndexes
     };
     if (Array.length(completedRowIndexes) > 0) {
-      state.boardProgram.blinkRows.rows = completedRowIndexes;
-      state.boardProgram.blinkRows.state = BoardProgram.BlinkRows.Blinking;
+      state.blinkRows.rows = completedRowIndexes;
+      state.blinkRows.state = BlinkRows.Blinking;
       state
     } else {
       afterTouchdown(state, canvas)
@@ -667,7 +634,6 @@ let draw = (state, canvas) => {
   let state = processAction(state);
   let mainProcess = (state) => {
     let state = drawGame(state, canvas);
-    BoardProgram.draw(state.boardProgram);
     switch (state.gameState) {
     | Running => state
     | GameOver => newGame(state)
@@ -676,15 +642,14 @@ let draw = (state, canvas) => {
   if (state.paused) {
     state
   } else {
-    switch (state.boardProgram.blinkRows.state) {
-    | BoardProgram.BlinkRows.NotBlinking =>
+    switch (state.blinkRows.state) {
+    | BlinkRows.NotBlinking =>
       mainProcess(state);
-    | BoardProgram.BlinkRows.Blinking =>
+    | BlinkRows.Blinking =>
       /* Blink animation */
-      BoardProgram.draw(state.boardProgram);
       state
-    | BoardProgram.BlinkRows.JustBlinked =>
-      state.boardProgram.blinkRows.state = BoardProgram.BlinkRows.NotBlinking;
+    | BlinkRows.JustBlinked =>
+      state.blinkRows.state = BlinkRows.NotBlinking;
       /* Run after touchdown now that animation is done */
       let state = afterTouchdown(state, canvas);
       mainProcess(state);

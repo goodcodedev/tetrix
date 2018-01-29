@@ -78,15 +78,18 @@ let updateVertices = (self, vertices, canvas) => {
     draw(self, canvas);
 };
 
-let makeNode = (beamTex) => {
+let makeNode = (beamTex, elColor, vertices, indices) => {
     Scene.makeNode(
         "beams",
+        ~updateOn=[UpdateFlags.ElPosChanged],
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~uniforms=[
-            Scene.UVec3f.values("color", 1.0, 1.0, 1.0)
+            ("color", elColor)
         ],
         ~drawToTexture=beamTex,
+        ~vertices,
+        ~indices,
         ()
     )
 };
