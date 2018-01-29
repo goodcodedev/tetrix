@@ -130,7 +130,6 @@ let init = (canvas : Gpu.Canvas.t, boardCoords : Coords.boardCoords, tilesTex) =
             Shader.make(fragmentSource),
             [||]
         ),
-        [||],
         vertexQuad,
         indexQuad,
         [|
@@ -145,21 +144,22 @@ let init = (canvas : Gpu.Canvas.t, boardCoords : Coords.boardCoords, tilesTex) =
     let fbuffer2 = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
     let blurTex2 = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA, Texture.LinearFilter);
     let fbuffer3 = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
+    let blurVertex = Shader.make(blurVertex);
+    let blurFragment = Shader.make(blurFragment);
     let blurProgram = Program.make(
-        Shader.make(blurVertex),
-        Shader.make(blurFragment),
+        blurVertex,
+        blurFragment,
         [|
-            Uniform.make("pDistance", GlType.Float),
-            Uniform.make("screen", GlType.Vec2f),
+            Uniform.make("pDistance", UniformFloat(ref(10.0))),
+            Uniform.make("screen", UniformVec2f(ref(Data.Vec2.make(
+                boardCoords.pixelWidth,
+                boardCoords.pixelHeight
+            )))),
         |]
     );
     let blurDraw1 = DrawState.init(
         context,
         blurProgram,
-        [|
-            Uniform.UniformFloat(10.0),
-            Uniform.UniformVec2f([|boardCoords.pixelWidth, boardCoords.pixelHeight|])
-        |],
         vertexQuad,
         indexQuad,
         [|
@@ -172,10 +172,6 @@ let init = (canvas : Gpu.Canvas.t, boardCoords : Coords.boardCoords, tilesTex) =
     let blurDraw2 = DrawState.init(
         context,
         blurProgram,
-        [|
-            Uniform.UniformFloat(1.0),
-            Uniform.UniformVec2f([|boardCoords.pixelWidth, boardCoords.pixelHeight|])
-        |],
         vertexQuad,
         indexQuad,
         [|
@@ -208,11 +204,13 @@ let draw = (ts) => {
     /* Draw first pass blur */
     FrameBuffer.bindTexture(ts.fbuffer2, ts.canvas.context, ts.blurTex1);
     Canvas.setFramebuffer(ts.canvas, ts.fbuffer2);
+    Uniform.setFloat(ts.drawState.program.uniforms[0].uniform, 10.0);
     DrawState.draw(ts.blurDraw1, ts.canvas);
     Canvas.clearFramebuffer(ts.canvas);
     /* Draw second pass blur */
     FrameBuffer.bindTexture(ts.fbuffer3, ts.canvas.context, ts.blurTex2);
     Canvas.setFramebuffer(ts.canvas, ts.fbuffer3);
+    Uniform.setFloat(ts.blurDraw2.program.uniforms[0].uniform, 1.0);
     DrawState.draw(ts.blurDraw2, ts.canvas);
     Canvas.clearFramebuffer(ts.canvas);
 };

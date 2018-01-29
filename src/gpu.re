@@ -2,30 +2,30 @@ module Constants = RGLConstants;
 module Gl = Reasongl.Gl;
 
 module Color = {
-    type t = {
-        r: float,
-        g: float,
-        b: float
-    };
+    type t = array(float);
 
     let from255 = (r, g, b) => {
-        {
-            r: float_of_int(r) /. 255.0,
-            g: float_of_int(g) /. 255.0,
-            b: float_of_int(b) /. 255.0
-        }
+        [|
+            float_of_int(r) /. 255.0,
+            float_of_int(g) /. 255.0,
+            float_of_int(b) /. 255.0
+        |]
     };
 
     let fromFloats = (r, g, b) => {
-        {
-            r: r,
-            g: g,
-            b: b
-        }
+        [|r, g, b|]
     };
 
-    let toArray = (c) => {
-        [|c.r, c.g, c.b|]
+    let toArray = (c : t) : array(float) => {
+        c
+    };
+
+    let toVec3 = (c : t) => {
+        Data.Vec3.fromArray(toArray(c))
+    };
+
+    let toGlsl = (c : t) => {
+        "vec3(" ++ string_of_float(c[0]) ++ "," ++ string_of_float(c[1]) ++ "," ++ string_of_float(c[2]) ++ ")"
     }
 };
 
@@ -69,39 +69,91 @@ type bufferUsage =
   | DynamicDraw
   | StreamingDraw;
 
+open Data;
+
+type uniform =
+  | UniformFloat(ref(float))
+  | UniformInt(ref(int))
+  | UniformVec2f(ref(Vec2.t))
+  | UniformVec3f(ref(Vec3.t))
+  | UniformVec4f(ref(Vec4.t))
+  | UniformMat3f(ref(Mat3.t));
+
 module Uniform = {
-    type uniformValue =
-      | UniformFloat(float)
-      | UniformInt(int)
-      | UniformVec2f(array(float))
-      | UniformVec3f(array(float))
-      | UniformVec4f(array(float))
-      | UniformMat3f(array(float))
-      ;
     type inited = {
         glType: GlType.t,
-        loc: Gl.uniformT
+        loc: Gl.uniformT,
+        uniform: uniform
     };
 
     type t = {
         name: string,
         glType: GlType.t,
+        uniform: uniform,
         mutable inited: option(inited)
     };
 
-    let make = (name, glType) => {
-        name: name,
-        glType: glType,
+    let getUniformGlType = (uniform) => {
+        switch (uniform) {
+        | UniformFloat(_) => GlType.Float
+        | UniformInt(_) => GlType.Int
+        | UniformVec2f(_) => GlType.Vec2f
+        | UniformVec3f(_) => GlType.Vec3f
+        | UniformVec4f(_) => GlType.Vec4f
+        | UniformMat3f(_) => GlType.Mat3f
+        }
+    };
+
+    let make = (name, uniform) => {
+        name,
+        glType: getUniformGlType(uniform),
+        uniform,
         inited: None
     };
 
     let init = (uniform, context, program) => {
         let inited = {
             glType: uniform.glType,
+            uniform: uniform.uniform,
             loc: Gl.getUniformLocation(~context, ~program, ~name=uniform.name)
         };
         uniform.inited = Some(inited);
         inited
+    };
+
+    let setFloat = (uniform, value) => {
+        switch (uniform) {
+        | UniformFloat(valRef) => valRef := value
+        | _ => failwith("Uniform not float");
+        }
+    };
+
+    let setVec2f = (uniform, value) => {
+        switch (uniform) {
+        | UniformVec2f(valRef) => valRef := value
+        | _ => failwith("Uniform not vec2f");
+        }
+    };
+
+    let setVec3f = (uniform, value) => {
+        switch (uniform) {
+        | UniformVec3f(valRef) => valRef := value
+        | _ => failwith("Uniform not vec3f");
+        }
+    };
+
+    let setVec4f = (uniform, value) => {
+        switch (uniform) {
+        | UniformVec4f(valRef) => valRef := value
+        | _ => failwith("Uniform not vec4f");
+        }
+    };
+
+    let setMat3f = (uniform, value) => {
+        switch (uniform) {
+        | UniformMat3f(valRef) => valRef := value
+        | _ => failwith("Uniform not mat3");
+        }
     };
 
     [@bs.send]
@@ -109,14 +161,22 @@ module Uniform = {
         (~context: Gl.contextT, ~location: Gl.uniformT, ~transpose: Js.boolean, ~values: array(float)) => unit =
         "uniformMatrix3fv";
 
-    let setValue = (uniform, context, uniformValue) => {
-        switch (uniformValue) {
-        | UniformFloat(value) => Gl.uniform1f(~context, ~location=uniform.loc, ~value)
-        | UniformInt(value) => Gl.uniform1i(~context, ~location=uniform.loc, ~value)
-        | UniformVec2f(value) => Gl.uniform2f(~context, ~location=uniform.loc, ~v1=value[0], ~v2=value[1])
-        | UniformVec3f(value) => Gl.uniform3f(~context, ~location=uniform.loc, ~v1=value[0], ~v2=value[1], ~v3=value[2])
-        | UniformVec4f(value) => Gl.uniform4f(~context, ~location=uniform.loc, ~v1=value[0], ~v2=value[1], ~v3=value[2], ~v4=value[3])
-        | UniformMat3f(values) => uniformMatrix3fv(~context, ~location=uniform.loc, ~transpose=Js.false_, ~values=values)
+    let valueToGpu = (uniform : inited, context) => {
+        switch (uniform.uniform) {
+        | UniformFloat(value) => Gl.uniform1f(~context, ~location=uniform.loc, ~value=value^);
+        | UniformInt(value) => Gl.uniform1i(~context, ~location=uniform.loc, ~value=value^);
+        | UniformVec2f(value) =>
+            let value = value^;
+            Gl.uniform2f(~context, ~location=uniform.loc, ~v1=value[0], ~v2=value[1]);
+        | UniformVec3f(value) =>
+            let value = value^;
+            Gl.uniform3f(~context, ~location=uniform.loc, ~v1=value[0], ~v2=value[1], ~v3=value[2]);
+        | UniformVec4f(value) =>
+            let value = value^;
+            Gl.uniform4f(~context, ~location=uniform.loc, ~v1=value[0], ~v2=value[1], ~v3=value[2], ~v4=value[3]);
+        | UniformMat3f(values) =>
+            let values = values^;
+            uniformMatrix3fv(~context, ~location=uniform.loc, ~transpose=Js.false_, ~values=values);
         };
     };
 };
@@ -898,7 +958,7 @@ module Canvas = {
         );
     };
 
-    let drawIndexes = (canvas, program, uniforms, vertexBuffer, indexBuffer, textures) => {
+    let drawIndexes = (canvas, program, vertexBuffer, indexBuffer, textures) => {
         let context = canvas.context;
         switch (canvas.currProgram) {
         | Some(currentProgram) when (currentProgram === program) => ()
@@ -908,11 +968,8 @@ module Canvas = {
         }
         };
         /* Set uniforms */
-        if (Array.length(uniforms) != Array.length(program.uniforms)) {
-            failwith("Different number of uniforms and uniform values");
-        };
         Array.iteri((i, uniform) => {
-            Uniform.setValue(uniform, context, uniforms[i]);
+            Uniform.valueToGpu(uniform, context);
         }, program.uniforms);
         /* Vertex buffer */
         switch (canvas.currVertexBuffer) {
@@ -982,14 +1039,13 @@ module Canvas = {
 
 module DrawState = {
     type t = {
-        uniforms: array(Uniform.uniformValue),
         program: Program.inited,
         vertexBuffer: VertexBuffer.inited,
         indexBuffer: option(IndexBuffer.inited),
         textures: array(ProgramTexture.inited)
     };
 
-    let init = (context, program, uniforms, vertexes, indexes, textures) => {
+    let init = (context, program, vertexes, indexes, textures) => {
         let pInited = Program.init(program, context);
         switch (pInited) {
         | Some(program) => {
@@ -1000,7 +1056,6 @@ module DrawState = {
                 pInit
             }, textures);
             {
-                uniforms: uniforms,
                 program: program,
                 vertexBuffer: iBuffer,
                 indexBuffer: Some(iIndexes),
@@ -1017,7 +1072,6 @@ module DrawState = {
             Canvas.drawIndexes(
                 canvas,
                 drawState.program,
-                drawState.uniforms,
                 drawState.vertexBuffer,
                 indexBuffer,
                 drawState.textures

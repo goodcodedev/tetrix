@@ -1,11 +1,11 @@
 let vertexSource = {|
     precision mediump float;
     attribute vec2 position;
-    uniform mat3 mat;
+    uniform mat3 layout;
     varying vec2 vPosition;
     void main() {
         vPosition = position;
-        vec3 transformed = vec3(position, 1.0) * mat;
+        vec3 transformed = vec3(position, 1.0) * layout;
         gl_Position = vec4(transformed.xy, 0.0, 1.0);
     }
 |};
@@ -15,7 +15,7 @@ let fragmentSource = {|
     uniform vec3 lineColor;
     uniform vec2 elPos;
     uniform vec3 elColor;
-    uniform vec2 screen;
+    uniform vec2 pixelSize;
     uniform sampler2D tiles;
     uniform sampler2D tileShadows;
     uniform sampler2D beams;
@@ -24,8 +24,8 @@ let fragmentSource = {|
 
     const float numCols = 12.0;
     const float numRows = 26.0;
-    float xsize = 1.0 / screen.x;
-    float ysize = 1.0 / screen.y;
+    float xsize = 1.0 / pixelSize.x;
+    float ysize = 1.0 / pixelSize.y;
     const float tileWidth = 1.0 / numCols;
     const float tileHeight = 1.0 / numRows;
 
@@ -66,16 +66,17 @@ let fragmentSource = {|
 |};
 
 open Gpu;
-let createProgram = () => {
+let createProgram = (boardCoords : Coords.boardCoords) => {
+    open Data;
     Program.make(
         Shader.make(vertexSource),
         Shader.make(fragmentSource),
         [|
-            Uniform.make("lineColor", GlType.Vec3f),
-            Uniform.make("elPos", GlType.Vec2f),
-            Uniform.make("elColor", GlType.Vec3f),
-            Uniform.make("screen", GlType.Vec2f),
-            Uniform.make("mat", GlType.Mat3f)
+            Uniform.make("lineColor", UniformVec3f(ref(Vec3.zeros()))),
+            Uniform.make("elPos", UniformVec2f(ref(Vec2.zeros()))),
+            Uniform.make("elColor", UniformVec3f(ref(Vec3.zeros()))),
+            Uniform.make("screen", UniformVec2f(ref(Vec2.make(boardCoords.pixelWidth, boardCoords.pixelHeight)))),
+            Uniform.make("mat", UniformMat3f(ref(Mat3.fromArray(boardCoords.mat))))
         |]
     )
 };
@@ -83,14 +84,7 @@ let createProgram = () => {
 let createDrawState = (canvas : Canvas.t, boardCoords : Coords.boardCoords, tilesTexture, shadowTexture, beamTexture) => {
     DrawState.init(
         canvas.context,
-        createProgram(),
-        [|
-            Uniform.UniformVec3f([|0.0, 0.0, 0.0|]),
-            Uniform.UniformVec2f([|0.0, 0.0|]),
-            Uniform.UniformVec3f([|0.0, 0.0, 0.0|]),
-            Uniform.UniformVec2f([|boardCoords.pixelWidth, boardCoords.pixelHeight|]),
-            Uniform.UniformMat3f(boardCoords.mat)
-        |],
+        createProgram(boardCoords),
         VertexBuffer.makeQuad(()),
         IndexBuffer.makeQuad(),
         [|
@@ -106,20 +100,24 @@ let draw = (ds, canvas) => {
 };
 
 
-let makeItem = (canvas : Canvas.t) => {
-    let context = canvas.context;
-    let vertexQuad = VertexBuffer.makeQuad(());
-    let indexQuad = IndexBuffer.makeQuad();
-    let drawState = DrawState.init(
-        context,
-        Program.make(
-            Shader.make(vertexSource),
-            Shader.make(fragmentSource),
-            [||]
-        ),
-        [||],
-        vertexQuad,
-        indexQuad,
-        [||]
-    );
+let makeNode = () => {
+    open UpdateFlags;
+    open Scene;
+    /*
+
+            ("lineColor", GlType.Vec3f),
+            ("elPos", GlType.Vec2f),
+            ("elColor", GlType.Vec3f),
+            ("pixelSize", GlType.Vec2f),
+            ("layout", GlType.Mat3f)
+    */
+    makeNode(
+        "grid",
+        ~updateOn=[Init,ElPosChanged],
+        ~vertShader=Shader.make(vertexSource),
+        ~fragShader=Shader.make(fragmentSource),
+        ~uniforms=[
+            
+        ]
+    )
 };

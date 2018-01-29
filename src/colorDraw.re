@@ -41,14 +41,10 @@ let init = (canvas : Gpu.Canvas.t, boardCoords: Coords.boardCoords) => {
             Shader.make(vertexSource),
             Shader.make(fragmentSource),
             [|
-                Uniform.make("color", GlType.Vec4f),
-                Uniform.make("mat", GlType.Mat3f)
+                Uniform.make("color", Gpu.UniformVec4f(ref(Data.Vec4.make(1.0, 1.0, 1.0, 1.0)))),
+                Uniform.make("mat", Gpu.UniformMat3f(ref(boardCoords.mat)))
             |]
         ),
-        [|
-            Uniform.UniformVec4f([|1.0, 1.0, 1.0|]),
-            Uniform.UniformMat3f(boardCoords.mat),
-        |],
         vertexQuad,
         indexQuad,
         [||]
@@ -68,13 +64,13 @@ let drawToTexture = (self, texture, color, ~clearColor=?, ()) => {
         Canvas.clear(self.canvas, color[0], color[1], color[2]);
     | None => ()
     };
-    self.drawState.uniforms[0] = Uniform.UniformVec4f(color);
+    Gpu.Uniform.setVec4f(self.drawState.program.uniforms[0].uniform, Data.Vec4.fromArray(color));
     DrawState.draw(self.drawState, self.canvas);
     Canvas.clearFramebuffer(self.canvas);
 };
 
 let draw = (self, color) => {
-    self.drawState.uniforms[0] = Uniform.UniformVec4f(color);
+    Gpu.Uniform.setVec4f(self.drawState.program.uniforms[0].uniform, Data.Vec4.fromArray(color));
     DrawState.draw(self.drawState, self.canvas);
 };
 

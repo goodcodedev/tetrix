@@ -12,7 +12,7 @@ let uniform = (
         node,
         (scene, node, anim) => {
             let newVal = from +. (last *. anim.elapsed /. duration);
-            Scene.setUniformVal(node, uniform, Gpu.Uniform.UniformFloat(newVal));
+            Scene.setUniformFloat(node, uniform, newVal);
         },
         duration,
         ~next=?next,

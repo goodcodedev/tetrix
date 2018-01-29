@@ -24,7 +24,7 @@ let makeSdfProgram = (canvas: Canvas.t, model, ~color=?, ()) => {
 
 let makeNode = (~width=1.0, ~height=1.0, ~color=?, children) => {
     let aspect = (12.0 /. 26.0);
-    let model = Coords.Mat3.scale(1.0, 1.0 /. aspect);
+    let model = Data.Mat3.scale(1.0, 1.0 /. aspect);
     let sdfNode = SdfNode.make(
         sdfDist(1.0, 1.0 /. aspect, 0.08),
         SdfNode.ByModel,
@@ -34,7 +34,7 @@ let makeNode = (~width=1.0, ~height=1.0, ~color=?, children) => {
         ~color=?color,
         ~alphaLimit=0.0,
         ~opacity=0.5,
-        ~lightPos=Coords.Vec3.make(0.4, -0.4, 3.0),
+        ~lightPos=Data.Vec3.make(0.4, -0.4, 3.0),
         ()
     );
     SdfNode.makeNode(

@@ -40,9 +40,8 @@ let init = (canvas : Gpu.Canvas.t) => {
         Program.make(
             Shader.make(vertexSource),
             Shader.make(fragmentSource),
-            [|Uniform.make("color", GlType.Vec3f)|]
+            [|Uniform.make("color", UniformVec3f(ref(Data.Vec3.make(1.0, 1.0, 1.0))))|]
         ),
-        [|Uniform.UniformVec3f([|1.0, 1.0, 1.0|])|],
         vertexQuad,
         indexQuad,
         [||]

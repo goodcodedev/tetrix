@@ -9,11 +9,11 @@ type t = {
     fragCoords: fragCoords,
     width: float,
     height: float,
-    model: option(Coords.Mat3.t),
+    model: option(Data.Mat3.t),
     color: Color.t,
     opacity: option(float),
     alphaLimit: option(float),
-    lightPos: Coords.Vec3.t
+    lightPos: Data.Vec3.t
 };
 
 type inited = {
@@ -70,7 +70,7 @@ let makeFragmentSource = (self) => {
     | (None, ByModel) => failwith("ByModel fragCoords requested, but no model provided")
     };
     let sf = string_of_float;
-    let glColor = "vec3(" ++ sf(self.color.r) ++ "," ++ sf(self.color.g) ++ "," ++ sf(self.color.b) ++ ")";
+    let glColor = Color.toGlsl(self.color);
     let glAlpha = switch(self.alphaLimit, self.opacity) {
     | (Some(alphaLimit), Some(opacity)) => "(pixelEye.z - dist < " ++ sf(alphaLimit) ++ ") ? 0.0 : " ++ sf(opacity)
     | (Some(alphaLimit), None) => "(pixelEye.z - dist < " ++ sf(alphaLimit) ++ ") ? 0.0 : 1.0"
@@ -119,7 +119,7 @@ let makeFragmentSource = (self) => {
             vec3 N = estimateNormal(surfacePoint);
             vec3 diffuseDir = vec3(0.4, -0.3, 0.3);
             float NdotD = max(dot(diffuseDir, N), 0.0);
-            vec3 pointPos = |} ++ Coords.Vec3.toGlsl(self.lightPos) ++ {|;
+            vec3 pointPos = |} ++ Data.Vec3.toGlsl(self.lightPos) ++ {|;
             vec3 pointVec = pointPos - surfacePoint;
             vec3 pointDir = normalize(pointVec);
             float NdotP = max(dot(pointDir, N), 0.0);
@@ -150,7 +150,7 @@ let makeFragmentSource = (self) => {
 
 let makeProgram = (self) => {
     let uniforms = switch(self.model) {
-    | Some(_model) => [|Uniform.make("model", GlType.Mat3f)|]
+    | Some(model) => [|Uniform.make("model", UniformMat3f(ref(Data.Mat3.fromArray(model))))|]
     | None => [||]
     };
     Program.make(
@@ -161,14 +161,9 @@ let makeProgram = (self) => {
 };
 
 let makeDrawState = (self, canvas : Canvas.t) => {
-    let uniforms = switch(self.model) {
-    | Some(model) => [|Uniform.UniformMat3f(model)|]
-    | None => [||]
-    };
     DrawState.init(
         canvas.context,
         makeProgram(self),
-        uniforms,
         VertexBuffer.makeQuad(()),
         IndexBuffer.makeQuad(),
         [||]
@@ -196,7 +191,7 @@ let make = (
     ~color=Color.fromFloats(0.6, 0.6, 0.6),
     ~opacity=?,
     ~alphaLimit=?,
-    ~lightPos=Coords.Vec3.make(0.6, 0.2, 0.4),
+    ~lightPos=Data.Vec3.make(0.6, 0.2, 0.4),
     ()
     ) => {
     {
@@ -226,12 +221,13 @@ let makeNode = (self, ~aspect=?, ~children=[], ()) => {
     | (Some(opacity), _) => (opacity < 1.0)
     | _ => false
     };
-    let (uniforms, uniformVals) = switch(self.model) {
-    | Some(model) => (
-        [Scene.makeUniform("model", GlType.Mat3f), Scene.makeUniform("layout", GlType.Mat3f)],
-        [Scene.makeUniformMat3f("model", model)]
-    )
-    | None => ([Scene.makeUniform("layout", GlType.Mat3f)], [])
+    let uniforms = switch(self.model) {
+    | Some(model) => 
+        [
+            ("model", UniformMat3f(ref(model))),
+            ("layout", UniformMat3f(ref(Data.Mat3.id())))
+        ]
+    | None => [("layout", UniformMat3f(ref(Data.Mat3.id())))]
     };
     let size = switch (aspect) {
     | Some(aspect) => Scene.Aspect(aspect)
@@ -245,7 +241,6 @@ let makeNode = (self, ~aspect=?, ~children=[], ()) => {
         ~size,
         ~transparent,
         ~uniforms,
-        ~uniformVals,
         ~children,
         ()
     )

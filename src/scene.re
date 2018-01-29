@@ -31,10 +31,6 @@ type uniform =
   | UniformItem(Gpu.Uniform.t)
   | UniformRef(string);
 
-type uniformVal =
-  | UniformValItem(Gpu.Uniform.uniformValue)
-  | UniformValRef(string);
-
 type childLayout =
   | Horizontal
   | Vertical;
@@ -108,8 +104,7 @@ and node('state, 'flags) = {
     vertices: vertices,
     indices: indices,
     uniformList: list(string),
-    uniforms: Hashtbl.t(string, uniform),
-    uniformVals: Hashtbl.t(string, uniformVal),
+    uniforms: Hashtbl.t(string, Gpu.uniform),
     mutable parent: option(node('state, 'flags)),
     mutable scene: option(t('state, 'flags))
 }
@@ -167,7 +162,6 @@ let makeNode = (
     ~vertices=?,
     ~indices=?,
     ~uniforms=[],
-    ~uniformVals=[],
     ~size=Dimensions(Scale(1.0), Scale(1.0)),
     ~padding=?,
     ~spacing=?,
@@ -190,7 +184,6 @@ let makeNode = (
         let textures = listToTbl(textures);
         let uniformList = List.map(((key, _uniform)) => key, uniforms);
         let uniforms = listToTbl(uniforms);
-        let uniformVals = listToTbl(uniformVals);
         let vertices = switch(vertices) {
         | Some(vertices) => vertices
         | None => VerticesItem(quadVertices)
@@ -233,7 +226,6 @@ let makeNode = (
         indices,
         uniformList,
         uniforms,
-        uniformVals,
         parent: None,
         scene: None
     }
@@ -365,6 +357,7 @@ let resolveIndices = (node, key) => {
     getNodeRef(Some(node), key, resolve)
 };
 
+/*
 let resolveUniform = (node, key) => {
     let getTbl = (node) => node.uniforms;
     let rec resolve = (node, resource) => {
@@ -386,6 +379,7 @@ let resolveUniformVal = (node, key) => {
     };
     getTblRef(Some(node), key, getTbl, resolve)
 };
+*/
 
 let getSceneNodesToUpdate = (flags, animIds, root) => {
     let rec loop = (node, list, inAnims) => {
@@ -406,17 +400,11 @@ let getSceneNodesToUpdate = (flags, animIds, root) => {
 let createNodeDrawState = (self, node) => {
     let uniforms = Array.of_list(List.map(
         (key) => {
-            switch (Hashtbl.find(node.uniforms, key)) {
-            | UniformItem(uniform) => uniform
-            | UniformRef(key) =>
-                switch (resolveUniform(node, key)) {
-                | Some(uniform) => uniform
-                | None => failwith("Uniform not found: " ++ key)
-                }
-            }
+            Gpu.Uniform.make(key, Hashtbl.find(node.uniforms, key))
         },
         node.uniformList
     ));
+    /*
     let uniformVals = Array.of_list(List.map(
         (key) => {
             if (Hashtbl.mem(node.uniformVals, key)) {
@@ -437,6 +425,7 @@ let createNodeDrawState = (self, node) => {
         },
         node.uniformList
     ));
+    */
     let vertices = switch (node.vertices) {
     | VerticesItem(vertices) => vertices
     | VerticesRef(key) => switch (resolveVertices(node, key)) {
@@ -478,7 +467,6 @@ let createNodeDrawState = (self, node) => {
             fragShader,
             uniforms
         ),
-        uniformVals,
         vertices,
         indices,
         textures
@@ -548,20 +536,19 @@ let getNode = (self, key) => {
     }
 };
 
-let setUniformVal = (node, key, value) => {
-    let rec getUniformIndex = (list, idx) => {
-        switch (list) {
-        | [] => failwith("Key not found in setUniformVal: " ++ key);
-        | [item, ...rest] => (item == key) ? idx : getUniformIndex(rest, idx + 1)
-        }
-    };
-    let idx = getUniformIndex(node.uniformList, 0);
-    switch (node.drawState) {
-    | Some(drawState) =>
-        drawState.uniforms[idx] = value;
-    | None =>
-        Hashtbl.add(node.uniformVals, key, UniformValItem(value));
-    };
+let setUniformFloat = (node, key, value) => {
+    let uniform = Hashtbl.find(node.uniforms, key);
+    Gpu.Uniform.setFloat(uniform, value);
+};
+
+let setUniformVec2f = (node, key, value) => {
+    let uniform = Hashtbl.find(node.uniforms, key);
+    Gpu.Uniform.setVec2f(uniform, value);
+};
+
+let setUniformMat3f = (node, key, value) => {
+    let uniform = Hashtbl.find(node.uniforms, key);
+    Gpu.Uniform.setMat3f(uniform, value);
 };
 
 let calcLayout = (self) => {
@@ -721,14 +708,14 @@ let calcLayout = (self) => {
             Js.log2("yOff: ", calcLayout.pYOffset);
         };
         if (Hashtbl.mem(node.uniforms, "layout")) {
-            let scale = Coords.Mat3.scale(calcLayout.pWidth /. vpWidth, calcLayout.pHeight /. vpHeight);
+            let scale = Data.Mat3.scale(calcLayout.pWidth /. vpWidth, calcLayout.pHeight /. vpHeight);
             /* Can this be simplified? */
-            let translate = Coords.Mat3.trans(
+            let translate = Data.Mat3.trans(
                 ((calcLayout.pXOffset +. (calcLayout.pWidth /. 2.0) -. vpWidthCenter) /. vpWidth *. 2.0),
                 ((calcLayout.pYOffset +. (calcLayout.pHeight /. 2.0) -. vpHeightMiddle) /. vpHeight *. -2.0)
             );
-            let layoutMat = Coords.Mat3.matmul(translate, scale);
-            setUniformVal(node, "layout", Gpu.Uniform.UniformMat3f(layoutMat));
+            let layoutMat = Data.Mat3.matmul(translate, scale);
+            setUniformMat3f(node, "layout", layoutMat);
             if (debug) {
                 Js.log2("Scale: ", scale);
                 Js.log2("Translate: ", translate);
@@ -736,10 +723,10 @@ let calcLayout = (self) => {
             };
         };
         if (Hashtbl.mem(node.uniforms, "pixelSize")) {
-            setUniformVal(node, "pixelSize", Gpu.Uniform.UniformVec2f([|
+            setUniformVec2f(node, "pixelSize", Data.Vec2.make(
                 node.calcLayout.pWidth,
-                node.calcLayout.pHeight,
-            |]));
+                node.calcLayout.pHeight
+            ));
         };
         List.iter((dep) => {
             calcNodeLayout(dep);
@@ -759,7 +746,7 @@ let calcLayout = (self) => {
 };
 
 let draw = (self, node) => {
-    Js.log("Drawing " ++ node.key);
+    /*Js.log("Drawing " ++ node.key);*/
     switch (node.drawState) {
     | Some(drawState) =>
         if (node.transparent) {
@@ -877,27 +864,6 @@ let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()
         ()
     );
 };
-
-let makeUniform = (name, glType) => {
-    (name, UniformItem(Gpu.Uniform.make(name, glType)))
-};
-
-let makeUniformFloat = (name, floatVal) => {
-    (name, UniformValItem(Gpu.Uniform.UniformFloat(floatVal)))
-};
-
-let makeUniformVec2f = (name, vec2vals) => {
-    (name, UniformValItem(Gpu.Uniform.UniformVec2f(vec2vals)))
-};
-
-let makeUniformVec3f = (name, vec3vals) => {
-    (name, UniformValItem(Gpu.Uniform.UniformVec3f(vec3vals)))
-};
-
-let makeUniformMat3f = (name, mat3Vals) => {
-    (name, UniformValItem(Gpu.Uniform.UniformMat3f(mat3Vals)))
-};
-
 
 let doAnim = (scene, anim) => {
     scene.anims = [anim, ...scene.anims];

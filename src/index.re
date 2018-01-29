@@ -24,19 +24,41 @@ let setup = (canvas) => {
 
 let createRootNode = () => {
     Background.makeNode([
-      UiBox.makeNode([]),
-      Layout.vertical(
-        ~width=0.2,
-        ~spacing=Scale(0.1),
+      Layout.horizontal(
+        ~size=Scene.Aspect((14.0 +. 10.0) /. 26.0),
+        ~spacing=Scale(0.02),
         [
-          UiBox.makeNode([
-            FontDraw.makeNode(
-              "Text and more and more text comes here",
-              "digitalt",
-              ~align=SdfFont.TextLayout.AlignLeft,
-              ()
-            )
-          ])
+          Layout.vertical(
+            ~size=Scene.Dimensions(Scale(0.22), Scale(1.0)),
+            ~spacing=Scale(0.1),
+            [
+              UiBox.makeNode([
+                FontDraw.makeNode(
+                  "HOLD",
+                  "digitalt",
+                  ~height=0.35,
+                  ~align=SdfFont.TextLayout.AlignCenter,
+                  ()
+                )
+              ])
+            ]
+          ),
+          UiBox.makeNode([]),
+          Layout.vertical(
+            ~size=Scene.Dimensions(Scale(0.22), Scale(1.0)),
+            ~spacing=Scale(0.1),
+            [
+              UiBox.makeNode([
+                FontDraw.makeNode(
+                  "NEXT",
+                  "digitalt",
+                  ~height=0.35,
+                  ~align=SdfFont.TextLayout.AlignCenter,
+                  ()
+                )
+              ])
+            ]
+          )
         ]
       )
     ])
@@ -53,7 +75,14 @@ let createScene = (canvas, state) => {
   );
   switch (Scene.getNode(scene, "background")) {
   | Some(bg) =>
-    let anim = Animate.uniform(bg, "anim", ~from=0.0, ~last=1.0, ());
+    let anim = Animate.uniform(
+      bg,
+      "anim",
+      ~from=0.0,
+      ~last=1.0,
+      ~duration=1.0,
+      ()
+    );
     Scene.doAnim(scene, anim);
   | None => ()
   };

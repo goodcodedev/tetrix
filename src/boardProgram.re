@@ -158,16 +158,15 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
         tileBeam.beams
     );
     let lineColor = Color.fromFloats(0.15, 0.2, 0.3);
-    gridDraw.uniforms[0] = Uniform.UniformVec3f(Color.toArray(lineColor));
+    Uniform.setVec3f(gridDraw.program.uniforms[0].uniform, Color.toVec3(lineColor));
     /* Board program drawState */
     let tilesDraw = DrawState.init(
         canvas.context,
         Program.make(
             Shader.make(vertexSource),
             Shader.make(fragmentSource),
-            [|Uniform.make("mat", GlType.Mat3f)|]
+            [|Uniform.make("mat", UniformMat3f(ref(boardCoords.mat)))|]
         ),
-        [|Uniform.UniformMat3f(boardCoords.mat)|],
         boardQuad,
         boardIndexes,
         [|
@@ -178,22 +177,18 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
             ProgramTexture.make("sdfTiles", sdfTiles.texture)
         |]
     );
+    open Data;
     let currElDraw = DrawState.init(
         canvas.context,
         Program.make(
             Shader.make(currElVertex),
             Shader.make(currElFragment),
             [|
-                Uniform.make("elColor", GlType.Vec3f),
-                Uniform.make("translation", GlType.Vec2f),
-                Uniform.make("mat", GlType.Mat3f)
+                Uniform.make("elColor", UniformVec3f(ref(Vec3.make(1.0, 0.0, 1.0)))),
+                Uniform.make("translation", UniformVec2f(ref(Vec2.zeros()))),
+                Uniform.make("mat", UniformMat3f(ref(boardCoords.mat)))
             |]
         ),
-        [|
-            Uniform.UniformVec3f([|1.0, 0.0, 1.0|]),
-            Uniform.UniformVec2f([|0.0, 0.0|]),
-            Uniform.UniformMat3f(boardCoords.mat)
-        |],
         currElVertices,
         currElIndexes,
         [|
@@ -202,7 +197,7 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
     );
     let colorDraw = ColorDraw.init(canvas, boardCoords);
 
-    module M3 = Coords.Mat3;
+    module M3 = Data.Mat3;
     let boxTrans = M3.trans(0.6, 0.0);
     let boxScale = M3.scale(0.13, 0.2);
     let boxModel = M3.matmul(boxTrans, boxScale);
@@ -248,13 +243,12 @@ let onResize = (self) => {
     /* Transform matrices needs update */
     /* Things like this would be nice to structure better */
     let boardCoords = Coords.getBoardCoords(self.canvas);
-    let matUniform = Uniform.UniformMat3f(boardCoords.mat);
-    let screenUniform = Uniform.UniformVec2f([|boardCoords.pixelWidth, boardCoords.pixelHeight|]);
-    self.tilesDraw.uniforms[0] = matUniform;
-    self.currElDraw.uniforms[2] = matUniform;
-    self.colorDraw.drawState.uniforms[1] = matUniform;
-    self.gridDraw.uniforms[3] = screenUniform;
-    self.gridDraw.uniforms[4] = matUniform;
+    let screenUniform = Data.Vec2.make(boardCoords.pixelWidth, boardCoords.pixelHeight);
+    Uniform.setMat3f(self.tilesDraw.program.uniforms[0].uniform, boardCoords.mat);
+    Uniform.setMat3f(self.currElDraw.program.uniforms[2].uniform, boardCoords.mat);
+    Uniform.setMat3f(self.colorDraw.drawState.program.uniforms[1].uniform, boardCoords.mat);
+    Uniform.setVec2f(self.gridDraw.program.uniforms[3].uniform, screenUniform);
+    Uniform.setMat3f(self.gridDraw.program.uniforms[4].uniform, boardCoords.mat);
     drawBackground(self);
 };
 

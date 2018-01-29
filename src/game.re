@@ -197,7 +197,7 @@ let updateBeams = (state) => {
     };
   }, (0, [||]), state.beams);
   let elColor = tileColors2[state.curEl.color];
-  state.boardProgram.tileBeam.drawState.uniforms[0] = Gpu.Uniform.UniformVec3f(elColor);
+  Gpu.Uniform.setVec3f(state.boardProgram.tileBeam.drawState.program.uniforms[0].uniform, Data.Vec3.fromArray(elColor));
   TileBeam.updateVertices(state.boardProgram.tileBeam, vertices, state.boardProgram.canvas);
 };
 
@@ -487,8 +487,8 @@ let processAction = (state) => {
 };
 
 let drawElTiles2 = (tiles, color, x, y, state) => {
-    state.boardProgram.currElDraw.uniforms[0] = Gpu.Uniform.UniformVec3f(color);
-    state.boardProgram.gridDraw.uniforms[2] = Gpu.Uniform.UniformVec3f(color);
+    Gpu.Uniform.setVec3f(state.boardProgram.currElDraw.program.uniforms[0].uniform, color);
+    Gpu.Uniform.setVec3f(state.boardProgram.gridDraw.program.uniforms[0].uniform, color);
     /* Translate to -1.0 to 1.0 coords */
     let tileHeight = 2.0 /. float_of_int(tileRows);
     let tileWidth = 2.0 /. float_of_int(tileCols);
@@ -497,8 +497,8 @@ let drawElTiles2 = (tiles, color, x, y, state) => {
       -1. +. float_of_int(x) *. tileWidth,
       1. +. float_of_int(y) *. -.tileHeight
     |];
-    state.boardProgram.currElDraw.uniforms[1] = Gpu.Uniform.UniformVec2f(elPos);
-    state.boardProgram.gridDraw.uniforms[1] = Gpu.Uniform.UniformVec2f(elPos);
+    Gpu.Uniform.setVec2f(state.boardProgram.currElDraw.program.uniforms[1].uniform, elPos);
+    Gpu.Uniform.setVec2f(state.boardProgram.gridDraw.program.uniforms[1].uniform, elPos);
     state.boardProgram.currElTiles = Array.concat(List.map(((tileX, tileY)) => {
       /* 2x coord system with y 1.0 at top and -1.0 at bottom */
       let tileYScaled = float_of_int(tileY * -1) *. tileHeight;

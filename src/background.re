@@ -97,7 +97,6 @@ let init = (canvas : Gpu.Canvas.t) => {
             Shader.make(fragmentSource),
             [||]
         ),
-        [||],
         vertexQuad,
         indexQuad,
         [||]
@@ -113,17 +112,15 @@ let draw = (self) => {
 };
 
 let makeNode = (children) => {
+    open Data;
     Scene.makeNode(
         "background",
         ~updateOn=UpdateFlags.([Init]),
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~uniforms=[
-            Scene.makeUniform("pixelSize", GlType.Vec2f),
-            Scene.makeUniform("anim", GlType.Float)
-        ],
-        ~uniformVals=[
-            Scene.makeUniformFloat("anim", 0.0)
+            ("pixelSize", Gpu.UniformVec2f(ref(Vec2.zeros()))),
+            ("anim", Gpu.UniformFloat(ref(0.0)))
         ],
         ~padding=Scale(0.05),
         ~children,

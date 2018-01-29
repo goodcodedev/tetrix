@@ -97,7 +97,7 @@ type t = {
     drawState: Gpu.DrawState.t,
     fbuffer: Gpu.FrameBuffer.inited,
     fbTexture: Gpu.Texture.t,
-    model: Coords.Mat3.t,
+    model: Data.Mat3.t,
     mutable hasTexture: bool,
     bgDraw: Gpu.DrawState.t,
 };
@@ -128,10 +128,9 @@ let init = (canvas : Gpu.Canvas.t, vertices, image, model, bgDraw) => {
             Shader.make(vertexSource),
             Shader.make(fragmentSource),
             [|
-                Uniform.make("model", GlType.Mat3f)
+                Uniform.make("model", UniformMat3f(ref(model)))
             |]
         ),
-        [|Uniform.UniformMat3f(model)|],
         vertexBuffer,
         indexBuffer,
         [|
@@ -203,9 +202,9 @@ let loadFont = (font, canvas, bgDraw) => {
         );
         let glyphs = SdfFont.TextLayout.update(layout);
         let vd = SdfFont.TextLayout.vertexData(layout, glyphs);
-        let scale = Coords.Mat3.scale(1.0  /. 80.0, 1.0  /. -80.0);
-        let vpTrans = Coords.Mat3.trans(-1.0, 0.0);
-        let model = Coords.Mat3.matmul(scale, vpTrans);
+        let scale = Data.Mat3.scale(1.0  /. 80.0, 1.0  /. -80.0);
+        let vpTrans = Data.Mat3.trans(-1.0, 0.0);
+        let model = Data.Mat3.matmul(scale, vpTrans);
         let fontDraw = init(canvas, vd, fontFiles.image, model, bgDraw);
         draw(fontDraw);
     });
@@ -230,6 +229,7 @@ let makeNode = (
         StaticDraw
     );
     let indexBuffer = IndexBuffer.make([||], StaticDraw);
+    open Data;
     let node = Scene.makeNode(
         "fontDraw",
         ~vertShader=Shader.make(vertexSource),
@@ -239,16 +239,11 @@ let makeNode = (
         ~vertices=VerticesItem(vertexBuffer),
         ~indices=IndicesItem(indexBuffer),
         ~uniforms=[
-            Scene.makeUniform("model", GlType.Mat3f),
-            Scene.makeUniform("layout", GlType.Mat3f),
-            Scene.makeUniform("pixelSize", GlType.Vec2f),
-            Scene.makeUniform("color", GlType.Vec3f),
-            Scene.makeUniform("opacity", GlType.Float)
-        ],
-        ~uniformVals=[
-            Scene.makeUniformMat3f("model", Coords.Mat3.id()),
-            Scene.makeUniformVec3f("color", Color.toArray(color)),
-            Scene.makeUniformFloat("opacity", opacity),
+            ("model", UniformMat3f(ref(Mat3.id()))),
+            ("layout", UniformMat3f(ref(Mat3.id()))),
+            ("pixelSize", UniformVec2f(ref(Vec2.zeros()))),
+            ("color", UniformVec3f(ref(Color.toVec3(color)))),
+            ("opacity", UniformFloat(ref(opacity)))
         ],
         ~transparent=true,
         ~loading=true,
@@ -292,11 +287,11 @@ let makeNode = (
         | None => failwith("Font texture not initialized");
         };
         /* Update model matrix value */
-        let modelMat = Coords.Mat3.matmul(
-            Coords.Mat3.trans(-1.0, 1.0 -. height),
-            Coords.Mat3.scale(scale, scale)
+        let modelMat = Data.Mat3.matmul(
+            Data.Mat3.trans(-1.0, 1.0 -. height),
+            Data.Mat3.scale(scale, scale)
         );
-        Scene.setUniformVal(node, "model", Uniform.UniformMat3f(modelMat));
+        Scene.setUniformMat3f(node, "model", modelMat);
         node.loading = false;
     });
     node
