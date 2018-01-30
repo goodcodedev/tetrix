@@ -97,6 +97,9 @@ and node('state, 'flags) = {
     indices: Gpu.IndexBuffer.t,
     uniformList: list(string),
     uniforms: Hashtbl.t(string, Gpu.uniform),
+    layoutUniform: option(Gpu.uniform),
+    pixelSizeUniform: option(Gpu.uniform),
+    textureUniforms: list((node('state, 'flags), string, Gpu.uniform)),
     drawToTexture: option(Gpu.Texture.t),
     mutable parent: option(node('state, 'flags)),
     mutable scene: option(t('state, 'flags))
@@ -155,6 +158,9 @@ let makeNode = (
     ~vertices=?,
     ~indices=?,
     ~uniforms=[],
+    ~layoutUniform=false,
+    ~pixelSizeUniform=false,
+    ~textureUniforms=[],
     ~size=Dimensions(Scale(1.0), Scale(1.0)),
     ~padding=?,
     ~spacing=?,
@@ -178,6 +184,24 @@ let makeNode = (
         let textures = listToTbl(textures);
         let uniformList = List.map(((key, _uniform)) => key, uniforms);
         let uniforms = listToTbl(uniforms);
+        /* System uniforms */
+        /* Could also allow stringly typed uniforms to create this,
+           There is a slight advantage to not search map
+           for each node in layout calculation, so nice to
+           have datatype */
+        let layoutUniform = if (layoutUniform) {
+            Some(Gpu.UniformMat3f(ref(Data.Mat3.id())))
+        } else {
+            None
+        };
+        let pixelSizeUniform = if (pixelSizeUniform) {
+            Some(Gpu.UniformVec2f(ref(Data.Vec2.zeros())))
+        } else {
+            None
+        };
+        let textureUniforms = List.map(((name, node)) => {
+            (node, name, Gpu.UniformMat3f(ref(Data.Mat3.id())))
+        }, textureUniforms);
         let vertices = switch(vertices) {
         | Some(vertices) => vertices
         | None => quadVertices
@@ -220,6 +244,9 @@ let makeNode = (
         indices,
         uniformList,
         uniforms,
+        layoutUniform,
+        pixelSizeUniform,
+        textureUniforms,
         drawToTexture,
         parent: None,
         scene: None
@@ -339,12 +366,26 @@ let getSceneNodesToUpdate = (flags, animIds, root) => {
 };
 
 let createNodeDrawState = (self, node) => {
-    let uniforms = Array.of_list(List.map(
+    /* Texture uniforms */
+    let uniforms = List.fold_left((uniforms, (_, name, uniform)) => {
+        [Gpu.Uniform.make(name, uniform), ...uniforms]
+    }, [], node.textureUniforms);
+    /* PixelSize uniform */
+    let uniforms = switch (node.pixelSizeUniform) {
+    | Some(pixelSizeUniform) => [Gpu.Uniform.make("pixelSize", pixelSizeUniform), ...uniforms]
+    | None => uniforms
+    };
+    /* Layout uniform */
+    let uniforms = switch (node.layoutUniform) {
+    | Some(layoutUniform) => [Gpu.Uniform.make("layout", layoutUniform), ...uniforms]
+    | None => uniforms
+    };
+    let uniforms = Array.of_list(List.append(List.map(
         (key) => {
             Gpu.Uniform.make(key, Hashtbl.find(node.uniforms, key))
         },
         node.uniformList
-    ));
+    ), uniforms));
     let textures = Array.of_list(List.map(
         (key) => {
             let texture = Hashtbl.find(node.textures, key);
@@ -612,23 +653,50 @@ let calcLayout = (self) => {
             Js.log2("xOff: ", calcLayout.pXOffset);
             Js.log2("yOff: ", calcLayout.pYOffset);
         };
-        if (Hashtbl.mem(node.uniforms, "layout")) {
-            let scale = Data.Mat3.scale(calcLayout.pWidth /. vpWidth, calcLayout.pHeight /. vpHeight);
-            /* Can this be simplified? */
-            let translate = Data.Mat3.trans(
-                ((calcLayout.pXOffset +. (calcLayout.pWidth /. 2.0) -. vpWidthCenter) /. vpWidth *. 2.0),
-                ((calcLayout.pYOffset +. (calcLayout.pHeight /. 2.0) -. vpHeightMiddle) /. vpHeight *. -2.0)
-            );
-            let layoutMat = Data.Mat3.matmul(translate, scale);
-            setUniformMat3f(node, "layout", layoutMat);
-            if (debug) {
-                Js.log2("Scale: ", scale);
-                Js.log2("Translate: ", translate);
-                Js.log2("Layout: ", layoutMat);
-            };
+        switch (node.layoutUniform) {
+        | None => ();
+        | Some(layoutUniform) =>
+            let scaleX = calcLayout.pWidth /. vpWidth;
+            let scaleY = calcLayout.pHeight /. vpHeight;
+            let scale = Data.Mat3.scale(scaleX, scaleY);
+            switch (node.drawToTexture) {
+            | Some(texture) =>
+                /* Translate texture to begin from 0,0.
+                   The important thing is correspondance with texture
+                   uniforms below */
+                /* Todo: maintain values for quick lookup? */
+                let (texWidth, texHeight) = switch (Gpu.Texture.getSize(texture)) {
+                | Some((texWidth, texHeight)) => (float_of_int(texWidth), float_of_int(texHeight))
+                | None => failwith("Could not find texture size");
+                };
+                let translate = Data.Mat3.trans(
+                    (texWidth -. scaleX *. texWidth) /. texWidth *. -1.0,
+                    (texHeight -. scaleY *. texHeight) /. texHeight
+                );
+                let layoutMat = Data.Mat3.matmul(translate, scale);
+                Gpu.Uniform.setMat3f(layoutUniform, layoutMat);
+                if (debug) {
+                    Js.log2("Layout: ", layoutMat);
+                };
+            | None =>
+                /* Can this be simplified? */
+                let translate = Data.Mat3.trans(
+                    ((calcLayout.pXOffset +. (calcLayout.pWidth /. 2.0) -. vpWidthCenter) /. vpWidth *. 2.0),
+                    ((calcLayout.pYOffset +. (calcLayout.pHeight /. 2.0) -. vpHeightMiddle) /. vpHeight *. -2.0)
+                );
+                let layoutMat = Data.Mat3.matmul(translate, scale);
+                Gpu.Uniform.setMat3f(layoutUniform, layoutMat);
+                if (debug) {
+                    Js.log2("Scale: ", scale);
+                    Js.log2("Translate: ", translate);
+                    Js.log2("Layout: ", layoutMat);
+                };
+            }
         };
-        if (Hashtbl.mem(node.uniforms, "pixelSize")) {
-            setUniformVec2f(node, "pixelSize", Data.Vec2.make(
+        switch (node.pixelSizeUniform) {
+        | None => ();
+        | Some(pixelSizeUniform) =>
+            Gpu.Uniform.setVec2f(pixelSizeUniform, Data.Vec2.make(
                 node.calcLayout.pWidth,
                 node.calcLayout.pHeight
             ));
@@ -639,6 +707,25 @@ let calcLayout = (self) => {
         List.iter((child) => {
             calcNodeLayout(child);
         }, node.children);
+        /* After deps and children have been processed, set texture matrices */
+        List.iter(((texNode, _name, uniform)) => {
+            /* Textures should be scaled for right pixel ratio,
+               need not be translated (could be packed maybe),
+               but should start from beginning or pack position */
+            let scaleX = texNode.calcLayout.pWidth /. vpWidth;
+            let scaleY = texNode.calcLayout.pHeight /. vpHeight;
+            let scale = Data.Mat3.scale(
+                scaleX,
+                scaleY *. -1.0
+            );
+            let translate = Data.Mat3.trans(1.0, -1.0);
+            let texMat = Data.Mat3.matmul(translate, scale);
+            Gpu.Uniform.setMat3f(uniform, texMat);
+                Js.log2("texMat: ", texMat);
+            if (debug) {
+                Js.log2("texMat: ", texMat);
+            };
+        }, node.textureUniforms);
     };
     if (debug) {
         Js.log2("vpWidth", vpWidth);

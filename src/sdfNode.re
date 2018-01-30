@@ -49,6 +49,17 @@ let makeVertexSource = (self) => {
             gl_Position = vec4(pos, 0.0, 1.0);
         }
     |}
+    | (None, ZeroToOne) => {|
+        precision mediump float;
+        attribute vec2 position;
+        uniform mat3 layout;
+        varying vec2 vPosition;
+        void main() {
+            vPosition = (position + vec2(1.0, -1.0)) * vec2(0.5, -0.5);
+            vec2 pos = (vec3(position, 1.0) * layout).xy;
+            gl_Position = vec4(pos, 0.0, 1.0);
+        }
+    |}
     | (None, _) => {|
         precision mediump float;
         attribute vec2 position;
@@ -66,7 +77,7 @@ let makeVertexSource = (self) => {
 let makeFragmentSource = (self) => {
     let fragCoords = switch (self.model, self.fragCoords) {
     | (Some(_model), ByModel) => "vPosition"
-    | (_, ZeroToOne) => "(vPosition + vec2(1.0, -1.0)) * vec2(0.5, -0.5)"
+    | (_, ZeroToOne) => "vPosition"
     | (None, ByModel) => failwith("ByModel fragCoords requested, but no model provided")
     };
     let sf = string_of_float;
@@ -217,6 +228,7 @@ let init = (self, canvas : Canvas.t) => {
 
 let makeNode = (
     self,
+    ~key="sdfNode",
     ~aspect=?,
     ~drawToTexture=?,
     ~children=[],
@@ -231,22 +243,22 @@ let makeNode = (
     | Some(model) => 
         [
             ("model", UniformMat3f(ref(model))),
-            ("layout", UniformMat3f(ref(Data.Mat3.id())))
         ]
-    | None => [("layout", UniformMat3f(ref(Data.Mat3.id())))]
+    | None => []
     };
     let size = switch (aspect) {
     | Some(aspect) => Scene.Aspect(aspect)
     | None => Dimensions(Scale(self.width), Scale(self.height))
     };
     Scene.makeNode(
-        "sdfNode",
+        key,
         ~updateOn=[UpdateFlags.Init],
         ~vertShader=Shader.make(makeVertexSource(self)),
         ~fragShader=Shader.make(makeFragmentSource(self)),
         ~size,
         ~transparent,
         ~uniforms,
+        ~layoutUniform=true,
         ~children,
         ~drawToTexture=?drawToTexture,
         ()

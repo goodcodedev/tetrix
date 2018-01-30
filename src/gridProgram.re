@@ -113,10 +113,10 @@ let makeNode = (tilesTex, tileShadowTex, beamTex, elPos, elColor, deps, children
         ~uniforms=[
             ("lineColor", UVec3f.vals(0.15, 0.2, 0.3)),
             ("elPos", elPos),
-            ("elColor", elColor),
-            ("pixelSize", UVec2f.zeros()),
-            ("layout", UMat3f.id())
+            ("elColor", elColor)
         ],
+        ~layoutUniform=true,
+        ~pixelSizeUniform=true,
         ~textures=[
             ("tiles", tilesTex),
             ("tileShadows", tileShadowTex),

@@ -542,6 +542,7 @@ module Texture = {
 
     type format =
       | Luminance
+      | RGB
       | RGBA;
 
     type data =
@@ -577,8 +578,23 @@ module Texture = {
         }
     };
 
+    let getSize = (texture) => {
+        let data = switch (texture.inited) {
+        | Some(inited) => inited.data
+        | None => texture.data
+        };
+        switch (data) {
+        | IntDataTexture(_, width, height) => Some((width, height))
+        | _ => None
+        }
+    };
+
     let makeEmptyRgba = (~width=1024, ~height=1024, ~filter=LinearFilter, ()) => {
         make(IntDataTexture(Array.make(width*height*4, 0), width, height), RGBA, filter);
+    };
+
+    let makeEmptyRgb = (~width=1024, ~height=1024, ~filter=LinearFilter, ()) => {
+        make(IntDataTexture(Array.make(width*height*3, 0), width, height), RGB, filter);
     };
 
     let luminance = 6409;
@@ -649,6 +665,7 @@ module Texture = {
             );
             let format = switch (texture.format) {
             | RGBA => Constants.rgba
+            | RGB => Constants.rgb
             | Luminance => luminance
             };
             /* Luminance format gives 1 value per pixel repeated for rgba */

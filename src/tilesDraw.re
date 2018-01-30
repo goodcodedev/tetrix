@@ -47,12 +47,11 @@ open Gpu;
 let makeNode = (tilesTex, sdfTilesTex) => {
     Scene.makeNode(
         "tilesDraw",
-        ~updateOn=[UpdateFlags.TilesChanged],
+        ~updateOn=[UpdateFlags.TilesChanged, UpdateFlags.ElPosChanged],
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
-        ~uniforms=[
-            ("layout", Scene.UMat3f.id())
-        ],
+        ~uniforms=[],
+        ~layoutUniform=true,
         ~transparent=true,
         ~textures=[
             ("tiles", tilesTex),

@@ -2,35 +2,38 @@ let currElVertex = {|
     precision mediump float;
     attribute vec2 position;
     uniform vec2 translation;
-    varying vec2 vPosition;
     uniform mat3 layout;
+    uniform mat3 texPos;
+    varying vec2 vPosition;
+    varying vec2 vTexPos;
     void main() {
         vPosition = position + translation;
         vec3 transformed = vec3(vPosition, 1.0) * layout;
+        vTexPos = (vec3(vPosition, 1.0) * texPos).xy;
         gl_Position = vec4(transformed.xy, 0.0, 1.0);
     }
 |};
 let currElFragment = {|
     precision mediump float;
     varying vec2 vPosition;
+    varying vec2 vTexPos;
 
     uniform vec3 elColor;
     uniform sampler2D sdfTiles;
 
     void main() {
         // To texture coords
-        vec2 sdfPos = (vPosition + 1.0) * 0.5;
-        vec3 sdfColor = texture2D(sdfTiles, sdfPos).xyz;
+        vec3 sdfColor = texture2D(sdfTiles, vTexPos).xyz;
         float sdfCoef = abs(0.5 - sdfColor.x) * 0.9;
         float tileCoef = 1.0 - sdfCoef;
         vec3 color = elColor * tileCoef + sdfColor * sdfCoef;
-        gl_FragColor = vec4(color, 1.0);
+        gl_FragColor = vec4(vTexPos, 0.0, 1.0);
     }
 |};
 
 open Gpu;
 
-let makeNode = (sdfTiles, color, elPos, vertices, indices) => {
+let makeNode = (sdfTiles, color, elPos, vertices, indices, sdfTilesNode) => {
     Scene.makeNode(
         "currEl",
         ~updateOn=[UpdateFlags.ElPosChanged],
@@ -40,9 +43,12 @@ let makeNode = (sdfTiles, color, elPos, vertices, indices) => {
         ~indices,
         ~uniforms=[
             ("elColor", color),
-            ("translation", elPos),
-            ("layout", Scene.UMat3f.id())
+            ("translation", elPos)
         ],
+        ~textureUniforms=[
+            ("texPos", sdfTilesNode)
+        ],
+        ~layoutUniform=true,
         ~textures=[
             ("sdfTiles", sdfTiles)
         ],

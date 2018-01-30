@@ -66,6 +66,7 @@ let makeNode = (sdfNodeTex) => {
     let sdfNode = SdfNode.make(sdfDist, SdfNode.ZeroToOne, None, ());
     SdfNode.makeNode(
         sdfNode,
+        ~key="sdfTiles",
         ~aspect,
         ~drawToTexture=sdfNodeTex,
         ()

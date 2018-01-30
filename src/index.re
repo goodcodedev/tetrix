@@ -48,15 +48,20 @@ let setup = (canvas) => {
 
 let createBoardNode = (state) => {
   /* Texture with tiles data */
-  let tilesTex = Texture.make(IntDataTexture(state.tiles, tileCols, tileRows), Texture.Luminance, Texture.NearestFilter);
+  let tilesTex = Texture.make(
+    IntDataTexture(state.tiles, tileCols, tileRows),
+    Texture.Luminance,
+    Texture.NearestFilter
+  );
+  /* Todo: Greyscale textures, and implicit setup via pool by some param */
   /* Sdf tiles give 3d texture to tiles */
-  let sdfTilesTex = Texture.makeEmptyRgba(());
+  let sdfTilesTex = Texture.makeEmptyRgb(());
   let sdfTiles = SdfTiles.makeNode(sdfTilesTex);
   /* Beam from current element downwards */
-  let beamTex = Texture.makeEmptyRgba(());
+  let beamTex = Texture.makeEmptyRgb(());
   let beamNode = TileBeam.makeNode(beamTex, state.elColor, state.beamVertices, state.beamIndices);
   /* Shadow of tiles */
-  let shadowTex = Texture.makeEmptyRgba(());
+  let shadowTex = Texture.makeEmptyRgb(());
   let tileShadows = TileShadows.makeNode(tilesTex, shadowTex);
   /* Tiles draw */
   let tilesDraw = TilesDraw.makeNode(tilesTex, sdfTilesTex);
@@ -66,7 +71,8 @@ let createBoardNode = (state) => {
     state.elColor,
     state.elPos,
     state.currElVertices,
-    state.currElIndices
+    state.currElIndices,
+    sdfTiles
   );
   /* Grid node draws background to board */
   /* Just passing deps for now, maybe it
@@ -158,35 +164,35 @@ let createScene = (canvas, state) => {
 };
 
 let updateElTiles = (curEl, state) => {
-    let tiles = Game.elTiles(curEl.el, curEl.rotation);
-    let color = Game.tileColors2[curEl.color];
-    let x = curEl.pos.x;
-    let y = curEl.pos.y;
-    Gpu.Uniform.setVec3f(state.elColor, color);
-    /* Translate to -1.0 to 1.0 coords */
-    let tileHeight = 2.0 /. float_of_int(tileRows);
-    let tileWidth = 2.0 /. float_of_int(tileCols);
-    /* Translation */
-    let elPos = [|
-      -1. +. float_of_int(x) *. tileWidth,
-      1. +. float_of_int(y) *. -.tileHeight
-    |];
-    Gpu.Uniform.setVec2f(state.elPos, elPos);
-    let currElTiles = Array.concat(List.map(((tileX, tileY)) => {
-      /* 2x coord system with y 1.0 at top and -1.0 at bottom */
-      let tileYScaled = float_of_int(tileY * -1) *. tileHeight;
-      let tileXScaled = float_of_int(tileX) *. tileWidth;
-      /* Bottom left, Top left, Top right, Bottom right */
-      [|
-        tileXScaled, tileYScaled -. tileHeight,
-        tileXScaled, tileYScaled,
-        tileXScaled +. tileWidth, tileYScaled,
-        tileXScaled +. tileWidth, tileYScaled -. tileHeight
-      |]
-    }, tiles));
-    VertexBuffer.setDataT(state.currElVertices, currElTiles);
-    let indexData = IndexBuffer.makeQuadsData(Array.length(currElTiles) / 4 / 2);
-    IndexBuffer.setDataT(state.currElIndices, indexData);
+  let tiles = Game.elTiles(curEl.el, curEl.rotation);
+  let color = Game.tileColors2[curEl.color];
+  let x = curEl.pos.x;
+  let y = curEl.pos.y;
+  Gpu.Uniform.setVec3f(state.elColor, color);
+  /* Translate to -1.0 to 1.0 coords */
+  let tileHeight = 2.0 /. float_of_int(tileRows);
+  let tileWidth = 2.0 /. float_of_int(tileCols);
+  /* Translation */
+  let elPos = [|
+    -1. +. float_of_int(x) *. tileWidth,
+    1. +. float_of_int(y) *. -.tileHeight
+  |];
+  Gpu.Uniform.setVec2f(state.elPos, elPos);
+  let currElTiles = Array.concat(List.map(((tileX, tileY)) => {
+    /* 2x coord system with y 1.0 at top and -1.0 at bottom */
+    let tileYScaled = float_of_int(tileY * -1) *. tileHeight;
+    let tileXScaled = float_of_int(tileX) *. tileWidth;
+    /* Bottom left, Top left, Top right, Bottom right */
+    [|
+      tileXScaled, tileYScaled -. tileHeight,
+      tileXScaled, tileYScaled,
+      tileXScaled +. tileWidth, tileYScaled,
+      tileXScaled +. tileWidth, tileYScaled -. tileHeight
+    |]
+  }, tiles));
+  VertexBuffer.setDataT(state.currElVertices, currElTiles);
+  let indexData = IndexBuffer.makeQuadsData(Array.length(currElTiles) / 4 / 2);
+  IndexBuffer.setDataT(state.currElIndices, indexData);
 };
 
 let updateBeams = (state) => {
@@ -220,6 +226,7 @@ let draw = (state : sceneState, scene, canvas) => {
   let elChanged = (state.gameState.posChanged || state.gameState.rotateChanged);
   state.gameState = if (elChanged) {
     updateElTiles(state.gameState.curEl, state);
+    Js.log2("Elpos", state.elPos);
     updateBeams(state);
     {
       ...state.gameState,

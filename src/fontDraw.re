@@ -240,11 +240,11 @@ let makeNode = (
         ~indices=indexBuffer,
         ~uniforms=[
             ("model", UniformMat3f(ref(Mat3.id()))),
-            ("layout", UniformMat3f(ref(Mat3.id()))),
-            ("pixelSize", UniformVec2f(ref(Vec2.zeros()))),
             ("color", UniformVec3f(ref(Color.toVec3(color)))),
             ("opacity", UniformFloat(ref(opacity)))
         ],
+        ~layoutUniform=true,
+        ~pixelSizeUniform=true,
         ~transparent=true,
         ~loading=true,
         ~size=Scene.Aspect(1.0),
