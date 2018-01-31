@@ -84,14 +84,10 @@ let tileColors2 = Array.map((color) => {
   [|240, 130, 120, 255|], /* Red left shift */
 |]);
 
-type pos = {
-  x: int,
-  y: int
-};
-
-type curEl = {
+type elData = {
   el: element,
-  pos: pos,
+  posX: int,
+  posY: int,
   color: int,
   rotation: int
 };
@@ -132,11 +128,12 @@ module BlinkRows {
     };
 };
 
+
 module ElQueue {
-  type t = Queue.t(element);
+  type t = Queue.t(elData);
 
   let randomEl = () => {
-    switch (Random.int(7)) {
+    let elType = switch (Random.int(7)) {
     | 0 => Cube
     | 1 => Line
     | 2 => Triangle
@@ -145,12 +142,29 @@ module ElQueue {
     | 5 => LeftL
     | 6 => RightL
     | _ => Cube
+    };
+    let tetronimo = getTetronimo(elType);
+    /* Positions needs to work with display of next element */
+    let (posX, posY) = switch (elType) {
+    | Cube => (4, 1)
+    | Line => (5, 2)
+    | Triangle => (3, 3)
+    | RightTurn => (3, 3)
+    | LeftTurn => (3, 3)
+    | LeftL => (3, 3)
+    | RightL => (3, 3)
+    };
+    {
+      el: elType,
+      color: tetronimo.colorIndex,
+      rotation: 0,
+      posX,
+      posY
     }
   };
 
   let initQueue = (queue) => {
     Queue.clear(queue);
-    Queue.push(randomEl(), queue);
     Queue.push(randomEl(), queue);
     Queue.push(randomEl(), queue);
     Queue.push(randomEl(), queue);
@@ -161,17 +175,23 @@ module ElQueue {
     q
   };
 
-  let pop = (queue) => {
+  let nextEl = (queue) => {
     Queue.push(randomEl(), queue);
-    Queue.pop(queue)
+    let nextEl = Queue.pop(queue);
+    {
+      ...nextEl,
+      posX: tileCols / 2,
+      posY: 2
+    }
   };
 };
 
 type stateT = {
   action: inputAction,
-  curEl: curEl,
+  curEl: elData,
   posChanged: bool,
   rotateChanged: bool,
+  elChanged: bool,
   lastTick: float,
   curTime: float,
   tiles: array(array(int)),
@@ -186,18 +206,6 @@ type stateT = {
 };
 
 
-let newElement = (newElType) => {
-  let tetronimo = getTetronimo(newElType);
-  {
-    el: newElType,
-    color: tetronimo.colorIndex,
-    rotation: 0,
-    pos: {
-      x: tileCols / 2,
-      y: 2
-    }
-  }
-};
 let updateBeams = (state) => {
   /* Reset element tile rows */
   Array.iteri((i, (tileRow, _toRow)) => {
@@ -207,8 +215,8 @@ let updateBeams = (state) => {
   }, state.beams);
   /* Set row where element tile is */
   List.iter(((x, y)) => {
-    let pointX = state.curEl.pos.x + x;
-    let pointY = state.curEl.pos.y + y;
+    let pointX = state.curEl.posX + x;
+    let pointY = state.curEl.posY + y;
     let (beamFrom, beamTo) = state.beams[pointX];
     if (beamFrom < pointY) {
       state.beams[pointX] = (pointY, beamTo);
@@ -252,7 +260,8 @@ let setup = (canvas, tiles) : stateT => {
   SdfTiles.draw(sdf);*/
   let state = {
     action: None,
-    curEl: newElement(ElQueue.pop(elQueue)),
+    curEl: ElQueue.nextEl(elQueue),
+    elChanged: true,
     posChanged: true,
     rotateChanged: true,
     lastTick: 0.,
@@ -277,10 +286,12 @@ let newGame = (state) => {
       state.sceneTiles[tileCols*y + x] = 0;
     }
   };
+  ElQueue.initQueue(state.elQueue);
   {
     ...state,
     action: None,
-    curEl: newElement(ElQueue.pop(state.elQueue)),
+    curEl: ElQueue.nextEl(state.elQueue),
+    elChanged: true,
     posChanged: true,
     rotateChanged: true,
     updateTiles: true,
@@ -292,9 +303,9 @@ let newGame = (state) => {
 
 let isCollision = (state) => {
   List.exists(((tileX, tileY)) => {
-    state.curEl.pos.y + tileY >= tileRows
-    || state.curEl.pos.x + tileX < 0 || state.curEl.pos.x + tileX > tileCols - 1
-    || state.tiles[state.curEl.pos.y + tileY][state.curEl.pos.x + tileX] > 0
+    state.curEl.posY + tileY >= tileRows
+    || state.curEl.posX + tileX < 0 || state.curEl.posX + tileX > tileCols - 1
+    || state.tiles[state.curEl.posY + tileY][state.curEl.posX + tileX] > 0
   }, elTiles(state.curEl.el, state.curEl.rotation))
 };
 
@@ -304,10 +315,8 @@ let attemptMove = (state, (x, y)) => {
     posChanged: true,
     curEl: {
       ...state.curEl,
-      pos: {
-        x: state.curEl.pos.x + x,
-        y: state.curEl.pos.y + y
-      }
+      posX: state.curEl.posX + x,
+      posY: state.curEl.posY + y
     }
   };
   (isCollision(moved)) ? state : moved
@@ -318,10 +327,8 @@ let attemptMoveTest = (state, (x, y)) => {
     posChanged: true,
     curEl: {
       ...state.curEl,
-      pos: {
-        x: state.curEl.pos.x + x,
-        y: state.curEl.pos.y + y
-      }
+      posX: state.curEl.posX + x,
+      posY: state.curEl.posY + y
     }
   };
   (isCollision(moved)) ? (false, state) : (true, moved)
@@ -339,10 +346,8 @@ let wallTests = (state, newRotation, positions) => {
         curEl: {
           ...state.curEl,
           rotation: newRotation,
-          pos: {
-            x: state.curEl.pos.x + x,
-            y: state.curEl.pos.y - y,
-          }
+          posX: state.curEl.posX + x,
+          posY: state.curEl.posY - y
         }
       };
       if (isCollision(rotated)) {
@@ -427,9 +432,9 @@ let attemptRotateCCW = (state) => {
 
 let elToTiles = (state) => {
   List.iter(((tileX, tileY)) => {
-    let posy = state.curEl.pos.y + tileY;
-    let posx = state.curEl.pos.x + tileX;
-    state.tiles[state.curEl.pos.y + tileY][state.curEl.pos.x + tileX] = state.curEl.color;
+    let posy = state.curEl.posY + tileY;
+    let posx = state.curEl.posX + tileX;
+    state.tiles[state.curEl.posY + tileY][state.curEl.posX + tileX] = state.curEl.color;
     state.sceneTiles[posy * tileCols + posx] = state.curEl.color - 1;
   }, elTiles(state.curEl.el, state.curEl.rotation));
 };
@@ -464,11 +469,11 @@ let processAction = (state) => {
     action: None
   }
   | MoveBeginning => {
-    ...List.fold_left((state, _) => attemptMove(state, (-1, 0)), state, listRange(state.curEl.pos.x)),
+    ...List.fold_left((state, _) => attemptMove(state, (-1, 0)), state, listRange(state.curEl.posX)),
     action: None
   }
   | MoveEnd => {
-    ...List.fold_left((state, _) => attemptMove(state, (1, 0)), state, listRange(tileCols - state.curEl.pos.x)),
+    ...List.fold_left((state, _) => attemptMove(state, (1, 0)), state, listRange(tileCols - state.curEl.posX)),
     action: None
   }
   | MoveDown => {
@@ -544,7 +549,8 @@ let afterTouchdown = (state, canvas : Gpu.Canvas.t) => {
   };
   let state = {
     ...state,
-    curEl: newElement(ElQueue.pop(state.elQueue))
+    curEl: ElQueue.nextEl(state.elQueue),
+    elChanged: true
   };
   updateBeams(state);
   if (isCollision(state)) {

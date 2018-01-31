@@ -115,7 +115,7 @@ let makeNode = (children) => {
     open Scene;
     Scene.makeNode(
         "background",
-        ~updateOn=UpdateFlags.([Init]),
+        ~updateOn=UpdateFlags.([Init, ElChanged]),
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~uniforms=[
@@ -123,6 +123,7 @@ let makeNode = (children) => {
             ("anim", UFloat.make(0.0))
         ],
         ~pixelSizeUniform=true,
+        ~size=Dimensions(Scale(1.0), Scale(1.0)),
         ~padding=Scale(0.05),
         ~children,
         ()
