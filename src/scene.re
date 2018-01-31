@@ -36,6 +36,11 @@ type dimension =
   | Scale(float)
   | Pixel(float);
 
+type margin =
+  | Margin(dimension)
+  | MarginXY(dimension, dimension)
+  | MarginRBLT(dimension, dimension, dimension, dimension);
+
 /* Size by dimensions or aspect with best fit in container */
 type blockSize =
 | Dimensions(dimension, dimension)
@@ -109,14 +114,21 @@ and node('state, 'flags) = {
 and layout = {
     size: blockSize,
     padding: option(dimension),
-    spacing: option(dimension),
+    margin: option(margin),
     childLayout: childLayout,
+    spacing: option(dimension),
     hAlign: hAlign,
     vAlign: vAlign
 }
 and calcLayout = {
     mutable pWidth: float,
     mutable pHeight: float,
+    mutable marginX1: float,
+    mutable marginX2: float,
+    mutable marginY1: float,
+    mutable marginY2: float,
+    mutable inWidth: float,
+    mutable inHeight: float,
     mutable pXOffset: float,
     mutable pYOffset: float
 }
@@ -141,6 +153,7 @@ let quadIndices = Gpu.IndexBuffer.makeQuad();
 let makeLayout = (
     ~size=Dimensions(Scale(1.0), Scale(1.0)),
     ~padding=?,
+    ~margin=?,
     ~spacing=?,
     ~childLayout=Horizontal,
     ~hAlign=AlignCenter,
@@ -150,8 +163,9 @@ let makeLayout = (
     {
         size,
         padding,
-        spacing,
+        margin,
         childLayout,
+        spacing,
         hAlign,
         vAlign
     }
@@ -205,8 +219,9 @@ let makeNode = (
     ~pixelSizeUniform=false,
     ~size=Dimensions(Scale(1.0), Scale(1.0)),
     ~padding=?,
-    ~spacing=?,
+    ~margin=?,
     ~childLayout=Horizontal,
+    ~spacing=?,
     ~hAlign=AlignCenter,
     ~vAlign=AlignTop,
     ~selfDraw=true,
@@ -255,8 +270,9 @@ let makeNode = (
     let layout = {
         size,
         padding,
-        spacing,
+        margin,
         childLayout,
+        spacing,
         hAlign,
         vAlign
     };
@@ -289,6 +305,12 @@ let makeNode = (
         calcLayout: {
             pWidth: 0.0,
             pHeight: 0.0,
+            inWidth: 0.0,
+            inHeight: 0.0,
+            marginX1: 0.0,
+            marginX2: 0.0,
+            marginY1: 0.0,
+            marginY2: 0.0,
             pXOffset: 0.0,
             pYOffset: 0.0
         },
@@ -564,19 +586,97 @@ let vpWidth = float_of_int(self.canvas.width);
 let vpHeight = float_of_int(self.canvas.height);
 let vpWidthCenter = vpWidth /. 2.0;
 let vpHeightMiddle = vpHeight /. 2.0;
+
+let calcMargins = (node, outerWidth, outerHeight) => {
+    /* Calc margins. Not sure how best to handle
+       all cases. Aspect I guess should be kept
+       inside the margins, currently the
+       margins are scaled by padded dimensions
+       around it */
+    let cl = node.calcLayout;
+    /* Calc margins and dimensions inside margin */
+    let xdim = (dim) => switch (dim) {
+    | Scale(scale) => outerWidth *. scale
+    | Pixel(pixels) => pixels
+    };
+    let ydim = (dim) => switch (dim) {
+    | Scale(scale) => outerHeight *. scale
+    | Pixel(pixels) => pixels;
+    };
+    switch (node.layout.margin) {
+    | None => ()
+    | Some(margin) => switch (margin) {
+        | Margin(dimension) => {
+            switch (dimension) {
+            | Scale(scale) =>
+                let scaledX = outerWidth *. scale;
+                let scaledY = outerHeight *. scale;
+                cl.marginX1 = scaledX;
+                cl.marginX2 = scaledX;
+                cl.marginY1 = scaledY;
+                cl.marginY2 = scaledY;
+            | Pixel(pixels) =>
+                cl.marginX1 = pixels;
+                cl.marginX2 = pixels;
+                cl.marginY1 = pixels;
+                cl.marginY2 = pixels;
+            };
+        };
+        | MarginXY(dimX, dimY) => {
+            let dimX = xdim(dimX);
+            let dimY = ydim(dimY);
+            cl.marginX1 = dimX;
+            cl.marginX2 = dimX;
+            cl.marginY1 = dimY;
+            cl.marginY2 = dimY;
+        };
+        | MarginRBLT(mRight, mBottom, mLeft, mTop) => {
+            let dimX2 = xdim(mRight);
+            let dimY2 = ydim(mBottom);
+            let dimX1 = xdim(mLeft);
+            let dimY1 = ydim(mTop);
+            cl.marginX1 = dimX1;
+            cl.marginX2 = dimX2;
+            cl.marginY1 = dimY1;
+            cl.marginY2 = dimY2;
+        };
+    };
+    };
+};
+
 let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
+    calcMargins(node, paddedWidth, paddedHeight);
+    let cl = node.calcLayout;
     let (nodeWidth, nodeHeight) = switch (node.layout.size) {
-    | Aspect(ratio) =>
-        let parentAspect = paddedWidth /. paddedHeight;
-        if (ratio < parentAspect) {
-            /* Limit by height */
-            let width = paddedHeight *. ratio;
-            (width, paddedHeight)
-        } else {
-            /* Limit by width */
-            let height = paddedWidth /. ratio;
-            (paddedWidth, height)
-        }
+    | Aspect(ratio) => {
+        switch (node.layout.margin) {
+        | Some(_) =>
+            /* Keeping aspect inside margins */
+            let innerWidth = (paddedWidth -. cl.marginX1 -. cl.marginX2);
+            let innerHeight = (paddedHeight -. cl.marginY1 -. cl.marginY2);
+            let parentAspect = innerWidth /. innerHeight;
+            if (ratio < parentAspect) {
+                /* Limit by height */
+                let innerWidth = innerHeight *. ratio;
+                (innerWidth +. cl.marginX1 +. cl.marginX2, paddedHeight)
+            } else {
+                /* Limit by width */
+                let innerHeight = innerWidth /. ratio;
+                (paddedWidth, innerHeight +. cl.marginY1 +. cl.marginY2)
+            };
+        | None =>
+            let parentAspect = paddedWidth /. paddedHeight;
+            if (ratio < parentAspect) {
+                /* Limit by height */
+                let width = paddedHeight *. ratio;
+                (width, paddedHeight)
+            } else {
+                /* Limit by width */
+                let height = paddedWidth /. ratio;
+                (paddedWidth, height)
+            };
+        };
+    }
     | Dimensions(dimX, dimY) =>
         /* Get in pixel or ratio form */
         (
@@ -608,8 +708,10 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
             height
         )
     };
-    node.calcLayout.pWidth = nodeWidth;
-    node.calcLayout.pHeight = nodeHeight;
+    cl.pWidth = nodeWidth;
+    cl.pHeight = nodeHeight;
+    cl.inWidth = cl.pWidth -. cl.marginX1 -. cl.marginX2;
+    cl.inHeight = cl.pHeight -. cl.marginY1 -. cl.marginY2;
 };
     let rec calcNodeLayout = (node) => {
         let layout = node.layout;
@@ -743,8 +845,8 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
         switch (node.layoutUniform) {
         | None => ();
         | Some(layoutUniform) =>
-            let scaleX = calcLayout.pWidth /. vpWidth;
-            let scaleY = calcLayout.pHeight /. vpHeight;
+            let scaleX = calcLayout.inWidth /. vpWidth;
+            let scaleY = calcLayout.inHeight /. vpHeight;
             let scale = Data.Mat3.scale(scaleX, scaleY);
             switch (node.drawToTexture) {
             | Some(texture) =>
@@ -768,8 +870,8 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
             | None =>
                 /* Can this be simplified? */
                 let translate = Data.Mat3.trans(
-                    ((calcLayout.pXOffset +. (calcLayout.pWidth /. 2.0) -. vpWidthCenter) /. vpWidth *. 2.0),
-                    ((calcLayout.pYOffset +. (calcLayout.pHeight /. 2.0) -. vpHeightMiddle) /. vpHeight *. -2.0)
+                    ((calcLayout.pXOffset +. calcLayout.marginX1 +. (calcLayout.inWidth /. 2.0) -. vpWidthCenter) /. vpWidth *. 2.0),
+                    ((calcLayout.pYOffset +. calcLayout.marginY1 +. (calcLayout.inHeight /. 2.0) -. vpHeightMiddle) /. vpHeight *. -2.0)
                 );
                 let layoutMat = Data.Mat3.matmul(translate, scale);
                 Gpu.Uniform.setMat3f(layoutUniform, layoutMat);
@@ -784,8 +886,8 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
         | None => ();
         | Some(pixelSizeUniform) =>
             Gpu.Uniform.setVec2f(pixelSizeUniform, Data.Vec2.make(
-                node.calcLayout.pWidth,
-                node.calcLayout.pHeight
+                node.calcLayout.inWidth,
+                node.calcLayout.inHeight
             ));
         };
         List.iter((dep) => {
