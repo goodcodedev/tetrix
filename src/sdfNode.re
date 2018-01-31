@@ -230,7 +230,7 @@ let makeNode = (
     self,
     ~key="sdfNode",
     ~aspect=?,
-    ~drawToTexture=?,
+    ~drawTo=?,
     ~children=[],
     ()
 ) => {
@@ -258,9 +258,8 @@ let makeNode = (
         ~size,
         ~transparent,
         ~uniforms,
-        ~layoutUniform=true,
         ~children,
-        ~drawToTexture=?drawToTexture,
+        ~drawTo=?drawTo,
         ()
     )
 };

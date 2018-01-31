@@ -1,9 +1,7 @@
 module Vec2 {
     type t = array(float);
 
-    let asArray = (v : t) : array(float) => {
-        v
-    };
+    let asArray = (v : t) : array(float) => v;
 
     let fromArray = (a : array(float)) : t => {
         if (Array.length(a) != 2) {
@@ -12,13 +10,9 @@ module Vec2 {
         a
     };
 
-    let make = (a, b) => {
-        [|a, b|]
-    };
+    let make = (a, b) => [|a, b|];
 
-    let zeros = () : t => {
-        [|0.0, 0.0|]
-    };
+    let zeros = () : t => [|0.0, 0.0|];
 
     let toGlsl = (v : t) => {
         "vec2(" ++ string_of_float(v[0]) ++ "," ++ string_of_float(v[1]) ++ ")"
@@ -28,13 +22,11 @@ module Vec2 {
 module Vec3 {
     type t = array(float);
 
-    let asArray = (v : t) : array(float) => {
-        v
-    };
+    let asArray = (v : t) : array(float) => v;
 
-    let make = (a, b, c) => {
-        [|a, b, c|]
-    };
+    let make = (a, b, c) => [|a, b, c|];
+
+    let fromVec2 = (vec2 : Vec2.t, c) : t => [|vec2[0], vec2[1], c|];
 
     let fromArray = (a : array(float)) : t => {
         if (Array.length(a) != 3) {
@@ -43,9 +35,7 @@ module Vec3 {
         a
     };
 
-    let zeros = () : t => {
-        [|0.0, 0.0, 0.0|]
-    };
+    let zeros = () : t => [|0.0, 0.0, 0.0|];
 
     let toGlsl = (v : t) => {
         "vec3(" ++ string_of_float(v[0]) ++ "," ++ string_of_float(v[1]) ++ "," ++ string_of_float(v[2]) ++ ")"
@@ -55,17 +45,13 @@ module Vec3 {
 module Vec4 {
     type t = array(float);
 
-    let asArray = (v : t) : array(float) => {
-        v
-    };
+    let asArray = (v : t) : array(float) => v;
 
-    let make = (a, b, c, d) => {
-        [|a, b, c, d|]
-    };
+    let make = (a, b, c, d) => [|a, b, c, d|];
 
-    let zeros = () : t => {
-        [|0.0, 0.0, 0.0, 0.0|]
-    };
+    let fromVec3 = (vec3 : Vec3.t, d) : t => [|vec3[0], vec3[1], vec3[2], d|];
+
+    let zeros = () : t => [|0.0, 0.0, 0.0, 0.0|];
 
     let fromArray = (a : array(float)) : t => {
         if (Array.length(a) != 4) {
@@ -85,15 +71,21 @@ module Vec4 {
 
 module Mat3 {
     type t = array(float);
-    let asArray = (mat: t) : array(float) => {
-        mat
-    };
+    let asArray = (mat: t) : array(float) => mat;
     let fromArray = (a : array(float)) : t => {
         if (Array.length(a) != 9) {
             failwith("Array does not have 9 elements for mat3");
         };
         a
     };
+    let vecmul = (mat3: t, vec3 : Vec3.t) : Vec3.t => {
+        Vec3.make(
+            mat3[0] *. vec3[0] +. mat3[1] *. vec3[1] +. mat3[2] *. vec3[2],
+            mat3[3] *. vec3[0] +. mat3[4] *. vec3[1] +. mat3[5] *. vec3[2],
+            mat3[6] *. vec3[0] +. mat3[7] *. vec3[1] +. mat3[8] *. vec3[2]
+        )
+    };
+
     let matmul = (mat1 : t, mat2 : t) : t => {
         [|
             mat1[0] *. mat2[0] +. mat1[1] *. mat2[3] +. mat1[2] *. mat2[6],
@@ -134,9 +126,7 @@ module Mat3 {
 
 module Mat4 {
     type t = array(float);
-    let asArray = (mat: t) : array(float) => {
-        mat
-    };
+    let asArray = (mat: t) : array(float) => mat;
     let matmul = (mat1 : t, mat2 : t) : t => {
         [|
             mat1[0] *. mat2[0] +. mat1[1] *. mat2[4] +. mat1[2] *. mat2[8] +. mat1[3] *. mat2[12],

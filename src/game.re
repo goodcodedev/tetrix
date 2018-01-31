@@ -554,6 +554,9 @@ let drawGame = (state, canvas : Gpu.Canvas.t) => {
   /* Handle element has touched down */
   switch (isTouchdown) {
   | false =>
+    if (state.posChanged || state.rotateChanged) {
+      updateBeams(state);
+    };
     {
       ...state,
       curTime: curTime,

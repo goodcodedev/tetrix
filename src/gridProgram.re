@@ -2,10 +2,16 @@ let vertexSource = {|
     precision mediump float;
     attribute vec2 position;
     uniform mat3 layout;
+    uniform mat3 tileShadowsMat;
+    uniform mat3 beamsMat;
     varying vec2 vPosition;
+    varying vec2 tileShadowsPos;
+    varying vec2 beamsPos;
     void main() {
         vPosition = position;
         vec3 transformed = vec3(position, 1.0) * layout;
+        tileShadowsPos = (vec3(position, 1.0) * tileShadowsMat).xy;
+        beamsPos = (vec3(position, 1.0) * beamsMat).xy;
         gl_Position = vec4(transformed.xy, 0.0, 1.0);
     }
 |};
@@ -21,6 +27,8 @@ let fragmentSource = {|
     uniform sampler2D beams;
 
     varying vec2 vPosition;
+    varying vec2 tileShadowsPos;
+    varying vec2 beamsPos;
 
     const float numCols = 12.0;
     const float numRows = 26.0;
@@ -52,12 +60,12 @@ let fragmentSource = {|
             vPosition.y * 0.05 * aspect.x
         );
         // Shadow
-        float shadow = texture2D(tileShadows, coord).x;
-        vec3 color = mix(bg, vec3(0.0, 0.0, 0.0), (1.0 - shadow) * 0.6);
+        float shadow = texture2D(tileShadows, tileShadowsPos).x;
+        vec3 color = mix(bg, vec3(0.0, 0.0, 0.0), shadow * 0.6);
         // Line
         color = mix(color, lineColor, alpha);
         // Beam
-        vec3 beam = texture2D(beams, coord).xyz;
+        vec3 beam = texture2D(beams, beamsPos).xyz;
         float beamCoef = 0.04 - (1.0 - smoothstep(0.2, 0.4, elVecLength)) * 0.04;
         color = mix(color, beam, (beam.x == 0.0) ? 0.0 : beamCoef);
         color = color + elColor * colorLight;
@@ -99,7 +107,7 @@ let draw = (ds, canvas) => {
     DrawState.draw(ds, canvas);
 };
 
-let makeNode = (tilesTex, tileShadowTex, beamTex, elPos, elColor, deps, children) => {
+let makeNode = (tilesTex, tileShadows, beamNode, sdfTiles, elPos, elColor, children) => {
     open UpdateFlags;
     open Scene;
     makeNode(
@@ -115,14 +123,19 @@ let makeNode = (tilesTex, tileShadowTex, beamTex, elPos, elColor, deps, children
             ("elPos", elPos),
             ("elColor", elColor)
         ],
-        ~layoutUniform=true,
         ~pixelSizeUniform=true,
         ~textures=[
-            ("tiles", tilesTex),
-            ("tileShadows", tileShadowTex),
-            ("beams", beamTex)
+            ("tiles", tilesTex)
         ],
-        ~deps,
+        ~texNodes=[
+            ("tileShadows", tileShadows),
+            ("beams", beamNode)
+        ],
+        ~deps=[
+            sdfTiles,
+            beamNode,
+            tileShadows
+        ],
         ~childLayout=Scene.Stacked,
         ~children,
         ()

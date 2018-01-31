@@ -5,6 +5,7 @@ open Config;
 
 type sceneState = {
   tiles: array(int),
+  tilesTex: Texture.t,
   currElVertices: VertexBuffer.t,
   currElIndices: IndexBuffer.t,
   beamVertices: VertexBuffer.t,
@@ -33,9 +34,16 @@ let setup = (canvas) => {
   let beamVertices = VertexBuffer.makeQuad(());
   let beamIndices = IndexBuffer.makeQuad();
   let tiles = Array.make(tileRows * tileCols, 0);
+  /* Texture with tiles data */
+  let tilesTex = Texture.make(
+    IntDataTexture(tiles, tileCols, tileRows),
+    Texture.Luminance,
+    Texture.NearestFilter
+  );
   let gameState = Game.setup(canvas, tiles);
   {
     tiles,
+    tilesTex,
     currElVertices,
     currElIndices,
     beamVertices,
@@ -47,27 +55,17 @@ let setup = (canvas) => {
 };
 
 let createBoardNode = (state) => {
-  /* Texture with tiles data */
-  let tilesTex = Texture.make(
-    IntDataTexture(state.tiles, tileCols, tileRows),
-    Texture.Luminance,
-    Texture.NearestFilter
-  );
   /* Todo: Greyscale textures, and implicit setup via pool by some param */
   /* Sdf tiles give 3d texture to tiles */
-  let sdfTilesTex = Texture.makeEmptyRgb(());
-  let sdfTiles = SdfTiles.makeNode(sdfTilesTex);
+  let sdfTiles = SdfTiles.makeNode();
   /* Beam from current element downwards */
-  let beamTex = Texture.makeEmptyRgb(());
-  let beamNode = TileBeam.makeNode(beamTex, state.elColor, state.beamVertices, state.beamIndices);
+  let beamNode = TileBeam.makeNode(state.elColor, state.beamVertices, state.beamIndices);
   /* Shadow of tiles */
-  let shadowTex = Texture.makeEmptyRgb(());
-  let tileShadows = TileShadows.makeNode(tilesTex, shadowTex);
+  let tileShadows = TileShadows.makeNode(state.tilesTex);
   /* Tiles draw */
-  let tilesDraw = TilesDraw.makeNode(tilesTex, sdfTilesTex);
+  let tilesDraw = TilesDraw.makeNode(state.tilesTex, sdfTiles);
   /* Cur el node */
   let currEl = CurrEl.makeNode(
-    sdfTilesTex,
     state.elColor,
     state.elPos,
     state.currElVertices,
@@ -79,16 +77,12 @@ let createBoardNode = (state) => {
      would be nice to wire textures to nodes
      or something */
   GridProgram.makeNode(
-    tilesTex,
-    shadowTex,
-    beamTex,
+    state.tilesTex,
+    tileShadows,
+    beamNode,
+    sdfTiles,
     state.elPos,
     state.elColor,
-    [
-      sdfTiles,
-      beamNode,
-      tileShadows
-    ],
     [
       tilesDraw,
       currEl
@@ -226,7 +220,6 @@ let draw = (state : sceneState, scene, canvas) => {
   let elChanged = (state.gameState.posChanged || state.gameState.rotateChanged);
   state.gameState = if (elChanged) {
     updateElTiles(state.gameState.curEl, state);
-    Js.log2("Elpos", state.elPos);
     updateBeams(state);
     {
       ...state.gameState,
@@ -238,6 +231,15 @@ let draw = (state : sceneState, scene, canvas) => {
   };
   let flags = (elChanged) ? [UpdateFlags.ElPosChanged] : [];
   let flags = if (state.gameState.updateTiles) {
+    Js.log("Tiles changed");
+    switch (state.tilesTex.inited) {
+    | Some(inited) => inited.update = true;
+    | None => ()
+    };
+    state.gameState = {
+      ...state.gameState,
+      updateTiles: false
+    };
     [UpdateFlags.TilesChanged, ...flags]
   } else {
     flags

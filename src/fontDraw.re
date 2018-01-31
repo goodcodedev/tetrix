@@ -243,7 +243,6 @@ let makeNode = (
             ("color", UniformVec3f(ref(Color.toVec3(color)))),
             ("opacity", UniformFloat(ref(opacity)))
         ],
-        ~layoutUniform=true,
         ~pixelSizeUniform=true,
         ~transparent=true,
         ~loading=true,

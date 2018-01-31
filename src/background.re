@@ -120,9 +120,9 @@ let makeNode = (children) => {
         ~fragShader=Shader.make(fragmentSource),
         ~uniforms=[
             ("color", UVec3f.vals(0.14, 0.09, 0.20)),
-            ("pixelSize", UVec2f.zeros()),
             ("anim", UFloat.make(0.0))
         ],
+        ~pixelSizeUniform=true,
         ~padding=Scale(0.05),
         ~children,
         ()

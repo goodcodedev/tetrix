@@ -2,10 +2,13 @@ let vertexSource = {|
     precision mediump float;
     attribute vec2 position;
     uniform mat3 layout;
+    uniform mat3 sdfTilesMat;
+    varying vec2 sdfPos;
     varying vec2 vPosition;
     void main() {
         vPosition = position;
         vec3 transformed = vec3(position, 1.0) * layout;
+        sdfPos = (vec3(position, 1.0) * sdfTilesMat).xy;
         gl_Position = vec4(transformed.xy, 0.0, 1.0);
     }
 |};
@@ -13,6 +16,7 @@ let vertexSource = {|
 let fragmentSource = {|
     precision mediump float;
     varying vec2 vPosition;
+    varying vec2 sdfPos;
 
     uniform sampler2D tiles;
     uniform sampler2D sdfTiles;
@@ -33,7 +37,6 @@ let fragmentSource = {|
             : (colorIdx == 6) ? vec3(0.7, 0.4, 0.85)
             : (colorIdx == 7) ? vec3(0.9, 0.4, 0.35)
             : vec3(0.8, 0.8, 0.9);
-        vec2 sdfPos = vec2(tilePos.x, (tilePos.y * -1.0) + 1.0);
         vec3 sdfColor = texture2D(sdfTiles, sdfPos).xyz;
         float sdfCoef = abs(0.5 - sdfColor.x);
         float tileCoef = 1.0 - sdfCoef;
@@ -44,18 +47,19 @@ let fragmentSource = {|
 
 open Gpu;
 
-let makeNode = (tilesTex, sdfTilesTex) => {
+let makeNode = (tilesTex, sdfTiles) => {
     Scene.makeNode(
         "tilesDraw",
         ~updateOn=[UpdateFlags.TilesChanged, UpdateFlags.ElPosChanged],
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~uniforms=[],
-        ~layoutUniform=true,
         ~transparent=true,
         ~textures=[
-            ("tiles", tilesTex),
-            ("sdfTiles", sdfTilesTex)
+            ("tiles", tilesTex)
+        ],
+        ~texNodes=[
+            ("sdfTiles", sdfTiles)
         ],
         ()
     )

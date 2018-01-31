@@ -1,10 +1,12 @@
 let vertexSource = {|
     precision mediump float;
     attribute vec2 position;
+    uniform mat3 layout;
     varying vec2 vPosition;
     void main() {
         vPosition = position;
-        gl_Position = vec4(position, 0.0, 1.0);
+        vec2 pos = (vec3(position, 1.0) * layout).xy;
+        gl_Position = vec4(pos, 0.0, 1.0);
     }
 |};
 
@@ -27,27 +29,33 @@ let fragmentSource = {|
         vec2 tilePos = vec2((persp.x + 1.0) * 0.5, (persp.y - 1.0) * -0.5);
         tilePos.y = tilePos.y - 0.03;
         float tile = texture2D(tiles, tilePos).x;
-        vec4 tileColor = (tile > 0.0) ?  vec4(0.0, 0.0, 0.0, 1.0) : vec4(1.0, 1.0, 1.0, 1.0);
+        vec4 tileColor = (tile > 0.0) ?  vec4(1.0, 1.0, 1.0, 1.0) : vec4(0.0, 0.0, 0.0, 1.0);
         gl_FragColor = (tilePos.x < 0.0 || tilePos.x > 1.0 || tilePos.y < 0.0 || tilePos.y > 1.0) ?
-                        vec4(1.0, 1.0, 1.0, 1.0) : tileColor;
+                        vec4(0.0, 0.0, 0.0, 1.0) : tileColor;
     }
 |};
 
 let blurVertex = {|
     precision mediump float;
     attribute vec2 position;
+    uniform mat3 layout;
+    uniform mat3 unblurredMat;
     varying vec2 vPosition;
+    varying vec2 unblurredPos;
     void main() {
         vPosition = position;
-        gl_Position = vec4(vPosition, 0.0, 1.0);
+        vec2 pos = (vec3(position, 1.0) * layout).xy;
+        unblurredPos = (vec3(position, 1.0) * unblurredMat).xy;
+        gl_Position = vec4(pos, 0.0, 1.0);
     }
 |};
 let blurFragment = {|
     precision mediump float;
     varying vec2 vPosition;
+    varying vec2 unblurredPos;
 
     uniform float pDistance;
-    uniform vec2 screen;
+    uniform vec2 pixelSize;
 
     uniform sampler2D unblurred;
 
@@ -90,13 +98,12 @@ let blurFragment = {|
     }
 
     void main() {
-        float pHeight = 1.0 / screen.y * pDistance;
-        float pWidth = 1.0 / screen.x * pDistance;
-        // To texture coords
-        vec2 texCoords = (vPosition + 1.0) * 0.5;
-        float b = blurred(texCoords, pHeight, pWidth);
-        vec3 texColor = texture2D(unblurred, texCoords).xyz;
+        float aspect = pixelSize.x / pixelSize.y;
+        float pHeight = 0.002 * pDistance;
+        float pWidth = 0.002 * aspect * pDistance;
+        float b = blurred(unblurredPos, pHeight, pWidth);
         gl_FragColor = vec4(b, b, b, 1.0);
+        //gl_FragColor = vec4(texture2D(unblurred, unblurredPos).x, 1.0, 0.0, 1.0);
     }
 |};
 
@@ -215,44 +222,49 @@ let draw = (ts) => {
     Canvas.clearFramebuffer(ts.canvas);
 };
 
-let makeNode = (tilesTex, shadowTex) => {
+let makeNode = (tilesTex) => {
     /* First draw unblurred */
-    let unblurredTex = Texture.makeEmptyRgba();
     let unblurred = Scene.makeNode(
         "unblurred",
+        ~updateOn=[UpdateFlags.TilesChanged],
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~textures=[
             ("tiles", tilesTex)
         ],
-        ~drawToTexture=unblurredTex,
+        ~drawTo=Scene.TextureRGBA,
         ()
     );
     /* First blur */
-    let blurTex1 = Texture.makeEmptyRgba();
     let blur1 = Scene.makeNode(
         "blur1",
+        ~updateOn=[UpdateFlags.TilesChanged],
         ~vertShader=Shader.make(blurVertex),
         ~fragShader=Shader.make(blurFragment),
         ~uniforms=[
-            ("pDistance", Scene.UFloat.make(10.0)),
-            ("pixelSize", Scene.UVec2f.zeros())
+            ("pDistance", Scene.UFloat.make(10.0))
         ],
-        ~textures=[("unblurred", unblurredTex)],
-        ~drawToTexture=blurTex1,
+        ~pixelSizeUniform=true,
+        ~texNodes=[
+            ("unblurred", unblurred)
+        ],
+        ~drawTo=Scene.TextureRGBA,
         ()
     );
     /* Second blur */
     Scene.makeNode(
         "blur2",
+        ~updateOn=[UpdateFlags.TilesChanged],
         ~vertShader=Shader.make(blurVertex),
         ~fragShader=Shader.make(blurFragment),
         ~uniforms=[
-            ("pDistance", Scene.UFloat.make(1.0)),
-            ("pixelSize", Scene.UVec2f.zeros())
+            ("pDistance", Scene.UFloat.make(1.0))
         ],
-        ~textures=[("unblurred", blurTex1)],
-        ~drawToTexture=shadowTex,
+        ~pixelSizeUniform=true,
+        ~texNodes=[
+            ("unblurred", blur1)
+        ],
+        ~drawTo=Scene.TextureRGB,
         ~deps=[
             unblurred,
             blur1
