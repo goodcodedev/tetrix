@@ -168,7 +168,7 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
             [|Uniform.make("mat", UniformMat3f(ref(boardCoords.mat)))|]
         ),
         boardQuad,
-        boardIndexes,
+        Some(boardIndexes),
         [|
             ProgramTexture.make(
                 "tiles",
@@ -190,7 +190,7 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
             |]
         ),
         currElVertices,
-        currElIndexes,
+        Some(currElIndexes),
         [|
             ProgramTexture.make("sdfTiles", sdfTiles.texture)
         |]

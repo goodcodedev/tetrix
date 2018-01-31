@@ -98,7 +98,7 @@ let createCanvas = () => {
             [||]
         ),
         VertexBuffer.makeQuad(),
-        IndexBuffer.makeQuad(),
+        Some(IndexBuffer.makeQuad()),
         [||]
     );
     DrawState.draw(drawState, canvas);

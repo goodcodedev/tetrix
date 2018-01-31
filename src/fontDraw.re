@@ -132,7 +132,7 @@ let init = (canvas : Gpu.Canvas.t, vertices, image, model, bgDraw) => {
             |]
         ),
         vertexBuffer,
-        indexBuffer,
+        Some(indexBuffer),
         [|
             ProgramTexture.make("map", imageTexture)
         |]

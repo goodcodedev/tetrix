@@ -176,7 +176,7 @@ let makeDrawState = (self, canvas : Canvas.t) => {
         canvas.context,
         makeProgram(self),
         VertexBuffer.makeQuad(()),
-        IndexBuffer.makeQuad(),
+        Some(IndexBuffer.makeQuad()),
         [||]
     )
 };

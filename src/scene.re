@@ -36,9 +36,11 @@ type dimension =
   | Scale(float)
   | Pixel(float);
 
-/* Size by dimensions or aspect with best fit */
+/* Size by dimensions or aspect with best fit in container */
 type blockSize =
-  | Dimensions(dimension, dimension)
+| Dimensions(dimension, dimension)
+| WidthRatio(dimension, float)
+| HeightRatio(dimension, float)
 | Aspect(float);
 
 type easing =
@@ -94,7 +96,7 @@ and node('state, 'flags) = {
     textureList: list(string),
     textures: Hashtbl.t(string, Gpu.Texture.t),
     vertices: Gpu.VertexBuffer.t,
-    indices: Gpu.IndexBuffer.t,
+    indices: option(Gpu.IndexBuffer.t),
     uniformList: list(string),
     uniforms: Hashtbl.t(string, Gpu.uniform),
     layoutUniform: option(Gpu.uniform),
@@ -164,6 +166,7 @@ let makeNode = (
     ~textures=[],
     ~vertices=?,
     ~indices=?,
+    ~vo : option(Gpu.VertexObject.t) =?,
     ~uniforms=[],
     ~layoutUniform=true,
     ~pixelSizeUniform=false,
@@ -223,13 +226,12 @@ let makeNode = (
     } else {
         None
     };
-    let vertices = switch(vertices) {
-    | Some(vertices) => vertices
-    | None => quadVertices
-    };
-    let indices = switch(indices) {
-    | Some(indices) => indices
-    | None => quadIndices
+    let (vertices, indices) = switch (vo) {
+    | Some(vo) => (vo.vertices, vo.indices)
+    | None => switch (vertices, indices) {
+    | (Some(vertices), indices) => (vertices, indices)
+    | (None, _) => (quadVertices, Some(quadIndices))
+    }
     };
     let layout = {
         size,
@@ -554,6 +556,7 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
             (paddedWidth, height)
         }
     | Dimensions(dimX, dimY) =>
+        /* Get in pixel or ratio form */
         (
             switch (dimX) {
             | Pixel(pixels) => pixels
@@ -563,6 +566,24 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
             | Pixel(pixels) => pixels
             | Scale(scale) => paddedHeight *. scale
             }
+        )
+    | WidthRatio(dimX, ratio) =>
+        let width = switch (dimX) {
+        | Pixel(pixels) => pixels
+        | Scale(scale) => paddedWidth *. scale
+        };
+        (
+            width,
+            width /. ratio
+        )
+    | HeightRatio(dimY, ratio) =>
+        let height = switch (dimY) {
+        | Pixel(pixels) => pixels
+        | Scale(scale) => paddedHeight *. scale
+        };
+        (
+            height *. ratio,
+            height
         )
     };
     node.calcLayout.pWidth = nodeWidth;
@@ -604,6 +625,8 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
                 child.calcLayout.pYOffset = y;
             }, node.children);
         | Horizontal =>
+            /* Use ratio as scale. Not sure if it makes total sense,
+               possibly restrict to width, height dimensions */
             let spacing = switch (layout.spacing) {
             | Some(Pixel(pixel)) => pixel
             | Some(Scale(scale)) => paddedWidth *. scale
@@ -952,7 +975,7 @@ module UFloat {
 
 module UVec2f {
     let zeros = () => Gpu.UniformVec2f(ref(Data.Vec2.zeros()));
-    let vals = (a, b, c) => Gpu.UniformVec2f(ref(Data.Vec2.make(a, b)));
+    let vals = (a, b) => Gpu.UniformVec2f(ref(Data.Vec2.make(a, b)));
     let fromArray = (arr) => Gpu.UniformVec2f(ref(Data.Vec2.fromArray(arr)));
 };
 

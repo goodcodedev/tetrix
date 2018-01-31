@@ -32,3 +32,18 @@ let horizontal = (
         ()
     )
 };
+
+let stacked = (
+    ~key="stackedLayout",
+    ~size=Scene.Aspect(1.0),
+    children
+) => {
+    Scene.makeNode(
+        key,
+        ~size,
+        ~childLayout=Scene.Stacked,
+        ~selfDraw=false,
+        ~children,
+        ()
+    )
+};

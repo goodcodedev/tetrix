@@ -45,7 +45,7 @@ let init = (canvas : Gpu.Canvas.t) => {
             [|Uniform.make("color", UniformVec3f(ref(Data.Vec3.make(1.0, 1.0, 1.0))))|]
         ),
         vertexQuad,
-        indexQuad,
+        Some(indexQuad),
         [||]
     );
     {
@@ -80,7 +80,7 @@ let updateVertices = (self, vertices, canvas) => {
     draw(self, canvas);
 };
 
-let makeNode = (elColor, vertices, indices) => {
+let makeNode = (elColor, vo) => {
     Scene.makeNode(
         "beams",
         ~updateOn=[UpdateFlags.ElPosChanged],
@@ -91,8 +91,7 @@ let makeNode = (elColor, vertices, indices) => {
         ],
         ~drawTo=Scene.TextureRGB,
         ~clearOnDraw=true,
-        ~vertices,
-        ~indices,
+        ~vo,
         ()
     )
 };

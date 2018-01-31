@@ -6,10 +6,8 @@ open Config;
 type sceneState = {
   tiles: array(int),
   tilesTex: Texture.t,
-  currElVertices: VertexBuffer.t,
-  currElIndices: IndexBuffer.t,
-  beamVertices: VertexBuffer.t,
-  beamIndices: IndexBuffer.t,
+  currElVO: VertexObject.t,
+  beamVO: VertexObject.t,
   elPos: Gpu.uniform,
   elColor: Gpu.uniform,
   mutable gameState: Game.stateT
@@ -23,16 +21,10 @@ let resize = (state) => {
 
 let setup = (canvas) => {
   /* Element position and color uniforms */
-  let elPos = UniformVec2f(ref(Data.Vec2.zeros()));
-  let elColor = UniformVec3f(ref(Data.Vec3.zeros()));
-  let currElVertices = VertexBuffer.make(
-    [|-0.5, -0.5, -0.5, 0.5, 0.5, 0.5, 0.5, -0.5|],
-    [|VertexAttrib.make("position", Vec2f)|],
-    DynamicDraw
-  );
-  let currElIndices = IndexBuffer.make(IndexBuffer.makeQuadsData(1), DynamicDraw);
-  let beamVertices = VertexBuffer.makeQuad(());
-  let beamIndices = IndexBuffer.makeQuad();
+  let elPos = Scene.UVec2f.zeros();
+  let elColor = Scene.UVec3f.zeros();
+  let currElVO = VertexObject.makeQuad(~usage=DynamicDraw, ());
+  let beamVO = VertexObject.makeQuad(~usage=DynamicDraw, ());
   let tiles = Array.make(tileRows * tileCols, 0);
   /* Texture with tiles data */
   let tilesTex = Texture.make(
@@ -44,10 +36,8 @@ let setup = (canvas) => {
   {
     tiles,
     tilesTex,
-    currElVertices,
-    currElIndices,
-    beamVertices,
-    beamIndices,
+    currElVO,
+    beamVO,
     elPos,
     elColor,
     gameState
@@ -57,9 +47,9 @@ let setup = (canvas) => {
 let createBoardNode = (state) => {
   /* Todo: Greyscale textures, and implicit setup via pool by some param */
   /* Sdf tiles give 3d texture to tiles */
-  let sdfTiles = SdfTiles.makeNode();
+  let sdfTiles = SdfTiles.makeNode(tileCols, tileRows);
   /* Beam from current element downwards */
-  let beamNode = TileBeam.makeNode(state.elColor, state.beamVertices, state.beamIndices);
+  let beamNode = TileBeam.makeNode(state.elColor, state.beamVO);
   /* Shadow of tiles */
   let tileShadows = TileShadows.makeNode(state.tilesTex);
   /* Tiles draw */
@@ -68,8 +58,7 @@ let createBoardNode = (state) => {
   let currEl = CurrEl.makeNode(
     state.elColor,
     state.elPos,
-    state.currElVertices,
-    state.currElIndices,
+    state.currElVO,
     sdfTiles
   );
   /* Grid node draws background to board */
@@ -90,43 +79,59 @@ let createBoardNode = (state) => {
   );
 };
 
+let createLeftRow = (state) => {
+  Layout.vertical(
+    ~size=Scene.Dimensions(Scale(0.22), Scale(1.0)),
+    ~spacing=Scale(0.1),
+    [
+      UiBox.makeNode([
+        FontDraw.makeNode(
+          "HOLD",
+          "digitalt",
+          ~height=0.35,
+          ~align=SdfFont.TextLayout.AlignCenter,
+          ()
+        )
+      ])
+    ]
+  )
+};
+
+let createRightRow = (state) => {
+  let sdfTiles = SdfTiles.makeNode(4, 12);
+  Layout.stacked(
+    ~size=Scene.WidthRatio(Scale(0.22), 4. /. 12.),
+    [
+      sdfTiles,
+      Layout.vertical(
+        ~size=Scene.Dimensions(Scale(1.0), Scale(1.0)),
+        ~spacing=Scale(0.1),
+        [
+
+          UiBox.makeNode([
+            FontDraw.makeNode(
+              "NEXT",
+              "digitalt",
+              ~height=0.35,
+              ~align=SdfFont.TextLayout.AlignCenter,
+              ()
+            )
+          ])
+        ]
+      )
+    ]
+  )
+};
+
 let createRootNode = (state) => {
     Background.makeNode([
       Layout.horizontal(
         ~size=Scene.Aspect((14.0 +. 10.0) /. 26.0),
         ~spacing=Scale(0.02),
         [
-          Layout.vertical(
-            ~size=Scene.Dimensions(Scale(0.22), Scale(1.0)),
-            ~spacing=Scale(0.1),
-            [
-              UiBox.makeNode([
-                FontDraw.makeNode(
-                  "HOLD",
-                  "digitalt",
-                  ~height=0.35,
-                  ~align=SdfFont.TextLayout.AlignCenter,
-                  ()
-                )
-              ])
-            ]
-          ),
+          createLeftRow(state),
           createBoardNode(state),
-          Layout.vertical(
-            ~size=Scene.Dimensions(Scale(0.22), Scale(1.0)),
-            ~spacing=Scale(0.1),
-            [
-              UiBox.makeNode([
-                FontDraw.makeNode(
-                  "NEXT",
-                  "digitalt",
-                  ~height=0.35,
-                  ~align=SdfFont.TextLayout.AlignCenter,
-                  ()
-                )
-              ])
-            ]
-          )
+          createRightRow(state)
         ]
       )
     ])
@@ -184,9 +189,7 @@ let updateElTiles = (curEl, state) => {
       tileXScaled +. tileWidth, tileYScaled -. tileHeight
     |]
   }, tiles));
-  VertexBuffer.setDataT(state.currElVertices, currElTiles);
-  let indexData = IndexBuffer.makeQuadsData(Array.length(currElTiles) / 4 / 2);
-  IndexBuffer.setDataT(state.currElIndices, indexData);
+  VertexObject.updateQuads(state.currElVO, currElTiles, 8);
 };
 
 let updateBeams = (state) => {
@@ -210,9 +213,7 @@ let updateBeams = (state) => {
       (i + 1, vertices)
     };
   }, (0, [||]), state.gameState.beams);
-  VertexBuffer.setDataT(state.beamVertices, vertices);
-  let indexData = IndexBuffer.makeQuadsData(Array.length(vertices) / 8);
-  IndexBuffer.setDataT(state.beamIndices, indexData);
+  VertexObject.updateQuads(state.beamVO, vertices, 8);
 };
 
 let draw = (state : sceneState, scene, canvas) => {

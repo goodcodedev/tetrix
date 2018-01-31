@@ -138,7 +138,7 @@ let init = (canvas : Gpu.Canvas.t, boardCoords : Coords.boardCoords, tilesTex) =
             [||]
         ),
         vertexQuad,
-        indexQuad,
+        Some(indexQuad),
         [|
             ProgramTexture.make(
                 "tiles",
@@ -168,7 +168,7 @@ let init = (canvas : Gpu.Canvas.t, boardCoords : Coords.boardCoords, tilesTex) =
         context,
         blurProgram,
         vertexQuad,
-        indexQuad,
+        Some(indexQuad),
         [|
             ProgramTexture.make(
                 "unblurred",
@@ -180,7 +180,7 @@ let init = (canvas : Gpu.Canvas.t, boardCoords : Coords.boardCoords, tilesTex) =
         context,
         blurProgram,
         vertexQuad,
-        indexQuad,
+        Some(indexQuad),
         [|
             ProgramTexture.make(
                 "unblurred",

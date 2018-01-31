@@ -46,7 +46,7 @@ let init = (canvas : Gpu.Canvas.t, boardCoords: Coords.boardCoords) => {
             |]
         ),
         vertexQuad,
-        indexQuad,
+        Some(indexQuad),
         [||]
     );
     {

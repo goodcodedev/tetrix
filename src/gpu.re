@@ -346,7 +346,7 @@ module VertexBuffer = {
             rightX, bottomY
         |]
     };
-    let makeQuad = (~data=?, ()) => {
+    let makeQuad = (~data=?, ~usage=StaticDraw, ()) => {
         let data = switch (data) {
         | Some(data) => data
         | None => makeQuadData(2.0, 2.0, 0.0, 0.0)
@@ -356,7 +356,7 @@ module VertexBuffer = {
             attributes: [|
                 VertexAttrib.make("position", Vec2f)
             |],
-            usage: StaticDraw,
+            usage,
             inited: None
         }
     };
@@ -535,6 +535,39 @@ module IndexBuffer = {
             inited
         }
         }
+    };
+};
+
+module VertexObject {
+    type t = {
+        vertices: VertexBuffer.t,
+        indices: option(IndexBuffer.t)
+    };
+
+    let make = (vertices, indices) => {
+        {
+            vertices,
+            indices
+        }
+    };
+
+    let makeQuad = (~usage=StaticDraw, ()) => {
+        make(
+            VertexBuffer.makeQuad(~usage, ()),
+            Some(IndexBuffer.make(IndexBuffer.makeQuadsData(1), usage))
+        )
+    };
+
+    let updateQuads = (self, vertices, perElement) => {
+        VertexBuffer.setDataT(self.vertices, vertices);
+        switch (self.indices) {
+        | Some(indices) =>
+            IndexBuffer.setDataT(
+                indices,
+                IndexBuffer.makeQuadsData(Array.length(vertices) / perElement)
+            );
+        | None => ()
+        };
     };
 };
 
@@ -1085,7 +1118,10 @@ module DrawState = {
         switch (pInited) {
         | Some(program) => {
             let iBuffer = VertexBuffer.init(vertexes, context, program.programRef);
-            let iIndexes = IndexBuffer.init(indexes, context);
+            let iIndexes = switch (indexes) {
+            | Some(indices) => Some(IndexBuffer.init(indices, context))
+            | None => None
+            };
             let iTextures = Array.map((programTex : ProgramTexture.t) => {
                 let pInit = ProgramTexture.init(programTex, context, program.programRef);
                 pInit
@@ -1093,7 +1129,7 @@ module DrawState = {
             {
                 program: program,
                 vertexBuffer: iBuffer,
-                indexBuffer: Some(iIndexes),
+                indexBuffer: iIndexes,
                 textures: iTextures
             }
         }

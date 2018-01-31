@@ -94,7 +94,7 @@ let createDrawState = (canvas : Canvas.t, boardCoords : Coords.boardCoords, tile
         canvas.context,
         createProgram(boardCoords),
         VertexBuffer.makeQuad(()),
-        IndexBuffer.makeQuad(),
+        Some(IndexBuffer.makeQuad()),
         [|
             ProgramTexture.make("tiles", tilesTexture),
             ProgramTexture.make("tileShadows", shadowTexture),

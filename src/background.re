@@ -98,7 +98,7 @@ let init = (canvas : Gpu.Canvas.t) => {
             [||]
         ),
         vertexQuad,
-        indexQuad,
+        Some(indexQuad),
         [||]
     );
     {

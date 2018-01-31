@@ -132,6 +132,41 @@ module BlinkRows {
     };
 };
 
+module ElQueue {
+  type t = Queue.t(element);
+
+  let randomEl = () => {
+    switch (Random.int(7)) {
+    | 0 => Cube
+    | 1 => Line
+    | 2 => Triangle
+    | 3 => RightTurn
+    | 4 => LeftTurn
+    | 5 => LeftL
+    | 6 => RightL
+    | _ => Cube
+    }
+  };
+
+  let initQueue = (queue) => {
+    Queue.clear(queue);
+    Queue.push(randomEl(), queue);
+    Queue.push(randomEl(), queue);
+    Queue.push(randomEl(), queue);
+    Queue.push(randomEl(), queue);
+  };
+
+  let make = () : t => { let q = Queue.create();
+    initQueue(q);
+    q
+  };
+
+  let pop = (queue) => {
+    Queue.push(randomEl(), queue);
+    Queue.pop(queue)
+  };
+};
+
 type stateT = {
   action: inputAction,
   curEl: curEl,
@@ -146,21 +181,12 @@ type stateT = {
   gameState: gameState,
   paused: bool,
   lastCompletedRows: array(int),
-  blinkRows: BlinkRows.t
+  blinkRows: BlinkRows.t,
+  elQueue: ElQueue.t
 };
 
 
-let newElement = () => {
-  let newElType = switch (Random.int(7)) {
-  | 0 => Cube
-  | 1 => Line
-  | 2 => Triangle
-  | 3 => RightTurn
-  | 4 => LeftTurn
-  | 5 => LeftL
-  | 6 => RightL
-  | _ => Cube
-  };
+let newElement = (newElType) => {
   let tetronimo = getTetronimo(newElType);
   {
     el: newElType,
@@ -210,6 +236,7 @@ let updateBeams = (state) => {
   }, state.beams);
 };
 
+
 let setup = (canvas, tiles) : stateT => {
   Document.addEventListener(
     Document.window,
@@ -219,12 +246,13 @@ let setup = (canvas, tiles) : stateT => {
     }
   );
   Random.self_init();
+  let elQueue = ElQueue.make();
   /*Mandelbrot.createCanvas();*/
   /*let sdf = SdfTiles.createCanvas();
   SdfTiles.draw(sdf);*/
   let state = {
     action: None,
-    curEl: newElement(),
+    curEl: newElement(ElQueue.pop(elQueue)),
     posChanged: true,
     rotateChanged: true,
     lastTick: 0.,
@@ -236,7 +264,8 @@ let setup = (canvas, tiles) : stateT => {
     gameState: Running,
     paused: false,
     lastCompletedRows: [||],
-    blinkRows: BlinkRows.make()
+    blinkRows: BlinkRows.make(),
+    elQueue
   };
   state
 };
@@ -251,7 +280,7 @@ let newGame = (state) => {
   {
     ...state,
     action: None,
-    curEl: newElement(),
+    curEl: newElement(ElQueue.pop(state.elQueue)),
     posChanged: true,
     rotateChanged: true,
     updateTiles: true,
@@ -515,7 +544,7 @@ let afterTouchdown = (state, canvas : Gpu.Canvas.t) => {
   };
   let state = {
     ...state,
-    curEl: newElement()
+    curEl: newElement(ElQueue.pop(state.elQueue))
   };
   updateBeams(state);
   if (isCollision(state)) {

@@ -33,13 +33,14 @@ let currElFragment = {|
 
 open Gpu;
 
-let makeNode = (color, elPos, vo, sdfTiles) => {
+let makeNode = (color, elPos, vertices, indices, sdfTiles) => {
     Scene.makeNode(
-        "currEl",
+        "element",
         ~updateOn=[UpdateFlags.ElPosChanged],
         ~vertShader=Shader.make(currElVertex),
         ~fragShader=Shader.make(currElFragment),
-        ~vo,
+        ~vertices,
+        ~indices,
         ~uniforms=[
             ("elColor", color),
             ("translation", elPos)
