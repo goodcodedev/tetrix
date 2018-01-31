@@ -40,6 +40,7 @@ type inputAction =
   | DropDown
   | RotateCW
   | RotateCCW
+  | HoldElement
   | MoveBeginning
   | MoveEnd
   | Pause
@@ -175,11 +176,12 @@ module ElQueue {
     q
   };
 
-  let nextEl = (queue) => {
+  /* Use nextEl(state) to account for holding element */
+  let pop = (queue) => {
     Queue.push(randomEl(), queue);
-    let nextEl = Queue.pop(queue);
+    let next = Queue.pop(queue);
     {
-      ...nextEl,
+      ...next,
       posX: tileCols / 2,
       posY: 2
     }
@@ -189,6 +191,7 @@ module ElQueue {
 type stateT = {
   action: inputAction,
   curEl: elData,
+  holdingEl: option(elData),
   posChanged: bool,
   rotateChanged: bool,
   elChanged: bool,
@@ -203,6 +206,25 @@ type stateT = {
   lastCompletedRows: array(int),
   blinkRows: BlinkRows.t,
   elQueue: ElQueue.t
+};
+
+let nextEl = (state) => {
+  let next = switch (state.holdingEl) {
+  | Some(holdingEl) => holdingEl
+  | None => ElQueue.pop(state.elQueue)
+  };
+  {
+    ...state,
+    holdingEl: None,
+    elChanged: true,
+    posChanged: true,
+    rotateChanged: true,
+    curEl: {
+      ...next,
+      posX: tileCols / 2,
+      posY: 2
+    }
+  }
 };
 
 
@@ -260,7 +282,8 @@ let setup = (canvas, tiles) : stateT => {
   SdfTiles.draw(sdf);*/
   let state = {
     action: None,
-    curEl: ElQueue.nextEl(elQueue),
+    curEl: ElQueue.pop(elQueue),
+    holdingEl: None,
     elChanged: true,
     posChanged: true,
     rotateChanged: true,
@@ -290,7 +313,8 @@ let newGame = (state) => {
   {
     ...state,
     action: None,
-    curEl: ElQueue.nextEl(state.elQueue),
+    curEl: ElQueue.pop(state.elQueue),
+    holdingEl: None,
     elChanged: true,
     posChanged: true,
     rotateChanged: true,
@@ -518,6 +542,23 @@ let processAction = (state) => {
     }
     }
   }
+  | HoldElement => {
+    switch (state.holdingEl) {
+    | Some(_) =>
+      /* Play err sound */
+      state
+    | None =>
+      {
+        ...state,
+        action: None,
+        holdingEl: Some(state.curEl),
+        curEl: ElQueue.pop(state.elQueue),
+        elChanged: true,
+        posChanged: true,
+        rotateChanged: true
+      }
+    }
+  }
   | Pause => {
     ...state,
     action: None,
@@ -547,11 +588,7 @@ let afterTouchdown = (state, canvas : Gpu.Canvas.t) => {
   } else {
     state
   };
-  let state = {
-    ...state,
-    curEl: ElQueue.nextEl(state.elQueue),
-    elChanged: true
-  };
+  let state = nextEl(state);
   updateBeams(state);
   if (isCollision(state)) {
     {
@@ -729,6 +766,10 @@ let keyPressed = (state, canvas : Gpu.Canvas.t) => {
     | C => {
       ...state,
       action: RotateCW
+    }
+    | D | X => {
+      ...state,
+      action: HoldElement
     }
     | Period => {
       ...state,

@@ -40,6 +40,7 @@ let setup = (canvas) => {
       makeElState(),
       makeElState()
     |],
+    holdingEl: makeElState(),
     beamVO,
     gameState
   }
@@ -83,6 +84,7 @@ let createLeftRow = (state) => {
     ~spacing=Scale(0.1),
     [
       UiBox.makeNode([
+        DrawElement.makeNode(state.holdingEl),
         FontDraw.makeNode(
           "HOLD",
           "digitalt",
@@ -159,7 +161,12 @@ let createScene = (canvas, state) => {
   scene
 };
 
+let resetElState = (elState) => {
+  VertexObject.updateQuads(elState.vo, [||], 8);
+};
+
 let updateElTiles = (el : Game.elData, elState, rows, cols) => {
+  /* todo: Consider caching some of this */
   let tiles = Game.elTiles(el.el, el.rotation);
   let color = Game.tileColors2[el.color];
   let x = el.posX;
@@ -223,6 +230,11 @@ let draw = (state : sceneState, scene, canvas) => {
       updateElTiles(nextEl, state.nextEls[i], 3, 4);
       i + 1
     }, 0, state.gameState.elQueue);
+    /* Handle holding element */
+    switch (state.gameState.holdingEl) {
+    | Some(holdingEl) => updateElTiles(holdingEl, state.holdingEl, 3, 4);
+    | None => resetElState(state.holdingEl);
+    };
     {
       ...state.gameState,
       elChanged: false

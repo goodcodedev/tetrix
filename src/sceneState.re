@@ -9,6 +9,7 @@ type sceneState = {
   tilesTex: Gpu.Texture.t,
   elState: elState,
   nextEls: array(elState),
+  holdingEl: elState,
   beamVO: Gpu.VertexObject.t,
   mutable gameState: Game.stateT
 };
