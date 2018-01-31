@@ -125,11 +125,9 @@ let makeNode = (tilesTex, tileShadows, beamNode, sdfTiles, elPos, elColor, child
         ],
         ~pixelSizeUniform=true,
         ~textures=[
-            ("tiles", tilesTex)
-        ],
-        ~texNodes=[
-            ("tileShadows", tileShadows),
-            ("beams", beamNode)
+            ("tiles", NodeTex.tex(tilesTex)),
+            ("tileShadows", NodeTex.node(tileShadows)),
+            ("beams", NodeTex.node(beamNode))
         ],
         ~deps=[
             sdfTiles,

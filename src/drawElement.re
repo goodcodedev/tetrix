@@ -45,8 +45,8 @@ let makeNode = (color, elPos, vertices, indices, sdfTiles) => {
             ("elColor", color),
             ("translation", elPos)
         ],
-        ~texNodes=[
-            ("sdfTiles", sdfTiles)
+        ~textures=[
+            ("sdfTiles", Scene.NodeTex.node(sdfTiles))
         ],
         ()
     )

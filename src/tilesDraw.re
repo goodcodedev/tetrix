@@ -48,6 +48,7 @@ let fragmentSource = {|
 open Gpu;
 
 let makeNode = (tilesTex, sdfTiles) => {
+    open Scene;
     Scene.makeNode(
         "tilesDraw",
         ~updateOn=[UpdateFlags.TilesChanged, UpdateFlags.ElPosChanged],
@@ -56,10 +57,8 @@ let makeNode = (tilesTex, sdfTiles) => {
         ~uniforms=[],
         ~transparent=true,
         ~textures=[
-            ("tiles", tilesTex)
-        ],
-        ~texNodes=[
-            ("sdfTiles", sdfTiles)
+            ("tiles", NodeTex.tex(tilesTex)),
+            ("sdfTiles", NodeTex.node(sdfTiles))
         ],
         ()
     )

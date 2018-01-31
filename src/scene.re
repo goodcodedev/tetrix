@@ -94,14 +94,13 @@ and node('state, 'flags) = {
     vertShader: option(Gpu.Shader.t),
     fragShader: option(Gpu.Shader.t),
     textureList: list(string),
-    textures: Hashtbl.t(string, Gpu.Texture.t),
+    textures: Hashtbl.t(string, nodeTex('state, 'flags)),
     vertices: Gpu.VertexBuffer.t,
     indices: option(Gpu.IndexBuffer.t),
     uniformList: list(string),
     uniforms: Hashtbl.t(string, Gpu.uniform),
     layoutUniform: option(Gpu.uniform),
     pixelSizeUniform: option(Gpu.uniform),
-    textureUniforms: list((node('state, 'flags), string, Gpu.uniform)),
     drawToTexture: option(Gpu.Texture.t),
     clearOnDraw: bool,
     mutable parent: option(node('state, 'flags)),
@@ -127,6 +126,13 @@ and anim('state, 'flags) = {
     duration: float,
     mutable elapsed: float,
     next: option(anim('state, 'flags))
+}
+and nodeTex('state, 'flags) = {
+    texture: Gpu.Texture.t,
+    node: option(node('state, 'flags)),
+    uniformMat: option(Gpu.uniform),
+    offsetX: dimension,
+    offsetY: dimension
 };
 
 let quadVertices = Gpu.VertexBuffer.makeQuad(());
@@ -150,11 +156,38 @@ let makeLayout = (
         vAlign
     }
 };
+/* todo: greyscale */
 type drawTo =
   | Framebuffer
   | TextureRGBA
   | TextureRGB
   | TextureItem(Gpu.Texture.t);
+
+module NodeTex {
+    let node = (~offsetX=Scale(0.0), ~offsetY=Scale(0.0), node) => {
+        let texture = switch (node.drawToTexture) {
+        | Some(texture) => texture
+        | None => failwith("Provided node does not draw to texture");
+        };
+        {
+            texture,
+            node: Some(node),
+            uniformMat: Some(UniformMat3f(ref(Data.Mat3.id()))),
+            offsetX,
+            offsetY
+        }
+    };
+
+    let tex = (~offsetX=Scale(0.0), ~offsetY=Scale(0.0), texture) => {
+        {
+            texture,
+            node: None,
+            uniformMat: None,
+            offsetX,
+            offsetY
+        }
+    };
+};
 
 let makeNode = (
     key,
@@ -163,14 +196,13 @@ let makeNode = (
     ~updateOn=[],
     ~update=?,
     ~children=[],
-    ~textures=[],
+    ~textures : list((string, nodeTex('state, 'flags))) =[],
     ~vertices=?,
     ~indices=?,
     ~vo : option(Gpu.VertexObject.t) =?,
     ~uniforms=[],
     ~layoutUniform=true,
     ~pixelSizeUniform=false,
-    ~textureUniforms=[],
     ~size=Dimensions(Scale(1.0), Scale(1.0)),
     ~padding=?,
     ~spacing=?,
@@ -180,7 +212,6 @@ let makeNode = (
     ~selfDraw=true,
     ~loading=false,
     ~transparent=false,
-    ~texNodes=[],
     ~deps=[],
     ~drawTo=Framebuffer,
     ~clearOnDraw=false,
@@ -192,22 +223,8 @@ let makeNode = (
         List.iter(((key, item)) => Hashtbl.add(tbl, key, item), list);
         tbl
     };
-    /* Allowing nodes to be passed and, when they have drawToTexture,
-       used as textures */
-    let textures = List.append(textures, List.map(((name, texNode)) => {
-        switch (texNode.drawToTexture) {
-        | Some(texture) => (name, texture)
-        | None => failwith("Texnode does not draw to texture");
-        }
-    }, texNodes));
     let textureList = List.map(((key, _texture)) => key, textures);
     let textures = listToTbl(textures);
-    /* Texture uniforms provides a uniform matrix in the layout calculations
-       that can be multiplied on -1.0 to 1.0 coords to get uv
-       of layed out node texture */
-    let textureUniforms = List.map(((name, node)) => {
-        (node, name, Gpu.UniformMat3f(ref(Data.Mat3.id())))
-    }, List.append(textureUniforms, List.map(((name, node)) => (name ++ "Mat", node), texNodes)));
     /* Provided uniform list */
     let uniformList = List.map(((key, _uniform)) => key, uniforms);
     let uniforms = listToTbl(uniforms);
@@ -226,6 +243,8 @@ let makeNode = (
     } else {
         None
     };
+    /* Vertices and indices can be passed as
+       separate objects, or as a vertex object */
     let (vertices, indices) = switch (vo) {
     | Some(vo) => (vo.vertices, vo.indices)
     | None => switch (vertices, indices) {
@@ -288,7 +307,6 @@ let makeNode = (
         uniforms,
         layoutUniform,
         pixelSizeUniform,
-        textureUniforms,
         drawToTexture,
         clearOnDraw,
         parent: None,
@@ -411,9 +429,13 @@ let getSceneNodesToUpdate = (flags, animIds, root) => {
 
 let createNodeDrawState = (self, node) => {
 /* Texture uniforms */
-let uniforms = List.fold_left((uniforms, (_, name, uniform)) => {
-    [Gpu.Uniform.make(name, uniform), ...uniforms]
-}, [], node.textureUniforms);
+let uniforms = List.fold_left((uniforms, name) => {
+    let nodeTex = Hashtbl.find(node.textures, name);
+    switch (nodeTex.uniformMat) {
+    | Some(uniform) => [Gpu.Uniform.make(name ++ "Mat", uniform), ...uniforms]
+    | None => uniforms
+    }
+}, [], node.textureList);
 /* PixelSize uniform */
 let uniforms = switch (node.pixelSizeUniform) {
 | Some(pixelSizeUniform) => [Gpu.Uniform.make("pixelSize", pixelSizeUniform), ...uniforms]
@@ -432,8 +454,8 @@ let uniforms = Array.of_list(List.append(List.map(
 ), uniforms));
 let textures = Array.of_list(List.map(
     (key) => {
-        let texture = Hashtbl.find(node.textures, key);
-        Gpu.ProgramTexture.make(key, texture)
+        let nodeTex = Hashtbl.find(node.textures, key);
+        Gpu.ProgramTexture.make(key, nodeTex.texture)
     },
     node.textureList
 ));
@@ -773,24 +795,27 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
             calcNodeLayout(child);
         }, node.children);
         /* After deps and children have been processed, set texture matrices */
-        List.iter(((texNode, _name, uniform)) => {
+        Hashtbl.iter((_name, nodeTex : nodeTex('state, 'flags)) => {
             /* Textures should be scaled for right pixel ratio,
                need not be translated (could be packed maybe),
                but should start from beginning or pack position */
-            /* Understand this as texture size goes to 1.0 on viewport size */
-            let scaleX = texNode.calcLayout.pWidth /. vpWidth /. 2.0;
-            let scaleY = texNode.calcLayout.pHeight /. vpHeight /. 2.0;
-            let scale = Data.Mat3.scale(
-                scaleX,
-                scaleY
-            );
-            let translate = Data.Mat3.trans(scaleX, 1.0 -. scaleY);
-            let texMat = Data.Mat3.matmul(translate, scale);
-            Gpu.Uniform.setMat3f(uniform, texMat);
-            if (debug) {
-                Js.log2("texMat: ", texMat);
+            /* Understand this as texture size goes to 1.0 on viewport size
+               so it will depend on setting viewport before
+               render to texture */
+            switch (nodeTex.node, nodeTex.uniformMat) {
+            | (Some(texNode), Some(uniform)) =>
+                let scaleX = texNode.calcLayout.pWidth /. vpWidth /. 2.0;
+                let scaleY = texNode.calcLayout.pHeight /. vpHeight /. 2.0;
+                let scale = Data.Mat3.scale(
+                    scaleX,
+                    scaleY
+                );
+                let translate = Data.Mat3.trans(scaleX, 1.0 -. scaleY);
+                let texMat = Data.Mat3.matmul(translate, scale);
+                Gpu.Uniform.setMat3f(uniform, texMat);
+            | _ => ()
             };
-        }, node.textureUniforms);
+        }, node.textures);
     };
     if (debug) {
         Js.log2("vpWidth", vpWidth);
