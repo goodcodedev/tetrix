@@ -596,7 +596,7 @@ module Texture = {
     };
 
     type t = {
-        data: data,
+        mutable data: data,
         format: format,
         filter: filter,
         mutable inited: option(inited)
@@ -608,6 +608,15 @@ module Texture = {
             format: format,
             inited: None,
             filter
+        }
+    };
+
+    let setDataT = (self, data) => {
+        switch (self.inited) {
+        | Some(inited) =>
+            inited.data = data;
+            inited.update = true;
+        | None => self.data = data;
         }
     };
 

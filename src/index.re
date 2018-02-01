@@ -88,7 +88,7 @@ let createLeftRow = (state) => {
         FontDraw.makeNode(
           "HOLD",
           "digitalt",
-          ~height=0.35,
+          ~height=1.0,
           ~align=SdfFont.TextLayout.AlignCenter,
           ()
         )
@@ -104,18 +104,16 @@ let createRightRow = (state) => {
       Layout.vertical(
         ~size=Scene.Dimensions(Scale(1.0), Scale(1.0)),
         [
+          FontDraw.makeNode(
+            "NEXT",
+            "digitalt",
+            ~height=0.3,
+            ~align=SdfFont.TextLayout.AlignCenter,
+            ()
+          ),
           DrawElement.makeNode(state.nextEls[0]),
           DrawElement.makeNode(state.nextEls[1]),
           DrawElement.makeNode(state.nextEls[2])
-          /*UiBox.makeNode([
-            FontDraw.makeNode(
-              "NEXT",
-              "digitalt",
-              ~height=0.35,
-              ~align=SdfFont.TextLayout.AlignCenter,
-              ()
-            )
-          ])*/
         ]
       )
     ]
@@ -226,7 +224,6 @@ let draw = (state : sceneState, scene, canvas) => {
   state.gameState = if (elChanged) {
     /* Redraw next elements */
     let _ = Queue.fold((i, nextEl) => {
-      Js.log2("Next el", i);
       updateElTiles(nextEl, state.nextEls[i], 3, 4);
       i + 1
     }, 0, state.gameState.elQueue);

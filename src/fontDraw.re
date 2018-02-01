@@ -11,9 +11,14 @@ let vertexSource = {|
     varying float smoothFactor;
     
     void main() {
-        // todo: Not sure how to model this. todo better understand aastep afwidth
-        smoothFactor = 0.00005 * (pixelSize.y * pixelSize.y);
         vUv = uv;
+        // x scale. I got the value of this by outputting smoothfactor and sampling color
+        // Divided by some factors that looked good to see what I needed
+        // to multiply with.
+        // Took rise over run with smoothFactor as run and factor as rise,
+        // subtracted x - x*slope to get + constant.
+        smoothFactor = model[0][0] * pixelSize.x;
+        smoothFactor = (smoothFactor * -2.8211904762 + 19.4452380953);
         vec2 pos = vec3(vec3(position, 1.0) * model * layout).xy;
         gl_Position = vec4(pos, 0.0, 1.0);
     }
@@ -30,23 +35,28 @@ let fragmentSource = {|
     varying vec2 vUv;
     varying float smoothFactor;
 
-    float aastep(float value, float smooth) {
+    float aastep(float value) {
       #ifdef GL_OES_standard_derivatives
         float afwidth = length(vec2(dFdx(value), dFdy(value))) * 0.70710678118654757;
       #else
-        float afwidth = (1.0 / smooth) * (1.4142135623730951 / (2.0 * gl_FragCoord.w));
+        float afwidth = (1.0 / 32.0) * (1.4142135623730951 / (2.0 * gl_FragCoord.w));
       #endif
+      //afwidth = afwidth * 22.0;
+      afwidth = afwidth * smoothFactor;
+      // 1.0 - 5.0
+      // 0.3 - 22.0
       return smoothstep(0.5 - afwidth, 0.5 + afwidth, value);
     }
 
     void main() {
         float discardLimit = 0.0001;
         vec4 texColor = 1.0 - texture2D(map, vUv);
-        float alpha = aastep(texColor.x, smoothFactor);
+        float alpha = aastep(texColor.x);
         //color = texColor.xyz;
         float colorCoef = 1.0 - alpha;
         vec3 c = color * alpha;
         gl_FragColor = vec4(c, opacity * alpha);
+        //gl_FragColor = vec4(smoothFactor, 0.0, 0.0, opacity * alpha);
         if (alpha < discardLimit) {
             discard;
         }
@@ -230,6 +240,7 @@ let makeNode = (
     );
     let indexBuffer = IndexBuffer.make([||], StaticDraw);
     open Data;
+    let uModel = UniformMat3f(ref(Mat3.id()));
     let node = Scene.makeNode(
         "fontDraw",
         ~vertShader=Shader.make(vertexSource),
@@ -239,7 +250,7 @@ let makeNode = (
         ~vertices=vertexBuffer,
         ~indices=indexBuffer,
         ~uniforms=[
-            ("model", UniformMat3f(ref(Mat3.id()))),
+            ("model", uModel),
             ("color", UniformVec3f(ref(Color.toVec3(color)))),
             ("opacity", UniformFloat(ref(opacity)))
         ],
@@ -264,33 +275,15 @@ let makeNode = (
         );
         let glyphs = SdfFont.TextLayout.update(layout);
         let vertices = SdfFont.TextLayout.vertexData(layout, glyphs);
-        /* Update vertex buffer */
-        switch (vertexBuffer.inited) {
-        | Some(inited) =>
-            inited.data = vertices;
-            inited.update = true;
-        | None => failwith("Font vertex buffer not initialized");
-        };
-        /* Update index buffer */
-        switch (indexBuffer.inited) {
-        | Some(inited) =>
-            inited.data = IndexBuffer.makeQuadsData(Array.length(vertices) / 16);
-            inited.update = true;
-        | None => failwith("Font index buffer not initialized");
-        };
-        /* Update texture */
-        switch (fontTexture.inited) {
-        | Some(inited) =>
-            inited.data = Texture.ImageTexture(fontFiles.image);
-            inited.update = true;
-        | None => failwith("Font texture not initialized");
-        };
+        VertexBuffer.setDataT(vertexBuffer, vertices);
+        IndexBuffer.setDataT(indexBuffer, IndexBuffer.makeQuadsData(Array.length(vertices) / 16));
+        Texture.setDataT(fontTexture, Texture.ImageTexture(fontFiles.image));
         /* Update model matrix value */
         let modelMat = Data.Mat3.matmul(
             Data.Mat3.trans(-1.0, 1.0 -. height),
             Data.Mat3.scale(scale, scale)
         );
-        Scene.setUniformMat3f(node, "model", modelMat);
+        Uniform.setMat3f(uModel, modelMat);
         node.loading = false;
     });
     node
