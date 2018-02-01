@@ -210,7 +210,7 @@ let loadFont = (font, canvas, bgDraw) => {
             500,
             ()
         );
-        let glyphs = SdfFont.TextLayout.update(layout);
+        let (_, glyphs) = SdfFont.TextLayout.update(layout);
         let vd = SdfFont.TextLayout.vertexData(layout, glyphs);
         let scale = Data.Mat3.scale(1.0  /. 80.0, 1.0  /. -80.0);
         let vpTrans = Data.Mat3.trans(-1.0, 0.0);
@@ -224,6 +224,7 @@ let makeNode = (
     text,
     font,
     ~height=0.2,
+    ~numLines=1,
     ~align=SdfFont.TextLayout.AlignLeft,
     ~color=Color.fromFloats(1.0, 1.0, 1.0),
     ~opacity=1.0,
@@ -241,6 +242,7 @@ let makeNode = (
     let indexBuffer = IndexBuffer.make([||], StaticDraw);
     open Data;
     let uModel = UniformMat3f(ref(Mat3.id()));
+    let aspect = 1.0 /. height *. float_of_int(numLines);
     let node = Scene.makeNode(
         "fontDraw",
         ~vertShader=Shader.make(vertexSource),
@@ -257,7 +259,7 @@ let makeNode = (
         ~pixelSizeUniform=true,
         ~transparent=true,
         ~loading=true,
-        ~size=Scene.Aspect(1.0),
+        ~size=Scene.Aspect(aspect),
         ()
     );
     
@@ -273,15 +275,20 @@ let makeNode = (
             ~align,
             ()
         );
-        let glyphs = SdfFont.TextLayout.update(layout);
+        let (maxLineWidth, glyphs) = SdfFont.TextLayout.update(layout);
         let vertices = SdfFont.TextLayout.vertexData(layout, glyphs);
         VertexBuffer.setDataT(vertexBuffer, vertices);
         IndexBuffer.setDataT(indexBuffer, IndexBuffer.makeQuadsData(Array.length(vertices) / 16));
         Texture.setDataT(fontTexture, Texture.ImageTexture(fontFiles.image));
         /* Update model matrix value */
+        let xTrans = switch (align) {
+        | SdfFont.TextLayout.AlignLeft => -1.0
+        | SdfFont.TextLayout.AlignCenter => (float_of_int(maxLineWidth) *. scale) *. -0.5;
+        | SdfFont.TextLayout.AlignRight => (1.0 -. (float_of_int(maxLineWidth) *. scale))
+        };
         let modelMat = Data.Mat3.matmul(
-            Data.Mat3.trans(-1.0, 1.0 -. height),
-            Data.Mat3.scale(scale, scale)
+            Data.Mat3.trans(xTrans, 1.0 -. height),
+            Data.Mat3.scale(scale, scale *. aspect)
         );
         Uniform.setMat3f(uModel, modelMat);
         node.loading = false;

@@ -228,7 +228,7 @@ let update = (self : textLayout) => {
     penPos.x = 0;
     (lineIndex + 1, [List.rev(lineGlyphs), ...glyphs])
   }, (0, []), lines);
-  List.concat(List.rev(glyphs))
+  (maxLineWidth, List.concat(List.rev(glyphs)))
 };
 
 let vertexData = (self, glyphs) => {

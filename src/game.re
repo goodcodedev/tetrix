@@ -164,6 +164,24 @@ module ElQueue {
     }
   };
 
+  let setHoldPos = (elData) => {
+    let (posX, posY) = switch (elData.el) {
+    | Cube => (4, 1)
+    | Line => (5, 2)
+    | Triangle => (3, 3)
+    | RightTurn => (3, 3)
+    | LeftTurn => (3, 3)
+    | LeftL => (3, 3)
+    | RightL => (3, 3)
+    };
+    {
+      ...elData,
+      rotation: elData.rotation,
+      posX,
+      posY
+    }
+  };
+
   let initQueue = (queue) => {
     Queue.clear(queue);
     Queue.push(randomEl(), queue);
@@ -543,20 +561,12 @@ let processAction = (state) => {
     }
   }
   | HoldElement => {
-    switch (state.holdingEl) {
-    | Some(_) =>
-      /* Play err sound */
-      state
-    | None =>
-      {
-        ...state,
-        action: None,
-        holdingEl: Some(state.curEl),
-        curEl: ElQueue.pop(state.elQueue),
-        elChanged: true,
-        posChanged: true,
-        rotateChanged: true
-      }
+    let holdingEl = Some(ElQueue.setHoldPos(state.curEl));
+    let state = nextEl(state);
+    {
+      ...state,
+      action: None,
+      holdingEl
     }
   }
   | Pause => {

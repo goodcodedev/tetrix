@@ -81,41 +81,33 @@ let createBoardNode = (state) => {
 let createLeftRow = (state) => {
   Layout.vertical(
     ~size=Scene.Dimensions(Scale(0.22), Scale(1.0)),
-    ~spacing=Scale(0.1),
     [
-      UiBox.makeNode([
-        DrawElement.makeNode(state.holdingEl),
-        FontDraw.makeNode(
-          "HOLD",
-          "digitalt",
-          ~height=1.0,
-          ~align=SdfFont.TextLayout.AlignCenter,
-          ()
-        )
-      ])
+      FontDraw.makeNode(
+        "HOLD",
+        "digitalt",
+        ~height=0.3,
+        ~align=SdfFont.TextLayout.AlignCenter,
+        ()
+      ),
+      DrawElement.makeNode(state.holdingEl)
     ]
   )
 };
 
 let createRightRow = (state) => {
-  Layout.stacked(
-    ~size=Scene.WidthRatio(Scale(0.22), 4. /. 12.),
+  Layout.vertical(
+    ~size=Scene.Dimensions(Scale(0.22), Scale(1.0)),
     [
-      Layout.vertical(
-        ~size=Scene.Dimensions(Scale(1.0), Scale(1.0)),
-        [
-          FontDraw.makeNode(
-            "NEXT",
-            "digitalt",
-            ~height=0.3,
-            ~align=SdfFont.TextLayout.AlignCenter,
-            ()
-          ),
-          DrawElement.makeNode(state.nextEls[0]),
-          DrawElement.makeNode(state.nextEls[1]),
-          DrawElement.makeNode(state.nextEls[2])
-        ]
-      )
+      FontDraw.makeNode(
+        "NEXT",
+        "digitalt",
+        ~height=0.3,
+        ~align=SdfFont.TextLayout.AlignCenter,
+        ()
+      ),
+      DrawElement.makeNode(state.nextEls[0]),
+      DrawElement.makeNode(state.nextEls[1]),
+      DrawElement.makeNode(state.nextEls[2])
     ]
   )
 };

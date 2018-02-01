@@ -433,11 +433,11 @@ findInParents(node, key)
 };
 
 let getSceneNodesToUpdate = (flags, animIds, root) => {
-    let rec loop = (node, list, inAnims) => {
-        let inAnims = (inAnims || List.exists((animId) => node.id == animId, animIds));
+    let rec loop = (node, list, parentUpdate) => {
+        let inAnims = (parentUpdate || List.exists((animId) => node.id == animId, animIds));
         let hasAnyFlag = List.exists((updateOn) => List.exists((flag) => flag == updateOn, flags), node.updateOn);
         /* todo: tail recursive? */
-        let childList = List.fold_left((list, child) => loop(child, list, inAnims), list, node.children);
+        let childList = List.fold_left((list, child) => loop(child, list, hasAnyFlag || inAnims), list, node.children);
         let list = if ((hasAnyFlag || inAnims) && node.selfDraw) {
             [node, ...childList]
         } else {

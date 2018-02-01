@@ -30,7 +30,7 @@ let makeNode = (elState : SceneState.elState) => {
         "element",
         ~updateOn=[UpdateFlags.ElChanged],
         ~size=Aspect(4.0 /. 3.0),
-        ~margin=MarginXY(Scale(0.28), Scale(0.04)),
+        ~margin=MarginXY(Scale(0.28), Scale(0.03)),
         ~vertShader=Shader.make(currElVertex),
         ~fragShader=Shader.make(currElFragment),
         ~vo=elState.vo,
