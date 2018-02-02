@@ -22,6 +22,17 @@ let makeElState = () => {
 let setup = (canvas) => {
   /* Element position and color uniforms */
   let beamVO = VertexObject.makeQuad(~usage=DynamicDraw, ());
+  let dropBeamVO = VertexObject.make(
+    VertexBuffer.make(
+      [||],
+      [|
+        VertexAttrib.make("position", GlType.Vec2f),
+        VertexAttrib.make("fromDrop", GlType.Float)
+      |],
+      DynamicDraw
+    ),
+    Some(IndexBuffer.make([||], DynamicDraw))
+  );
   let tiles = Array.make(tileRows * tileCols, 0);
   /* Texture with tiles data */
   let tilesTex = Texture.make(
@@ -30,6 +41,7 @@ let setup = (canvas) => {
     Texture.NearestFilter
   );
   let elState = makeElState();
+  let dropColor = Scene.UVec3f.zeros();
   let gameState = Game.setup(canvas, tiles);
   {
     tiles,
@@ -42,6 +54,8 @@ let setup = (canvas) => {
     |],
     holdingEl: makeElState(),
     beamVO,
+    dropBeamVO,
+    dropColor,
     gameState
   }
 };
@@ -52,6 +66,8 @@ let createBoardNode = (state) => {
   let sdfTiles = SdfTiles.makeNode(tileCols, tileRows);
   /* Beam from current element downwards */
   let beamNode = TileBeam.makeNode(state.elState.color, state.beamVO);
+  /* Drop down animation */
+  let dropNode = DropBeams.makeNode(state.dropBeamVO);
   /* Shadow of tiles */
   let tileShadows = TileShadows.makeNode(state.tilesTex);
   /* Tiles draw */
@@ -69,6 +85,8 @@ let createBoardNode = (state) => {
     state.tilesTex,
     tileShadows,
     beamNode,
+    dropNode,
+    state.dropColor,
     sdfTiles,
     state.elState,
     [
@@ -152,7 +170,7 @@ let createScene = (canvas, state) => {
 };
 
 let resetElState = (elState) => {
-  VertexObject.updateQuads(elState.vo, [||], 8);
+  VertexObject.updateQuads(elState.vo, [||]);
 };
 
 let updateElTiles = (el : Game.elData, elState, rows, cols) => {
@@ -183,37 +201,72 @@ let updateElTiles = (el : Game.elData, elState, rows, cols) => {
       tileXScaled +. tileWidth, tileYScaled -. tileHeight
     |]
   }, tiles));
-  VertexObject.updateQuads(elState.vo, currElTiles, 8);
+  VertexObject.updateQuads(elState.vo, currElTiles);
 };
 
-let updateBeams = (state) => {
+let updateBeams = (beams, beamsVO, withFromDrop) => {
   /* Create vertices for beams */
   let rowHeight = 2.0 /. float_of_int(tileRows);
   let colWidth = 2.0 /. float_of_int(tileCols);
   let (_, vertices) = Array.fold_left(((i, vertices), (beamFrom, beamTo)) => {
     if (beamFrom > Game.beamNone) {
-      let beamVertices = [|
-        -1.0 +. float_of_int(i) *. colWidth,
-        1.0 -. (float_of_int(beamTo) *. rowHeight +. rowHeight),
-        -1.0 +. float_of_int(i) *. colWidth,
-        1.0 -. float_of_int(beamFrom) *. rowHeight,
-        -1.0 +. (float_of_int(i) *. colWidth +. colWidth),
-        1.0 -. float_of_int(beamFrom) *. rowHeight,
-        -1.0 +. (float_of_int(i) *. colWidth +. colWidth),
-        1.0 -. (float_of_int(beamTo) *. rowHeight +. rowHeight),
-      |];
+      let lx = -1.0 +. float_of_int(i) *. colWidth;
+      let rx = -1.0 +. (float_of_int(i) *. colWidth +. colWidth);
+      let by = 1.0 -. (float_of_int(beamTo) *. rowHeight +. rowHeight);
+      let ty = 1.0 -. float_of_int(beamFrom) *. rowHeight;
+      let beamVertices = if (withFromDrop) {
+        [|
+          lx, by, 1.0,
+          lx, ty, 0.0,
+          rx, ty, 0.0,
+          rx, by, 1.0
+        |]
+      } else {
+        [|
+          lx, by,
+          lx, ty,
+          rx, ty,
+          rx, by
+        |]
+      };
       (i + 1, Array.append(vertices, beamVertices))
     } else {
       (i + 1, vertices)
     };
-  }, (0, [||]), state.gameState.beams);
-  VertexObject.updateQuads(state.beamVO, vertices, 8);
+  }, (0, [||]), beams);
+  VertexObject.updateQuads(beamsVO, vertices);
 };
 
-let draw = (state : sceneState, scene, canvas) => {
+let draw = (state, scene, canvas) => {
   state.gameState = Game.draw(state.gameState, canvas);
-  let elChanged = state.gameState.elChanged;
-  state.gameState = if (elChanged) {
+  let (hasDroppedDown, elMoved, elChanged) = {
+    let gs = state.gameState;
+    (
+      gs.hasDroppedDown,
+      gs.posChanged || gs.rotateChanged,
+      gs.elChanged
+    )
+  };
+  if (hasDroppedDown) {
+    let dropNode = Scene.getNode(scene, "dropBeams");
+    switch (dropNode) {
+    | None => ()
+    | Some(dropNode) =>
+      /* Copy beam before updating it to use in animation */
+      updateBeams(state.gameState.dropBeams, state.dropBeamVO, true);
+      Gpu.Uniform.setVec3f(state.dropColor, Color.toVec3(state.gameState.dropColor));
+      let dropAnim = Animate.uniform(
+        dropNode,
+        "sinceDrop",
+        ~from=0.0,
+        ~last=1.0,
+        ~duration=0.12,
+        ()
+      );
+      Scene.doAnim(scene, dropAnim);
+    };
+  };
+  if (elChanged) {
     /* Redraw next elements */
     let _ = Queue.fold((i, nextEl) => {
       updateElTiles(nextEl, state.nextEls[i], 3, 4);
@@ -224,24 +277,10 @@ let draw = (state : sceneState, scene, canvas) => {
     | Some(holdingEl) => updateElTiles(holdingEl, state.holdingEl, 3, 4);
     | None => resetElState(state.holdingEl);
     };
-    {
-      ...state.gameState,
-      elChanged: false
-    }
-  } else {
-    state.gameState
   };
-  let elMoved = (state.gameState.posChanged || state.gameState.rotateChanged);
-  state.gameState = if (elMoved) {
+  if (elMoved) {
     updateElTiles(state.gameState.curEl, state.elState, tileRows, tileCols);
-    updateBeams(state);
-    {
-      ...state.gameState,
-      posChanged: false,
-      rotateChanged: false
-    }
-  } else {
-    state.gameState
+    updateBeams(state.gameState.beams, state.beamVO, false);
   };
   let flags = (elMoved) ? [UpdateFlags.ElPosChanged] : [];
   let flags = (elChanged) ? [UpdateFlags.ElChanged, ...flags] : flags;
@@ -250,13 +289,17 @@ let draw = (state : sceneState, scene, canvas) => {
     | Some(inited) => inited.update = true;
     | None => ()
     };
-    state.gameState = {
-      ...state.gameState,
-      updateTiles: false
-    };
     [UpdateFlags.TilesChanged, ...flags]
   } else {
     flags
+  };
+  /* Reset state used by scene */
+  state.gameState = {
+    ...state.gameState,
+    hasDroppedDown: false,
+    elChanged: false,
+    posChanged: false,
+    updateTiles: false
   };
   Scene.update(scene, [UpdateFlags.Frame, ...flags]);
   state

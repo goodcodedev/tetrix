@@ -4,14 +4,19 @@ let vertexSource = {|
     uniform mat3 layout;
     uniform mat3 tileShadowsMat;
     uniform mat3 beamsMat;
+    uniform mat3 dropMat;
     varying vec2 vPosition;
     varying vec2 tileShadowsPos;
     varying vec2 beamsPos;
+    varying vec2 dropPos;
     void main() {
         vPosition = position;
-        vec3 transformed = vec3(position, 1.0) * layout;
+        float shrink = 0.99;
+        shrink = 1.0;
+        vec2 transformed = (vec3(position, 1.0) * layout).xy * shrink;
         tileShadowsPos = (vec3(position, 1.0) * tileShadowsMat).xy;
         beamsPos = (vec3(position, 1.0) * beamsMat).xy;
+        dropPos = (vec3(position, 1.0) * dropMat).xy;
         gl_Position = vec4(transformed.xy, 0.0, 1.0);
     }
 |};
@@ -21,14 +26,17 @@ let fragmentSource = {|
     uniform vec3 lineColor;
     uniform vec2 elPos;
     uniform vec3 elColor;
+    uniform vec3 dropColor;
     uniform vec2 pixelSize;
     uniform sampler2D tiles;
     uniform sampler2D tileShadows;
     uniform sampler2D beams;
+    uniform sampler2D drop;
 
     varying vec2 vPosition;
     varying vec2 tileShadowsPos;
     varying vec2 beamsPos;
+    varying vec2 dropPos;
 
     const float numCols = 12.0;
     const float numRows = 26.0;
@@ -68,6 +76,8 @@ let fragmentSource = {|
         vec3 beam = texture2D(beams, beamsPos).xyz;
         float beamCoef = 0.04 - (1.0 - smoothstep(0.2, 0.4, elVecLength)) * 0.04;
         color = mix(color, beam, (beam.x == 0.0) ? 0.0 : beamCoef);
+        float dropBeam = texture2D(drop, dropPos).x;
+        color = mix(color, dropColor, dropBeam * 0.2);
         color = color + elColor * colorLight;
         gl_FragColor = vec4(color + light, 1.0);
     }
@@ -107,7 +117,16 @@ let draw = (ds, canvas) => {
     DrawState.draw(ds, canvas);
 };
 
-let makeNode = (tilesTex, tileShadows, beamNode, sdfTiles, elState : SceneState.elState, children) => {
+let makeNode = (
+    tilesTex,
+    tileShadows,
+    beamNode,
+    dropNode,
+    dropColor,
+    sdfTiles,
+    elState : SceneState.elState,
+    children
+) => {
     open UpdateFlags;
     open Scene;
     makeNode(
@@ -121,18 +140,21 @@ let makeNode = (tilesTex, tileShadows, beamNode, sdfTiles, elState : SceneState.
         ~uniforms=[
             ("lineColor", UVec3f.vals(0.15, 0.2, 0.3)),
             ("elPos", elState.pos),
-            ("elColor", elState.color)
+            ("elColor", elState.color),
+            ("dropColor", dropColor)
         ],
         ~pixelSizeUniform=true,
         ~textures=[
             ("tiles", NodeTex.tex(tilesTex)),
             ("tileShadows", NodeTex.node(tileShadows)),
-            ("beams", NodeTex.node(beamNode))
+            ("beams", NodeTex.node(beamNode)),
+            ("drop", NodeTex.node(dropNode))
         ],
         ~deps=[
             sdfTiles,
             beamNode,
-            tileShadows
+            tileShadows,
+            dropNode
         ],
         ~childLayout=Scene.Stacked,
         ~children,

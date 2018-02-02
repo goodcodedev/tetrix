@@ -175,6 +175,7 @@ type drawTo =
   | Framebuffer
   | TextureRGBA
   | TextureRGB
+  | TextureGreyscale
   | TextureItem(Gpu.Texture.t);
 
 module NodeTex {
@@ -292,6 +293,9 @@ let makeNode = (
     | TextureRGBA =>
         let texture = Gpu.Texture.makeEmptyRgba(());
         Some(texture)
+    | TextureGreyscale =>
+        let texture = Gpu.Texture.makeEmptyGreyscale(());
+        Some(texture)
     | TextureItem(texture) =>
         Some(texture)
     };
@@ -403,6 +407,7 @@ let rec findInParents = (parent, key) => {
 findInParents(node, key)
 };
 
+/* Searches deps and parents (with their deps) */
 let getNodeRef = (node, key, resolve) => {
 let rec findInDeps = (deps, key) => {
     switch (deps) {
@@ -434,17 +439,22 @@ findInParents(node, key)
 
 let getSceneNodesToUpdate = (flags, animIds, root) => {
     let rec loop = (node, list, parentUpdate) => {
-        let inAnims = (parentUpdate || List.exists((animId) => node.id == animId, animIds));
-        let hasAnyFlag = List.exists((updateOn) => List.exists((flag) => flag == updateOn, flags), node.updateOn);
+        let depsToUpdate = List.fold_left((list, dep) => loop(dep, list, false), [], node.deps);
+        let doUpdate = (
+            parentUpdate
+            || (List.length(depsToUpdate) > 0)
+            || List.exists((animId) => node.id == animId, animIds)
+            || List.exists((updateOn) => List.exists((flag) => flag == updateOn, flags), node.updateOn)
+        );
         /* todo: tail recursive? */
-        let childList = List.fold_left((list, child) => loop(child, list, hasAnyFlag || inAnims), list, node.children);
-        let list = if ((hasAnyFlag || inAnims) && node.selfDraw) {
+        let childList = List.fold_left((list, child) => loop(child, list, doUpdate), list, node.children);
+        let list = if (doUpdate && node.selfDraw) {
             [node, ...childList]
         } else {
             childList
         };
         /* Deps first */
-        List.fold_left((list, dep) => loop(dep, list, inAnims), list, List.rev(node.deps));
+        List.fold_left((list, dep) => [dep, ...list], list, depsToUpdate);
     };
     loop(root, [], List.exists((animId) => root.id == animId, animIds))
 };
@@ -573,6 +583,11 @@ Gpu.Uniform.setFloat(uniform, value);
 let setUniformVec2f = (node, key, value) => {
 let uniform = Hashtbl.find(node.uniforms, key);
 Gpu.Uniform.setVec2f(uniform, value);
+};
+
+let setUniformVec3f = (node, key, value) => {
+let uniform = Hashtbl.find(node.uniforms, key);
+Gpu.Uniform.setVec3f(uniform, value);
 };
 
 let setUniformMat3f = (node, key, value) => {

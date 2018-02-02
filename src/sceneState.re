@@ -11,5 +11,7 @@ type sceneState = {
   nextEls: array(elState),
   holdingEl: elState,
   beamVO: Gpu.VertexObject.t,
+  dropBeamVO: Gpu.VertexObject.t,
+  dropColor: Gpu.uniform,
   mutable gameState: Game.stateT
 };

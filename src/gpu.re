@@ -1,34 +1,6 @@
 module Constants = RGLConstants;
 module Gl = Reasongl.Gl;
 
-module Color = {
-    type t = array(float);
-
-    let from255 = (r, g, b) => {
-        [|
-            float_of_int(r) /. 255.0,
-            float_of_int(g) /. 255.0,
-            float_of_int(b) /. 255.0
-        |]
-    };
-
-    let fromFloats = (r, g, b) => {
-        [|r, g, b|]
-    };
-
-    let toArray = (c : t) : array(float) => {
-        c
-    };
-
-    let toVec3 = (c : t) => {
-        Data.Vec3.fromArray(toArray(c))
-    };
-
-    let toGlsl = (c : t) => {
-        "vec3(" ++ string_of_float(c[0]) ++ "," ++ string_of_float(c[1]) ++ "," ++ string_of_float(c[2]) ++ ")"
-    }
-};
-
 module GlType = {
     type t =
       | Float
@@ -316,6 +288,7 @@ module VertexBuffer = {
     type inited = {
         bufferRef: Gl.bufferT,
         attribs: array(VertexAttrib.inited),
+        perElement: int,
         mutable data: array(float),
         mutable update: bool,
         mutable count: int,
@@ -324,14 +297,21 @@ module VertexBuffer = {
     type t = {
         mutable data: array(float),
         attributes: array(VertexAttrib.t),
+        perElement: int,
         usage: bufferUsage,
         mutable inited: option(inited)
     };
     let make = (data, attributes, usage) => {
-        data: data,
-        attributes: attributes,
-        usage: usage,
-        inited: None
+        let perElement = Array.fold_left((p, attrib : VertexAttrib.t) => {
+            p + GlType.getSize(attrib.glType)
+        }, 0, attributes);
+        {
+            data,
+            attributes,
+            perElement,
+            usage,
+            inited: None
+        }
     };
     /* Width height in 0.0 - 2.0, x, y from top left as 0.0 for now */
     let makeQuadData = (width, height, x, y) => {
@@ -357,6 +337,7 @@ module VertexBuffer = {
                 VertexAttrib.make("position", Vec2f)
             |],
             usage,
+            perElement: 2,
             inited: None
         }
     };
@@ -422,6 +403,7 @@ module VertexBuffer = {
             let inited = {
                 bufferRef: vertexBuffer,
                 attribs: locs,
+                perElement: buffer.perElement,
                 data: buffer.data,
                 update: false,
                 count: Array.length(buffer.data),
@@ -558,8 +540,9 @@ module VertexObject {
         )
     };
 
-    let updateQuads = (self, vertices, perElement) => {
+    let updateQuads = (self, vertices) => {
         VertexBuffer.setDataT(self.vertices, vertices);
+        let perElement = self.vertices.perElement * 4;
         switch (self.indices) {
         | Some(indices) =>
             IndexBuffer.setDataT(
@@ -631,14 +614,6 @@ module Texture = {
         }
     };
 
-    let makeEmptyRgba = (~width=1024, ~height=1024, ~filter=LinearFilter, ()) => {
-        make(IntDataTexture(Array.make(width*height*4, 0), width, height), RGBA, filter);
-    };
-
-    let makeEmptyRgb = (~width=1024, ~height=1024, ~filter=LinearFilter, ()) => {
-        make(IntDataTexture(Array.make(width*height*3, 0), width, height), RGB, filter);
-    };
-
     let luminance = 6409;
     
     [@bs.send]
@@ -666,6 +641,18 @@ module Texture = {
         int,
         int
     ) => unit = "pixelStorei";
+
+    let makeEmptyRgba = (~width=1024, ~height=1024, ~filter=LinearFilter, ()) => {
+        make(IntDataTexture(Array.make(width*height*4, 0), width, height), RGBA, filter);
+    };
+
+    let makeEmptyRgb = (~width=1024, ~height=1024, ~filter=LinearFilter, ()) => {
+        make(IntDataTexture(Array.make(width*height*3, 0), width, height), RGB, filter);
+    };
+
+    let makeEmptyGreyscale = (~width=1024, ~height=1024, ~filter=LinearFilter, ()) => {
+        make(IntDataTexture(Array.make(width*height, 0), width, height), Luminance, filter);
+    };
 
     let init = (texture : t, context) => {
         switch (texture.inited) {

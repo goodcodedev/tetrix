@@ -213,12 +213,15 @@ type stateT = {
   posChanged: bool,
   rotateChanged: bool,
   elChanged: bool,
+  hasDroppedDown: bool,
   lastTick: float,
   curTime: float,
   tiles: array(array(int)),
   sceneTiles: array(int),
   updateTiles: bool,
   beams: array((int, int)),
+  dropBeams: array((int, int)),
+  dropColor: Color.t,
   gameState: gameState,
   paused: bool,
   lastCompletedRows: array(int),
@@ -258,7 +261,7 @@ let updateBeams = (state) => {
     let pointX = state.curEl.posX + x;
     let pointY = state.curEl.posY + y;
     let (beamFrom, beamTo) = state.beams[pointX];
-    if (beamFrom < pointY) {
+    if (beamFrom == beamNone) {
       state.beams[pointX] = (pointY, beamTo);
     };
   }, elTiles(state.curEl.el, state.curEl.rotation));
@@ -305,12 +308,15 @@ let setup = (canvas, tiles) : stateT => {
     elChanged: true,
     posChanged: true,
     rotateChanged: true,
+    hasDroppedDown: false,
     lastTick: 0.,
     curTime: 0.,
     tiles: Array.make_matrix(tileRows, tileCols, 0),
     sceneTiles: tiles,
     updateTiles: true,
     beams: Array.make(tileCols, (beamNone, 0)),
+    dropBeams: Array.make(tileCols, (beamNone, 0)),
+    dropColor: Color.white(),
     gameState: Running,
     paused: false,
     lastCompletedRows: [||],
@@ -531,8 +537,16 @@ let processAction = (state) => {
       | (true, state) => dropDown(state)
       }
     };
+    /* Copy drop beams */
+    Array.iteri((i, (from, last)) => {
+      state.dropBeams[i] = (from, last);
+    }, state.beams);
+    let elColor = tileColors2[state.curEl.color];
+    let dropColor = Color.fromFloats(elColor[0], elColor[1], elColor[2]);
     dropDown({
       ...state,
+      dropColor,
+      hasDroppedDown: true,
       action: None
     })
   }

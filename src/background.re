@@ -125,6 +125,7 @@ let makeNode = (children) => {
         ~pixelSizeUniform=true,
         ~size=Dimensions(Scale(1.0), Scale(1.0)),
         ~padding=Scale(0.05),
+        ~vAlign=Scene.AlignMiddle,
         ~children,
         ()
     )
