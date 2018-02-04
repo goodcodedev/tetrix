@@ -437,6 +437,148 @@ let rec findInParents = (parent, key) => {
 findInParents(node, key)
 };
 
+type updateRect('state, 'flags) = {
+    rect: Shapes.Rect.t,
+    stencils: list(Shapes.Rect.t),
+    node: node('state, 'flags)
+};
+
+/* A caching strategy could be to keep a list of
+   whether to update, rects etc based on a easily indexable key/int
+   derived from flags and animations (+ other factors).
+   It would also be nice to know where the rects
+   come from, and whether that thing is visible
+   currently.
+   At some point, I guess rects should be reconciliated,
+   for example if there is intersection, it might be better
+   to draw a bounding box, there may be several instances
+   of the same rectangle.
+   There are advantages to doing this as early as possible
+   in the algorithm to avoid propagation of equal/overlapping
+   rects, but this hampers caching.
+   The better solution might be dependant on the dynamicism
+   of the scene. Many dynamic objects would benefit
+   from caching of intermediary results, while a static
+   scene wouldn't require this and could be somewhat better
+   of with a quick algorithm */
+type updateListNode('state, 'flags) = {
+    mutable update: bool,
+    node: node('state, 'flags),
+    mutable rects: list(updateRect('state, 'flags)),
+    mutable updDeps: list(updateListNode('state, 'flags)),
+    mutable updChildren: list(updateListNode('state, 'flags)),
+    parent: option(updateListNode('state, 'flags))
+};
+
+/* Can also consider using depth buffer
+   and draw from closest down parents when
+   drawing layout things */
+/* Performance is important for this function,
+   so will look for more opportunities to cache etc.
+   Possibly we could use an array sized for all
+   nodes in the three and jump for children
+   and deps.
+   Use new collections from bucklescript.
+   Consider making one version for root without
+   parent, and children (loopChild),
+   .. just handle root in body of function */
+let getUpdateTree = (flags, animIds, root) => {
+    let rec loop = (node, parent, isDep, stacked) => {
+        /* Self update check, node may also need update if children or deps does */
+        /* Parent check could include logic to ensure only area within parent is
+           rendered, given that the child is translated or scaled up or something
+           (havent encountered this yet, and would come with some cost) */
+        let update = (
+            (!isDep && switch (parent) {
+            | Some(parent) => parent.update
+            | None => false
+            })
+            || List.exists((animId) => node.id == animId, animIds)
+            || List.exists((updateOn) => List.exists((flag) => flag == updateOn, flags), node.updateOn)
+        );
+        let updateNode = {
+            update,
+            node,
+            rects: [],
+            updDeps: [],
+            updChildren: [],
+            parent: parent
+        };
+        updateNode.updDeps = List.map((dep) => loop(dep, Some(updateNode), true, []), node.deps);
+        switch (node.layout.childLayout) {
+        | Stacked =>
+            /* Treat stacked layout as flattened children
+               where the stack nodes from parent are added as last child
+               as far as drawing is concerned */
+            switch (node.children) {
+            | [] =>
+                /* Stacked layout but no children */
+                switch (stacked) {
+                | [] => ();
+                | [first, ...rest] => updateNode.updChildren = [loop(first, Some(updateNode), false, rest)];
+                };
+            | [first, ...rest] =>
+                /* Append stacked from parent after this new list
+                   of stacked children */
+                updateNode.updChildren = [loop(first, Some(updateNode), false, List.append(rest, stacked))]
+            };
+        | _ =>
+            switch (stacked) {
+            | [] =>
+                /* Normal processing of children */
+                updateNode.updChildren = List.map((child) => loop(child, Some(updateNode), false, []), node.children);
+            | [first, ...rest] =>
+                /* We are in middle of a stacked layout, collect children,
+                   and keep next stacked item as last child */
+                updateNode.updChildren = List.rev(List.fold_left((list, child) => {
+                    [loop(child, Some(updateNode), false, []), ...list]
+                }, [loop(first, Some(updateNode), false, rest)], node.children));
+            };
+        };
+        /* Propagate updates to parent until covered by non-transparent */
+        let rec requireRect = (rect, parent) => {
+            switch (parent) {
+            | None => ();
+            | Some(parent) =>
+                /* Add rect to parent requesting a draw of it */
+                if (parent.node.transparent) {
+                    /* Parent also transparent, not covered, can't add to stencil */
+                    if (!parent.update) {
+                        parent.rects = [rect, ...parent.rects];
+                    };
+                    requireRect(rect, parent.parent);
+                } else {
+                    let cl = parent.node.calcLayout;
+                    let parentRect = Shapes.Rect.make(cl.pXOffset, cl.pYOffset, cl.inWidth, cl.inHeight);
+                    if (!Shapes.Rect.contains(parentRect, rect.rect)) {
+                        /* Add stencil */
+                        let rect = {
+                            ...rect,
+                            stencils: [
+                                Shapes.Rect.make(cl.pXOffset, cl.pYOffset, cl.inWidth, cl.inHeight),
+                                ...rect.stencils
+                            ]
+                        };
+                        requireRect(rect, parent.parent);
+                    };
+                };
+            };
+        };
+        if (node.transparent) {
+            /* Create updateRect */
+            let cl = node.calcLayout;
+            let uRect = {
+                rect: Shapes.Rect.make(cl.pXOffset, cl.pYOffset, cl.inWidth, cl.inHeight),
+                stencils: [],
+                node
+            };
+            requireRect(uRect, updateNode.parent);
+        };
+        updateNode
+    };
+    loop(root, None, false)
+};
+
 let getSceneNodesToUpdate = (flags, animIds, root) => {
     let rec loop = (node, list, parentUpdate) => {
         let depsToUpdate = List.fold_left((list, dep) => loop(dep, list, false), [], node.deps);
@@ -456,7 +598,7 @@ let getSceneNodesToUpdate = (flags, animIds, root) => {
         /* Deps first */
         List.fold_left((list, dep) => [dep, ...list], list, depsToUpdate);
     };
-    loop(root, [], List.exists((animId) => root.id == animId, animIds))
+    loop(root, [], false)
 };
 
 let createNodeDrawState = (self, node) => {
@@ -760,8 +902,9 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
         switch (layout.childLayout) {
         | Stacked =>
             List.iter((child) => {
-                child.calcLayout.pXOffset = x;
-                child.calcLayout.pYOffset = y;
+                let cl = child.calcLayout;
+                cl.pXOffset = x +. cl.marginX1;
+                cl.pYOffset = y +. cl.marginY1;
             }, node.children);
         | Horizontal =>
             /* Use ratio as scale. Not sure if it makes total sense,
@@ -775,7 +918,7 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
             switch (layout.hAlign) {
             | AlignLeft =>
                 let _ = List.fold_left((xOffset, child) => {
-                    child.calcLayout.pXOffset = xOffset;
+                    child.calcLayout.pXOffset = xOffset +. child.calcLayout.marginX1;
                     xOffset +. spacing +. child.calcLayout.pWidth
                 }, x, node.children);
             | AlignCenter =>
@@ -785,27 +928,28 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
                 }, 0.0, node.children) +. spacing *. float_of_int(List.length(node.children) - 1);
                 let xOffset = (paddedWidth -. totalWidth) /. 2.0;
                 let _ = List.fold_left((xOffset, child) => {
-                    child.calcLayout.pXOffset = xOffset;
+                    child.calcLayout.pXOffset = xOffset +. child.calcLayout.marginX1;
                     xOffset +. spacing +. child.calcLayout.pWidth
                 }, x +. xOffset, node.children);
             | AlignRight =>
                 let _ = List.fold_right((child, xOffset) => {
-                    child.calcLayout.pXOffset = xOffset -. child.calcLayout.pWidth;
-                    child.calcLayout.pXOffset -. spacing
+                    let childOffset = xOffset -. child.calcLayout.pWidth;
+                    child.calcLayout.pXOffset = childOffset +. child.calcLayout.marginX1;
+                    childOffset -. spacing
                 }, node.children, x +. paddedWidth);
             };
             switch (layout.vAlign) {
             | AlignTop =>
                 List.iter((child) => {
-                    child.calcLayout.pYOffset = y;
+                    child.calcLayout.pYOffset = y +. child.calcLayout.marginY1;
                 }, node.children);
             | AlignMiddle =>
                 List.iter((child) => {
-                    child.calcLayout.pYOffset = y +. (paddedHeight -. child.calcLayout.pHeight) /. 2.0;
+                    child.calcLayout.pYOffset = y +. ((paddedHeight -. child.calcLayout.pHeight) /. 2.0) +. child.calcLayout.marginY1;
                 }, node.children);
             | AlignBottom =>
                 List.iter((child) => {
-                    child.calcLayout.pYOffset = y +. paddedHeight -. child.calcLayout.pHeight;
+                    child.calcLayout.pYOffset = y +. paddedHeight -. child.calcLayout.pHeight +. child.calcLayout.marginY1;
                 }, node.children);
             };
             /* Get total width */
@@ -818,21 +962,21 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
             switch (layout.hAlign) {
             | AlignLeft => 
                 List.iter((child) => {
-                    child.calcLayout.pXOffset = x;
+                    child.calcLayout.pXOffset = x +. child.calcLayout.marginX1;
                 }, node.children);
             | AlignCenter =>
                 List.iter((child) => {
-                    child.calcLayout.pXOffset = x +. (paddedWidth -. child.calcLayout.pWidth) /. 2.0;
+                    child.calcLayout.pXOffset = x +. ((paddedWidth -. child.calcLayout.pWidth) /. 2.0) +. child.calcLayout.marginX1;
                 }, node.children);
             | AlignRight =>
                 List.iter((child) => {
-                    child.calcLayout.pXOffset = x +. paddedWidth -. child.calcLayout.pWidth;
+                    child.calcLayout.pXOffset = x +. paddedWidth -. child.calcLayout.pWidth +. child.calcLayout.marginX1;
                 }, node.children);
             };
             switch (layout.vAlign) {
             | AlignTop =>
                 let _ = List.fold_left((yOffset, child) => {
-                    child.calcLayout.pYOffset = yOffset;
+                    child.calcLayout.pYOffset = yOffset +. child.calcLayout.marginY1;
                     yOffset +. child.calcLayout.pHeight +. spacing
                 }, y, node.children);
             | AlignMiddle =>
@@ -840,13 +984,14 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
                     totalHeight +. child.calcLayout.pHeight
                 }, 0.0, node.children) +. spacing *. float_of_int(List.length(node.children) - 1);
                 let _ = List.fold_left((yOffset, child) => {
-                    child.calcLayout.pYOffset = yOffset;
-                    yOffset +. child.calcLayout.pYOffset +. spacing
+                    child.calcLayout.pYOffset = yOffset +. child.calcLayout.marginY1;
+                    yOffset +. child.calcLayout.pHeight +. spacing
                 }, y +. (paddedHeight -. totalHeight) /. 2.0 ,node.children);
             | AlignBottom =>
                 let _ = List.fold_right((child, yOffset) => {
-                    child.calcLayout.pYOffset = yOffset -. child.calcLayout.pHeight;
-                    child.calcLayout.pYOffset -. spacing
+                    let childOffset = yOffset -. child.calcLayout.pHeight;
+                    child.calcLayout.pYOffset = childOffset +. child.calcLayout.marginY1;
+                    childOffset -. spacing
                 }, node.children, y +. paddedHeight);
             };
         };
@@ -885,8 +1030,8 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
             | None =>
                 /* Can this be simplified? */
                 let translate = Data.Mat3.trans(
-                    ((calcLayout.pXOffset +. calcLayout.marginX1 +. (calcLayout.inWidth /. 2.0) -. vpWidthCenter) /. vpWidth *. 2.0),
-                    ((calcLayout.pYOffset +. calcLayout.marginY1 +. (calcLayout.inHeight /. 2.0) -. vpHeightMiddle) /. vpHeight *. -2.0)
+                    ((calcLayout.pXOffset +. (calcLayout.inWidth /. 2.0) -. vpWidthCenter) /. vpWidth *. 2.0),
+                    ((calcLayout.pYOffset +. (calcLayout.inHeight /. 2.0) -. vpHeightMiddle) /. vpHeight *. -2.0)
                 );
                 let layoutMat = Data.Mat3.matmul(translate, scale);
                 Gpu.Uniform.setMat3f(layoutUniform, layoutMat);
@@ -1004,7 +1149,7 @@ let draw = (self, node) => {
 
 let update = (self, updateFlags) => {
     /* Anims */
-    let animIds = List.sort((a, b) => (a < b) ? -1 : 1, List.map((anim) => anim.node.id, self.anims));
+    let animIds = List.sort((a, b) => (a < b) ? -1 : 1, List.map((anim : anim('state, 'flags)) => anim.node.id, self.anims));
     let rec doAnims = (anims) => {
         switch (anims) {
         | [] => []
@@ -1019,6 +1164,8 @@ let update = (self, updateFlags) => {
         }
     };
     self.anims = doAnims(self.anims);
+    /* todo: is this ok to sort variant types?
+       use some hashset type? */
     let sortedFlags = List.sort((a, b) => (a < b) ? -1 : 1, updateFlags);
     let updateState = {
         flags: sortedFlags,

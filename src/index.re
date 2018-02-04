@@ -260,7 +260,7 @@ let draw = (state, scene, canvas) => {
         "sinceDrop",
         ~from=0.0,
         ~last=1.0,
-        ~duration=0.12,
+        ~duration=0.15,
         ()
       );
       Scene.doAnim(scene, dropAnim);

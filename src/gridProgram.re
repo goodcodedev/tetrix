@@ -12,7 +12,7 @@ let vertexSource = {|
     void main() {
         vPosition = position;
         float shrink = 0.99;
-        shrink = 1.0;
+        //shrink = 1.0;
         vec2 transformed = (vec3(position, 1.0) * layout).xy * shrink;
         tileShadowsPos = (vec3(position, 1.0) * tileShadowsMat).xy;
         beamsPos = (vec3(position, 1.0) * beamsMat).xy;
