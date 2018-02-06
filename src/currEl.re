@@ -40,6 +40,7 @@ let makeNode = (elState : SceneState.elState, sdfTiles) => {
         ~vertShader=Shader.make(currElVertex),
         ~fragShader=Shader.make(currElFragment),
         ~vo=elState.vo,
+        ~partialDraw=true,
         ~uniforms=[
             ("elColor", elState.color),
             ("translation", elState.pos)

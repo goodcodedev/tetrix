@@ -77,7 +77,12 @@ type t('state, 'flags) = {
     updateLists: Hashtbl.t(updateState('flags), list(node('state, 'flags))),
     mutable loadingNodes: list((list('flags), node('state, 'flags))),
     mutable anims: list(anim('state, 'flags)),
-    fbuffer: Hashtbl.t(fbufferConfig, Gpu.FrameBuffer.inited)
+    fbuffer: Hashtbl.t(fbufferConfig, Gpu.FrameBuffer.inited),
+    /* List of nodes that needs update on flags */
+    onFlags: Hashtbl.t('flags, list(updateListNode('state, 'flags))),
+    /* Update nodes keyed by node id/number,
+       array is sized to cover all nodes */
+    updateNodes: ArrayB.t(option(updateListNode('state, 'flags)))
 }
 and updateState('flags) = {
     flags: list('flags),
@@ -88,11 +93,15 @@ and node('state, 'flags) = {
     id: int,
     updateOn: list('flags),
     mutable drawState: option(Gpu.DrawState.t),
-    update: option((node('state, 'flags), 'state, list('flags)) => unit),
+    onUpdate: option((node('state, 'flags), 'state, list('flags)) => unit),
     layout: layout,
     calcLayout: calcLayout,
+    rect: Shapes.Rect.t,
     selfDraw: bool,
     transparent: bool,
+    partialDraw: bool,
+    hidable: bool,
+    mutable hidden: bool,
     mutable loading: bool,
     deps: list(node('state, 'flags)),
     children: list(node('state, 'flags)),
@@ -133,7 +142,7 @@ and calcLayout = {
     mutable pYOffset: float
 }
 and anim('state, 'flags) = {
-    node: node('state, 'flags),
+    animNode: node('state, 'flags),
     onFrame: (t('state, 'flags), node('state, 'flags), anim('state, 'flags)) => unit,
     duration: float,
     mutable elapsed: float,
@@ -141,10 +150,99 @@ and anim('state, 'flags) = {
 }
 and nodeTex('state, 'flags) = {
     texture: Gpu.Texture.t,
-    node: option(node('state, 'flags)),
+    texNode: option(node('state, 'flags)),
     uniformMat: option(Gpu.uniform),
     offsetX: dimension,
     offsetY: dimension
+}
+and updateStencil = {
+    mutable rect: Shapes.Rect.t,
+    mutable active: bool
+}
+/* A caching strategy could be to keep a list of
+   whether to update, rects etc based on a easily indexable key/int
+   derived from flags and animations (+ other factors).
+   It would also be nice to know where the rects
+   come from, and whether that thing is visible
+   currently.
+   At some point, I guess rects should be reconciliated,
+   for example if there is intersection, it might be better
+   to draw a bounding box, there may be several instances
+   of the same rectangle.
+   There are advantages to doing this as early as possible
+   in the algorithm to avoid propagation of equal/overlapping
+   rects, but this hampers caching.
+   The better solution might be dependant on the dynamicism
+   of the scene. Many dynamic objects would benefit
+   from caching of intermediary results, while a static
+   scene wouldn't require this and could be somewhat better
+   of with a quick algorithm */
+and updateListNode('state, 'flags) = {
+    /* Whether there is a full update triggered
+       on the node, currently through flag or animation */
+    mutable update: bool,
+    /* Whether any child is registered for update,
+       to help traversal */
+    mutable childUpdate: bool,
+    /* Whether this is part of a dependency node */
+    isDep: bool,
+    /* Whether this is a node in the deps list */
+    isDepRoot: bool,
+    /* Reference to the node */
+    updNode: node('state, 'flags),
+    /* Rectangle of the node, this is referenced in
+       updateRects and stencils, and the data may
+       be updated on resize
+       todo: Not sure whether this should be option or
+       not, maybe not. If checks are maybe a little more
+       jit */
+    mutable rect: option(Shapes.Rect.t),
+    /* Stencil rects/(shapes) from children.
+       A childs stencil is referenced and flagged as active
+       as the child is marked for update */
+    mutable stencils: list(updateStencil),
+    /* When visible, not transparent and not partialDraw, this is
+       stencil rect that can be used by parents.
+       This is referenced upwards in the tree
+       so when toggling active, it will
+       propagate */
+    stencil: option(updateStencil),
+    /* Rectangles coming from child drawings,
+       here is a list of possible child rects,
+       where the ones needed should be activated,
+       then on traversal all active rects
+       should be reconciled */
+    mutable childRects: list(updateRect('state, 'flags)),
+    /* Rects upwards in the tree that are needed
+       to redraw this node, the list will be
+       expanded as needed */
+    mutable parentRects: list(updateRect('state, 'flags)),
+    mutable updDeps: list(updateListNode('state, 'flags)),
+    mutable updChildren: list(updateListNode('state, 'flags)),
+    parent: option(updateListNode('state, 'flags))
+}
+/* Update rect that will be listen on the node
+   that needs these rects to be drawn below. */
+and updateRect('state, 'flags) = {
+    /* Rectangle mutable for resize,
+       maybe this is not sufficient if nodes
+       will be responsively rearranged */
+    rect: Shapes.Rect.t,
+    /* Node that may draw this rect, it will
+       be checked for hidden and update state
+       when setting active rects */
+    updNode: updateListNode('state, 'flags),
+    /* List of stencils that are among child nodes,
+       they will have active state determined by
+       whether nodes are visible */
+    stencils: list(updateStencil),
+    /* Whether this rect covers the node it is drawing
+       for. In which case, when node is visible, it is suffucient
+       to stop at the current position in the list. */
+    covers: bool,
+    /* Whether the child requiring this rect needs to be drawn,
+       also includes check whether this node is to be drawn */
+    mutable active: bool
 };
 
 let quadVertices = Gpu.VertexBuffer.makeQuad(());
@@ -186,7 +284,7 @@ module NodeTex {
         };
         {
             texture,
-            node: Some(node),
+            texNode: Some(node),
             uniformMat: Some(UniformMat3f(ref(Data.Mat3.id()))),
             offsetX,
             offsetY
@@ -196,7 +294,7 @@ module NodeTex {
     let tex = (~offsetX=Scale(0.0), ~offsetY=Scale(0.0), texture) => {
         {
             texture,
-            node: None,
+            texNode: None,
             uniformMat: None,
             offsetX,
             offsetY
@@ -228,6 +326,9 @@ let makeNode = (
     ~selfDraw=true,
     ~loading=false,
     ~transparent=false,
+    ~partialDraw=false,
+    ~hidden=false,
+    ~hidable=false,
     ~deps=[],
     ~drawTo=Framebuffer,
     ~clearOnDraw=false,
@@ -302,7 +403,7 @@ let makeNode = (
     {
         key,
         id: nextNodeId(),
-        update,
+        onUpdate: update,
         updateOn,
         drawState: None,
         layout,
@@ -318,9 +419,13 @@ let makeNode = (
             pXOffset: 0.0,
             pYOffset: 0.0
         },
+        rect: Shapes.Rect.zeros(),
         selfDraw,
         loading,
         transparent,
+        partialDraw,
+        hidden,
+        hidable: (hidden || hidable),
         children,
         deps,
         vertShader,
@@ -352,13 +457,15 @@ let make = (canvas, state, initFlag, frameFlag, resizeFlag, root) => {
     updateLists: Hashtbl.create(5),
     loadingNodes: [],
     anims: [],
-    fbuffer: Hashtbl.create(1)
+    fbuffer: Hashtbl.create(1),
+    onFlags: Hashtbl.create(50),
+    updateNodes: ArrayB.make(None)
 }
 };
 
 let makeAnim = (node, onFrame, duration, ~next=?, ()) => {
 {
-    node,
+    animNode: node,
     onFrame,
     duration,
     elapsed: 0.0,
@@ -437,38 +544,6 @@ let rec findInParents = (parent, key) => {
 findInParents(node, key)
 };
 
-type updateRect('state, 'flags) = {
-    rect: Shapes.Rect.t,
-    stencils: list(Shapes.Rect.t),
-    node: node('state, 'flags)
-};
-
-/* A caching strategy could be to keep a list of
-   whether to update, rects etc based on a easily indexable key/int
-   derived from flags and animations (+ other factors).
-   It would also be nice to know where the rects
-   come from, and whether that thing is visible
-   currently.
-   At some point, I guess rects should be reconciliated,
-   for example if there is intersection, it might be better
-   to draw a bounding box, there may be several instances
-   of the same rectangle.
-   There are advantages to doing this as early as possible
-   in the algorithm to avoid propagation of equal/overlapping
-   rects, but this hampers caching.
-   The better solution might be dependant on the dynamicism
-   of the scene. Many dynamic objects would benefit
-   from caching of intermediary results, while a static
-   scene wouldn't require this and could be somewhat better
-   of with a quick algorithm */
-type updateListNode('state, 'flags) = {
-    mutable update: bool,
-    node: node('state, 'flags),
-    mutable rects: list(updateRect('state, 'flags)),
-    mutable updDeps: list(updateListNode('state, 'flags)),
-    mutable updChildren: list(updateListNode('state, 'flags)),
-    parent: option(updateListNode('state, 'flags))
-};
 
 /* Can also consider using depth buffer
    and draw from closest down parents when
@@ -482,29 +557,58 @@ type updateListNode('state, 'flags) = {
    Consider making one version for root without
    parent, and children (loopChild),
    .. just handle root in body of function */
-let getUpdateTree = (flags, animIds, root) => {
-    let rec loop = (node, parent, isDep, stacked) => {
-        /* Self update check, node may also need update if children or deps does */
-        /* Parent check could include logic to ensure only area within parent is
-           rendered, given that the child is translated or scaled up or something
-           (havent encountered this yet, and would come with some cost) */
-        let update = (
-            (!isDep && switch (parent) {
-            | Some(parent) => parent.update
-            | None => false
-            })
-            || List.exists((animId) => node.id == animId, animIds)
-            || List.exists((updateOn) => List.exists((flag) => flag == updateOn, flags), node.updateOn)
-        );
+let getUpdateTree = (scene, root) => {
+    let rec loop = (node, parent, isDep, isDepRoot, stacked) => {
+        let stencil = if (node.transparent || node.partialDraw) {
+            None
+        } else {
+            let updStencil = {
+                rect: node.rect,
+                active: false,
+            };
+            /* There may not be much point to
+               add stencil when isDepRoot */
+            if (!isDepRoot) {
+                /* Add reference to parent */
+                switch (parent) {
+                | Some(parent) => parent.stencils = [updStencil, ...parent.stencils];
+                | None => ();
+                };
+            };
+            Some(updStencil)
+        };
+        /* Possibly, this could be created after
+           collecting deps and children, in which
+           case parent field would need to be
+           filled in. Not sure if the difference
+           is very big, see if there is some use
+           to getting the parent handy first */
         let updateNode = {
-            update,
-            node,
-            rects: [],
+            update: false,
+            childUpdate: false,
+            isDep,
+            isDepRoot,
+            updNode : node,
+            rect: None,
+            stencils: [],
+            stencil,
+            childRects: [],
+            parentRects: [],
             updDeps: [],
             updChildren: [],
             parent: parent
         };
-        updateNode.updDeps = List.map((dep) => loop(dep, Some(updateNode), true, []), node.deps);
+        /* Add to indexes for node id/number and flag */
+        scene.updateNodes.data[node.id] = Some(updateNode);
+        List.iter((flag) => {
+            if (!Hashtbl.mem(scene.onFlags, flag)) {
+                Hashtbl.add(scene.onFlags, flag, [updateNode]);
+            } else {
+                let nodes = Hashtbl.find(scene.onFlags, flag);
+                Hashtbl.replace(scene.onFlags, flag, [updateNode, ...nodes]);
+            };
+        }, node.updateOn);
+        updateNode.updDeps = List.map((dep) => loop(dep, Some(updateNode), true, true, []), node.deps);
         switch (node.layout.childLayout) {
         | Stacked =>
             /* Treat stacked layout as flattened children
@@ -515,68 +619,256 @@ let getUpdateTree = (flags, animIds, root) => {
                 /* Stacked layout but no children */
                 switch (stacked) {
                 | [] => ();
-                | [first, ...rest] => updateNode.updChildren = [loop(first, Some(updateNode), false, rest)];
+                | [first, ...rest] => updateNode.updChildren = [loop(first, Some(updateNode), isDep, false, rest)];
                 };
             | [first, ...rest] =>
                 /* Append stacked from parent after this new list
                    of stacked children */
-                updateNode.updChildren = [loop(first, Some(updateNode), false, List.append(rest, stacked))]
+                updateNode.updChildren = [loop(first, Some(updateNode), isDep, false, List.append(rest, stacked))]
             };
         | _ =>
             switch (stacked) {
             | [] =>
                 /* Normal processing of children */
-                updateNode.updChildren = List.map((child) => loop(child, Some(updateNode), false, []), node.children);
+                updateNode.updChildren = List.map((child) => loop(child, Some(updateNode), isDep, false, []), node.children);
             | [first, ...rest] =>
                 /* We are in middle of a stacked layout, collect children,
                    and keep next stacked item as last child */
                 updateNode.updChildren = List.rev(List.fold_left((list, child) => {
-                    [loop(child, Some(updateNode), false, []), ...list]
-                }, [loop(first, Some(updateNode), false, rest)], node.children));
+                    [loop(child, Some(updateNode), isDep, false, []), ...list]
+                }, [loop(first, Some(updateNode), isDep, false, rest)], node.children));
             };
         };
-        /* Propagate updates to parent until covered by non-transparent */
-        let rec requireRect = (rect, parent) => {
-            switch (parent) {
-            | None => ();
+        /* All children have added their stencils,
+           propagate them to parent */
+        if (!updateNode.isDepRoot) {
+            switch (updateNode.parent) {
             | Some(parent) =>
-                /* Add rect to parent requesting a draw of it */
-                if (parent.node.transparent) {
-                    /* Parent also transparent, not covered, can't add to stencil */
-                    if (!parent.update) {
-                        parent.rects = [rect, ...parent.rects];
-                    };
-                    requireRect(rect, parent.parent);
-                } else {
-                    let cl = parent.node.calcLayout;
-                    let parentRect = Shapes.Rect.make(cl.pXOffset, cl.pYOffset, cl.inWidth, cl.inHeight);
-                    if (!Shapes.Rect.contains(parentRect, rect.rect)) {
-                        /* Add stencil */
-                        let rect = {
-                            ...rect,
-                            stencils: [
-                                Shapes.Rect.make(cl.pXOffset, cl.pYOffset, cl.inWidth, cl.inHeight),
-                                ...rect.stencils
-                            ]
-                        };
-                        requireRect(rect, parent.parent);
-                    };
-                };
+                List.iter((updStencil) => {
+                    parent.stencils = [updStencil, ...parent.stencils];
+                }, updateNode.stencils);
+            | None => ();
             };
-        };
-        if (node.transparent) {
-            /* Create updateRect */
-            let cl = node.calcLayout;
-            let uRect = {
-                rect: Shapes.Rect.make(cl.pXOffset, cl.pYOffset, cl.inWidth, cl.inHeight),
-                stencils: [],
-                node
-            };
-            requireRect(uRect, updateNode.parent);
         };
         updateNode
     };
     loop(root, None, false)
+};
+
+
+type drawListItem =
+  | DrawNode
+  | SetRect
+  | ClearRect
+  | DrawStencil;
+
+let rec setChildToUpdate = (updNode) => {
+    updNode.update = true;
+    List.iter((updChild) => {
+        if (!updChild.update) {
+            setChildToUpdate(updChild);
+        };
+    }, updNode.updChildren);
+};
+
+let rec setDepParentToUpdate = (updNode) => {
+    /* todo: more fine grained update
+       when coming from deps. Currently
+       just turning on update
+       There should be a rect propagated up
+       to node with this dependency, then
+       to it's children */
+    updNode.update = true;
+    /* This might be uneccesary if we do more
+       fine grained update */
+    List.iter((updChild) => {
+        if (!updChild.update) {
+            setChildToUpdate(updChild);
+        };
+    }, updNode.updChildren);
+    switch (updNode.parent) {
+    | Some(parent) =>
+        if (parent.isDep) {
+            if (!parent.update) {
+                setDepParentToUpdate(parent);
+            };
+        } else {
+            /* Propagate to regular update of node that
+               has this as dependency */
+            if (!parent.update) {
+                setToUpdate(parent);
+            };
+        };
+    | None => ();
+    };
+}
+and setToUpdate = (updNode) => {
+    updNode.update = true;
+    List.iter((updChild) => {
+        if (!updChild.update) {
+            setChildToUpdate(updChild);
+        };
+    }, updNode.updChildren);
+    if (updNode.isDep) {
+        switch (updNode.parent) {
+        | Some(parent) =>
+            if (!parent.update) {
+                if (parent.isDep) {
+                    setDepParentToUpdate(parent);
+                } else {
+                    setToUpdate(parent);
+                };
+            };
+        | None => failwith("Dependency without parent");
+        };
+    };
+    /* Mark upwards in the tree that a child
+        needs update */
+    let rec markChildUpdate = (updNode) => {
+        updNode.childUpdate = true;
+        switch (updNode.parent) {
+        | Some(parent) when (parent.childUpdate == false) => markChildUpdate(parent);
+        | _ => ();
+        };
+    };
+    switch (updNode.parent) {
+    | Some(parent) when (parent.childUpdate == false) => markChildUpdate(parent);
+    | _ => ();
+    };
+};
+
+let rec actRectUntilCovered = (updNode) => {
+    /* Repeating some checks a few places here
+       percievely in the interest of a little
+       performance as well as slightly
+       different cases */
+
+    /* This creates new updRects for unexplored
+       parents, sets their active status and return
+       a list of newly created updateRects until
+       a covering node is found */
+    let rec loopNewRects = (parent) => {
+        switch (parent) {
+        | Some(parent) =>
+            let updRect = {
+                rect: parent.updNode.rect,
+                updNode: parent,
+                stencils: [],
+                covers: Shapes.Rect.contains(parent.updNode.rect, updNode.updNode.rect),
+                active: true
+            };
+            /* Hm should this even be the case that
+               a parent is hidden while a child is not,
+               in that case, perhaps a better user-land
+               implementation would be a stacked layout(?) */
+            if (updRect.updNode.updNode.hidden) {
+                [updRect, ...loopNewRects(updRect.updNode.parent)];
+            } else if (updRect.updNode.update) {
+                if (!updRect.covers) {
+                    [updRect, ...loopNewRects(updRect.updNode.parent)];
+                } else {
+                    [updRect]
+                }
+            } else {
+                updRect.active = true;
+                if (!updRect.covers) {
+                    [updRect, ...loopNewRects(updRect.updNode.parent)];
+                } else {
+                    [updRect]
+                }
+            }
+        | None => failwith("Could not find covering parent for: " ++ updNode.updNode.key
+                           ++ ". Maybe add a background node?");
+        }
+    };
+    let rec loopRects = (rects : list(updateRect('state, 'flags))) => {
+        switch (rects) {
+        | [updRect] =>
+            /* Check if we need to continue
+               or have found a covering node */
+            if (updRect.updNode.updNode.hidden) {
+                updNode.parentRects = List.append(
+                    updNode.parentRects,
+                    List.rev(loopNewRects(updRect.updNode.parent))
+                );
+            } else if (updRect.updNode.update) {
+                if (!updRect.covers) {
+                    updNode.parentRects = List.append(
+                        updNode.parentRects,
+                        List.rev(loopNewRects(updRect.updNode.parent))
+                    );
+                };
+            } else {
+                updRect.active = true;
+                if (!updRect.covers) {
+                    updNode.parentRects = List.append(
+                        updNode.parentRects,
+                        List.rev(loopNewRects(updRect.updNode.parent))
+                    );
+                }
+            };
+        | [updRect, ...rest] =>
+            if (updRect.updNode.updNode.hidden) {
+                loopRects(rest);
+            } else if (updRect.updNode.update) {
+                if (!updRect.covers) {
+                    loopRects(rest);
+                };
+            } else {
+                updRect.active = true;
+                if (!updRect.covers) {
+                    loopRects(rest);
+                }
+            };
+        | [] =>
+            updNode.parentRects = List.append(
+                updNode.parentRects,
+                List.rev(loopNewRects(updNode.parent))
+            );
+        };
+    };
+    let cl = updNode.updNode.calcLayout;
+    let rect = Shapes.Rect.make(cl.pXOffset, cl.pYOffset, cl.pWidth, cl.pHeight);
+    let updRect = {
+        rect,
+        updNode,
+        stencils: [],
+        covers: false,
+        active: true
+    };
+};
+
+let createDrawList = (scene, flags, animIds, root) => {
+    /* Set nodes to update */
+    let updNodes = List.fold_left((updNodes, flag) => {
+        if (Hashtbl.mem(scene.onFlags, flag)) {
+            let toUpdate = Hashtbl.find(scene.onFlags, flag);
+            List.iter((toUpdate) => {
+                setToUpdate(toUpdate);
+            }, toUpdate);
+            [toUpdate, ...updNodes]
+        } else {
+            updNodes
+        };
+    }, [], flags);
+    let updNodes = [List.fold_left((nodes, nodeId) => {
+        switch (scene.updateNodes.data[nodeId]) {
+        | Some(updNode) =>
+            setToUpdate(updNode);
+            [updNode, ...nodes]
+        | None => failwith("Could not find update node with id: " ++ string_of_int(nodeId));
+        };
+    }, [], animIds), ...updNodes];
+    /* Do second pass on nodes to update
+       to check for transparent nodes and
+       ensure they are covered by a parent */
+    List.iter((nodes) => {
+        List.iter((updNode) => {
+            if (updNode.updNode.transparent) {
+                actRectUntilCovered(updNode);
+            };
+        }, nodes);
+    }, updNodes);
 };
 
 let getSceneNodesToUpdate = (flags, animIds, root) => {
@@ -995,6 +1287,10 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
                 }, node.children, y +. paddedHeight);
             };
         };
+        node.rect.x = calcLayout.pXOffset;
+        node.rect.y = calcLayout.pYOffset;
+        node.rect.w = calcLayout.pWidth;
+        node.rect.h = calcLayout.pHeight;
         if (debug) {
             Js.log("Layout for " ++ node.key);
             Js.log2("pWidth: ", calcLayout.pWidth);
@@ -1064,7 +1360,7 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
             /* Understand this as texture size goes to 1.0 on viewport size
                so it will depend on setting viewport before
                render to texture */
-            switch (nodeTex.node, nodeTex.uniformMat) {
+            switch (nodeTex.texNode, nodeTex.uniformMat) {
             | (Some(texNode), Some(uniform)) =>
                 let scaleX = texNode.calcLayout.pWidth /. vpWidth /. 2.0;
                 let scaleY = texNode.calcLayout.pHeight /. vpHeight /. 2.0;
@@ -1149,13 +1445,13 @@ let draw = (self, node) => {
 
 let update = (self, updateFlags) => {
     /* Anims */
-    let animIds = List.sort((a, b) => (a < b) ? -1 : 1, List.map((anim : anim('state, 'flags)) => anim.node.id, self.anims));
+    let animIds = List.sort((a, b) => (a < b) ? -1 : 1, List.map((anim : anim('state, 'flags)) => anim.animNode.id, self.anims));
     let rec doAnims = (anims) => {
         switch (anims) {
         | [] => []
         | [anim, ...rest] =>
             anim.elapsed = anim.elapsed +. self.canvas.deltaTime;
-            anim.onFrame(self, anim.node, anim);
+            anim.onFrame(self, anim.animNode, anim);
             if (anim.elapsed >= anim.duration) {
                 doAnims(rest)
             } else {
@@ -1181,7 +1477,7 @@ let update = (self, updateFlags) => {
         | [(_updateList, node) as item, ...rest] =>
             if (!node.loading) {
                 /* Todo: Draw with updateList for the area of the node or something */
-                switch (node.update) {
+                switch (node.onUpdate) {
                 | Some(update) => update(node, self.state, sortedFlags)
                 | None => draw(self, node)
                 };
@@ -1198,7 +1494,7 @@ let update = (self, updateFlags) => {
         if (node.loading) {
             self.loadingNodes = [(updateFlags, node), ...self.loadingNodes]
         } else {
-            switch (node.update) {
+            switch (node.onUpdate) {
             | Some(update) => update(node, self.state, sortedFlags)
             | None => draw(self, node)
             };

@@ -56,6 +56,7 @@ let makeNode = (tilesTex, sdfTiles) => {
         ~fragShader=Shader.make(fragmentSource),
         ~uniforms=[],
         ~transparent=true,
+        ~partialDraw=true,
         ~textures=[
             ("tiles", NodeTex.tex(tilesTex)),
             ("sdfTiles", NodeTex.node(sdfTiles))

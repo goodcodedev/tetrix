@@ -1,21 +1,31 @@
 type t('a) = {
     mutable data: array('a),
     mutable bufferSize: int,
-    mutable size: int
+    mutable size: int,
+    defaultVal: 'a
 };
 let make = (default) => {
     let bufferSize = 30;
     {
         data: Array.make(bufferSize, default),
         bufferSize,
-        size: 0
+        size: 0,
+        defaultVal: default
     }
+};
+
+let ensureSize = (self, size) => {
+    if (self.bufferSize < size) {
+        let size = size + (size / 4);
+        self.data = Array.append(self.data, Array.make(size - self.bufferSize, self.defaultVal));
+        self.bufferSize = size;
+    };
 };
 
 let push = (self, element) => {
     if (self.size >= self.bufferSize) {
         /* Double buffer size */
-        self.data = Array.append(self.data, Array.make(self.bufferSize, 0));
+        self.data = Array.append(self.data, Array.make(self.bufferSize, self.defaultVal));
         self.bufferSize = self.bufferSize + self.bufferSize;
     };
     self.data[self.size] = element;
@@ -24,7 +34,7 @@ let push = (self, element) => {
 let push2 = (self, el1, el2) => {
     if (self.size + 2 > self.bufferSize) {
         /* Double buffer size */
-        self.data = Array.append(self.data, Array.make(self.bufferSize, 0));
+        self.data = Array.append(self.data, Array.make(self.bufferSize, self.defaultVal));
         self.bufferSize = self.bufferSize + self.bufferSize;
     };
     self.data[self.size] = el1;
@@ -34,7 +44,7 @@ let push2 = (self, el1, el2) => {
 let push3 = (self, el1, el2, el3) => {
     if (self.size + 3 > self.bufferSize) {
         /* Double buffer size */
-        self.data = Array.append(self.data, Array.make(self.bufferSize, 0));
+        self.data = Array.append(self.data, Array.make(self.bufferSize, self.defaultVal));
         self.bufferSize = self.bufferSize + self.bufferSize;
     };
     self.data[self.size] = el1;
@@ -45,7 +55,7 @@ let push3 = (self, el1, el2, el3) => {
 let push4 = (self, el1, el2, el3, el4) => {
     if (self.size + 4 > self.bufferSize) {
         /* Double buffer size */
-        self.data = Array.append(self.data, Array.make(self.bufferSize, 0));
+        self.data = Array.append(self.data, Array.make(self.bufferSize, self.defaultVal));
         self.bufferSize = self.bufferSize + self.bufferSize;
     };
     self.data[self.size] = el1;
