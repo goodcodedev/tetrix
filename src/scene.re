@@ -75,6 +75,7 @@ type t('state, 'flags) = {
     frameFlag: 'flags,
     resizeFlag: 'flags,
     updateLists: Hashtbl.t(updateState('flags), list(node('state, 'flags))),
+    drawLists: Hashtbl.t(updateState('flags), list(drawListItem('state, 'flags))),
     mutable loadingNodes: list((list('flags), node('state, 'flags))),
     mutable anims: list(anim('state, 'flags)),
     fbuffer: Hashtbl.t(fbufferConfig, Gpu.FrameBuffer.inited),
@@ -83,7 +84,8 @@ type t('state, 'flags) = {
     onFlags: Hashtbl.t('flags, list(updateListNode('state, 'flags))),
     /* Update nodes keyed by node id/number,
        array is sized to cover all nodes */
-    updateNodes: ArrayB.t(option(updateListNode('state, 'flags)))
+    updateNodes: ArrayB.t(option(updateListNode('state, 'flags))),
+    mutable updateRoot: option(updateListNode('state, 'flags))
 }
 and updateState('flags) = {
     flags: list('flags),
@@ -244,7 +246,18 @@ and updateRect('state, 'flags) = {
     /* Whether the child requiring this rect needs to be drawn,
        also includes check whether this node is to be drawn */
     mutable active: bool
-};
+}
+/* It would be nice to directly update these on resize etc */
+and stencilBuffers = {
+    mutable stencilVertices: Gpu.VertexBuffer.inited,
+    mutable stencilIndices: Gpu.IndexBuffer.inited,
+}
+and  drawListItem('state, 'flags) =
+  | DrawNode(node('state, 'flags))
+  | SetRect(Shapes.Rect.t)
+  | ClearRect
+  | DrawStencil(stencilBuffers)
+  | ClearStencil;
 
 let quadVertices = Gpu.VertexBuffer.makeQuad(());
 let quadIndices = Gpu.IndexBuffer.makeQuad();
@@ -456,12 +469,14 @@ let make = (canvas, state, initFlag, frameFlag, resizeFlag, root) => {
     frameFlag,
     resizeFlag,
     updateLists: Hashtbl.create(5),
+    drawLists: Hashtbl.create(5),
     loadingNodes: [],
     anims: [],
     fbuffer: Hashtbl.create(1),
     stencilDraw: StencilDraw.make(canvas),
     onFlags: Hashtbl.create(50),
-    updateNodes: ArrayB.make(None)
+    updateNodes: ArrayB.make(None),
+    updateRoot: None
 }
 };
 
@@ -655,7 +670,7 @@ let createUpdateTree = (scene, root) => {
         updateNode
     };
     ArrayB.ensureSize(scene.updateNodes, currNodeId^);
-    loop(root, None, false)
+    loop(root, None, false, false, [])
 };
 
 let rec setChildToUpdate = (updNode) => {
@@ -768,10 +783,22 @@ let actRectUntilCovered = (updNode) => {
                    are hidden, but stacked layouts are
                    rearranged so a parent may be hidden while
                    a child is not */
-                if (updRect.covers && updRect.active) {
-                    [updRect]
+                if (parent.updNode.hidden) {
+                    /* Pass on rect, but it will not be active */
+                    [updRect, ...loopNewRects(updRect.rNode.parent)]
+                } else if (parent.update) {
+                    if (updRect.covers) {
+                        /* Update and covers, done */
+                        [updRect]
+                    } else {
+                        [updRect, ...loopNewRects(updRect.rNode.parent)]
+                    }
                 } else {
-                    [updRect, ...loopNewRects(updRect.rNode.parent)];
+                    if (updRect.covers) {
+                        [updRect]
+                    } else {
+                        [updRect, ...loopNewRects(updRect.rNode.parent)];
+                    }
                 }
             }
         | None => failwith("Could not find covering parent for: " ++ updNode.updNode.key
@@ -825,19 +852,6 @@ let actRectUntilCovered = (updNode) => {
     };
     loopRects(updNode.parentRects);
 };
-
-/* It would be nice to directly update these on resize etc */
-type stencilBuffers = {
-    mutable stencilVertices: Gpu.VertexBuffer.inited,
-    mutable stencilIndices: Gpu.IndexBuffer.inited,
-};
-
-type drawListItem('state, 'flags) =
-  | DrawNode(node('state, 'flags))
-  | SetRect(Shapes.Rect.t)
-  | ClearRect
-  | DrawStencil(stencilBuffers)
-  | ClearStencil;
 
 let createDrawList = (scene, flags, animIds, root) => {
     /* Set nodes to update */
@@ -902,112 +916,14 @@ let createDrawList = (scene, flags, animIds, root) => {
     let rec drawListLoop = (updNode, drawList) => {
         /* First collect from dependencies */
         let drawList = List.fold_left((drawList, dep) => drawListLoop(dep, drawList), drawList, updNode.updDeps);
-        /* todo: possibly some microoptimizations if either lists are empty */
-        /* Check for active stencils */
-        let stencils = List.filter((stencil : updateStencil) => stencil.active, updNode.stencils);
-        /* Filter duplicate stencils/stencils contained by other stencils */
-        let rec nonDupStencils = (list : list(updateStencil)) => switch (list) {
-        | [] => []
-        | [stencil, ...rest] =>
-            /* !! Also negates active flag !! */
-            stencil.active = false;
-            if (List.exists((stencil2 : updateStencil) => Shapes.Rect.contains(stencil2.rect, stencil.rect), rest)) {
-                nonDupStencils(rest)
-            } else {
-                [stencil, ...nonDupStencils(rest)]
-            };
-        };
-        let stencils = nonDupStencils(stencils);
-        /* Possibly a slight optimization
-           would be to, in the case of one rect, draw
-           stencil after rect. In the case of several rects,
-           the stencils might take part in several of them
-           and more logic would be needed.
-           Or maybe better a bounding box over rects or node could
-           be used to shape the stencils on the cpu */
-        let drawList = switch (stencils) {
-        | [] =>
-            if (activeStencils^ == None) {
-                drawList
-            } else {
-                activeStencils := None;
-                [ClearStencil, ...drawList]
-            }
-        | stencils =>
-            if (activeStencils^ != None && equalsActiveStencils(stencils)) {
-                drawList
-            } else {
-                /* Create buffers */
-                let data = Array.concat(List.map((stencil : updateStencil) => {
-                    let rect = stencil.rect;
-                    [|
-                        rect.x, rect.y +. rect.h, /* Bottom left */
-                        rect.x, rect.y, /* Top left */
-                        rect.x +. rect.w, rect.y, /* Top right */
-                        rect.x +. rect.w, rect.y +. rect.h /* Bottom right */
-                    |]
-                }, stencils));
-                let vb = Gpu.VertexBuffer.makeQuad(
-                    ~data,
-                    ~usage=Gpu.DynamicDraw,
-                    ()
-                );
-                let ib = Gpu.IndexBuffer.make(
-                    Gpu.IndexBuffer.makeQuadsData(List.length(stencils)),
-                    Gpu.DynamicDraw
-                );
-                let stencilBuffers = {
-                    stencilVertices: Gpu.VertexBuffer.init(vb, scene.canvas.context, scene.stencilDraw.program.programRef),
-                    stencilIndices: Gpu.IndexBuffer.init(ib, scene.canvas.context),
-                };
-                [DrawStencil(stencilBuffers), ...drawList]
-            }
-        };
-        if (updNode.update) {
-            /* Clean up update flag */
-            updNode.update = false;
-            /* Clear active rect if any */
-            let drawList = if (activeRect^ != None) {
-                [ClearRect, ...drawList]
-            } else {
-                drawList
-            };
-            let drawList = [DrawNode(updNode.updNode), ...drawList];
-            /* Since this node is flagged for update, assume all children
-               will also be updated */
-            let drawList = List.fold_left((drawList, updChild) => {
-                drawListLoop(updChild, drawList)
-            }, drawList, updNode.updChildren);
-            drawList
-        } else {
-            /* Check for active rects */
-            let rects = List.filter((updRect : updateRect('state, 'flags)) => updRect.active, updNode.childRects);
-            /* Filter duplicate/contained  */
-            let rec nonDupRects = (list : list(updateRect('state, 'flags))) => switch (list) {
-            | [] => []
-            | [rect, ...rest] =>
-                /* !! Also negates active flag !! */
-                rect.active = false;
-                if (List.exists((rect2 : updateRect('state, 'flags)) => Shapes.Rect.contains(rect2.rect, rect.rect), rest)) {
-                    nonDupRects(rest)
-                } else {
-                    [rect, ...nonDupRects(rest)]
-                };
-            };
-            let rects = nonDupRects(rects);
-            let drawList = List.fold_left((drawList, rect: updateRect('a, 'b)) => {
-                if (equalsActiveRect(rect.rect)) {
-                    [DrawNode(updNode.updNode)]
-                } else {
-                    activeRect := Some(rect.rect);
-                    [
-                        DrawNode(updNode.updNode),
-                        SetRect(rect.rect),
-                        ClearRect,
-                        ...drawList
-                    ]
-                }
-            }, drawList, rects);
+        /* Check for selfDraw.
+           Not sure where to branch on this,
+           doing after deps now,
+           especially if we render from child to parent
+           when not transparent, it could make sense
+           to update stencils */
+        if (!updNode.updNode.selfDraw) {
+            updNode.update = false; /* in case */
             /* Recurse to children if they have update or childUpdate flagged */
             let drawList = List.fold_left((drawList, updChild) => {
                 if (updChild.update) {
@@ -1020,6 +936,126 @@ let createDrawList = (scene, flags, animIds, root) => {
                 }
             }, drawList, updNode.updChildren);
             drawList
+        } else {
+            /* todo: possibly some microoptimizations if either lists are empty */
+            /* Check for active stencils */
+            let stencils = List.filter((stencil : updateStencil) => stencil.active, updNode.stencils);
+            /* Filter duplicate stencils/stencils contained by other stencils */
+            let rec nonDupStencils = (list : list(updateStencil)) => switch (list) {
+            | [] => []
+            | [stencil, ...rest] =>
+                /* !! Also negates active flag !! */
+                stencil.active = false;
+                if (List.exists((stencil2 : updateStencil) => Shapes.Rect.contains(stencil2.rect, stencil.rect), rest)) {
+                    nonDupStencils(rest)
+                } else {
+                    [stencil, ...nonDupStencils(rest)]
+                };
+            };
+            let stencils = nonDupStencils(stencils);
+            /* Possibly a slight optimization
+            would be to, in the case of one rect, draw
+            stencil after rect. In the case of several rects,
+            the stencils might take part in several of them
+            and more logic would be needed.
+            Or maybe better a bounding box over rects or node could
+            be used to shape the stencils on the cpu */
+            let drawList = switch (stencils) {
+            | [] =>
+                if (activeStencils^ == None) {
+                    drawList
+                } else {
+                    activeStencils := None;
+                    [ClearStencil, ...drawList]
+                }
+            | stencils =>
+                if (activeStencils^ != None && equalsActiveStencils(stencils)) {
+                    drawList
+                } else {
+                    /* Create buffers */
+                    let data = Array.concat(List.map((stencil : updateStencil) => {
+                        let rect = stencil.rect;
+                        [|
+                            rect.x, rect.y +. rect.h, /* Bottom left */
+                            rect.x, rect.y, /* Top left */
+                            rect.x +. rect.w, rect.y, /* Top right */
+                            rect.x +. rect.w, rect.y +. rect.h /* Bottom right */
+                        |]
+                    }, stencils));
+                    let vb = Gpu.VertexBuffer.makeQuad(
+                        ~data,
+                        ~usage=Gpu.DynamicDraw,
+                        ()
+                    );
+                    let ib = Gpu.IndexBuffer.make(
+                        Gpu.IndexBuffer.makeQuadsData(List.length(stencils)),
+                        Gpu.DynamicDraw
+                    );
+                    let stencilBuffers = {
+                        stencilVertices: Gpu.VertexBuffer.init(vb, scene.canvas.context, scene.stencilDraw.program.programRef),
+                        stencilIndices: Gpu.IndexBuffer.init(ib, scene.canvas.context),
+                    };
+                    [DrawStencil(stencilBuffers), ...drawList]
+                }
+            };
+            if (updNode.update) {
+                /* Clean up update flag */
+                updNode.update = false;
+                /* Clear active rect if any */
+                let drawList = if (activeRect^ != None) {
+                    [ClearRect, ...drawList]
+                } else {
+                    drawList
+                };
+                let drawList = [DrawNode(updNode.updNode), ...drawList];
+                /* Since this node is flagged for update, assume all children
+                will also be updated */
+                let drawList = List.fold_left((drawList, updChild) => {
+                    drawListLoop(updChild, drawList)
+                }, drawList, updNode.updChildren);
+                drawList
+            } else {
+                /* Check for active rects */
+                let rects = List.filter((updRect : updateRect('state, 'flags)) => updRect.active, updNode.childRects);
+                /* Filter duplicate/contained  */
+                let rec nonDupRects = (list : list(updateRect('state, 'flags))) => switch (list) {
+                | [] => []
+                | [rect, ...rest] =>
+                    /* !! Also negates active flag !! */
+                    rect.active = false;
+                    if (List.exists((rect2 : updateRect('state, 'flags)) => Shapes.Rect.contains(rect2.rect, rect.rect), rest)) {
+                        nonDupRects(rest)
+                    } else {
+                        [rect, ...nonDupRects(rest)]
+                    };
+                };
+                let rects = nonDupRects(rects);
+                let drawList = List.fold_left((drawList, rect: updateRect('a, 'b)) => {
+                    if (equalsActiveRect(rect.rect)) {
+                        [DrawNode(updNode.updNode)]
+                    } else {
+                        activeRect := Some(rect.rect);
+                        [
+                            DrawNode(updNode.updNode),
+                            SetRect(rect.rect),
+                            ClearRect,
+                            ...drawList
+                        ]
+                    }
+                }, drawList, rects);
+                /* Recurse to children if they have update or childUpdate flagged */
+                let drawList = List.fold_left((drawList, updChild) => {
+                    if (updChild.update) {
+                        drawListLoop(updChild, drawList)
+                    } else if (updChild.childUpdate) {
+                        updChild.childUpdate = false;
+                        drawListLoop(updChild, drawList)
+                    } else {
+                        drawList
+                    }
+                }, drawList, updNode.updChildren);
+                drawList
+            }
         }
     };
     /* Not sure if we need to useProgram for stencil buffers */
@@ -1103,7 +1139,7 @@ let draw = (self, node) => {
 
 module Gl = Reasongl.Gl;
 
-let processDrawList = (scene, drawList) => {
+let processDrawList = (scene, drawList, flags) => {
     let context = scene.canvas.context;
     open Gpu;
     module Gl = Reasongl.Gl;
@@ -1111,7 +1147,18 @@ let processDrawList = (scene, drawList) => {
     | [el, ...rest] =>
         switch (el) {
         | DrawNode(node) =>
-            draw(scene, node);
+            if (node.loading) {
+                if (!List.exists(((_flags, loading)) => loading === node, scene.loadingNodes)) {
+                    /* todo: flags.. are they needed? */
+                    scene.loadingNodes = [(flags, node), ...scene.loadingNodes];
+                };
+            } else {
+                switch (node.onUpdate) {
+                | Some(update) => update(node, scene.state, flags);
+                | None =>
+                    draw(scene, node);
+                };
+            };
         | DrawStencil(stencilBuffers) =>
             Gl.enable(~context, Stencil.stencilTest);
             Canvas.clearStencil(scene.canvas);
@@ -1657,7 +1704,7 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
     calcNodeLayout(self.root);
 };
 
-let update = (self, updateFlags) => {
+let update2 = (self, updateFlags) => {
     /* Anims */
     let animIds = List.sort((a, b) => (a < b) ? -1 : 1, List.map((anim : anim('state, 'flags)) => anim.animNode.id, self.anims));
     let rec doAnims = (anims) => {
@@ -1716,6 +1763,59 @@ let update = (self, updateFlags) => {
     }, Hashtbl.find(self.updateLists, updateState));
 };
 
+let update = (self, updateFlags) => {
+    /* Anims */
+    let animIds = List.sort((a, b) => (a < b) ? -1 : 1, List.map((anim : anim('state, 'flags)) => anim.animNode.id, self.anims));
+    let rec doAnims = (anims) => {
+        switch (anims) {
+        | [] => []
+        | [anim, ...rest] =>
+            anim.elapsed = anim.elapsed +. self.canvas.deltaTime;
+            anim.onFrame(self, anim.animNode, anim);
+            if (anim.elapsed >= anim.duration) {
+                doAnims(rest)
+            } else {
+                [anim, ...doAnims(rest)]
+            }
+        }
+    };
+    self.anims = doAnims(self.anims);
+    /* todo: is this ok to sort variant types?
+       use some hashset type? */
+    let sortedFlags = List.sort((a, b) => (a < b) ? -1 : 1, updateFlags);
+    let updateState = {
+        flags: sortedFlags,
+        anims: animIds
+    };
+    if (!Hashtbl.mem(self.drawLists, updateState)) {
+        Hashtbl.add(self.drawLists, updateState, createDrawList(self, sortedFlags, animIds, self.root));
+    };
+    /* Check if any node in loadingNodes is loaded */
+    let (newList, loaded) = List.partition((loading) => {
+        let (_updateList, node) = loading;
+        node.loading
+    }, self.loadingNodes);
+    self.loadingNodes = newList;
+    if (List.length(loaded) > 0) {
+        let loadedIds = List.map((loaded) => {
+            let (_updateList, node) = loaded;
+            switch (node.onUpdate) {
+            | Some(update) => update(node, self.state, sortedFlags) 
+            | None => ()
+            };
+            node.id
+        }, loaded);
+        let drawList = createDrawList(self, [], loadedIds, self.root);
+        /* Drawing loaded nodes in a special drawlist
+           The loaded node will redraw if they are
+           in the main drawlist anyway, todo */
+        processDrawList(self, drawList, sortedFlags);
+    };
+    /* todo: possibly optimize with a second transformed data structure
+       so the drawstate etc is readily available */
+    processDrawList(self, Hashtbl.find(self.drawLists, updateState), sortedFlags);
+};
+
 let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()) => {
     let canvas = Gpu.Canvas.init(width, height);
     let userState = ref(setup(canvas));
@@ -1729,6 +1829,8 @@ let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()
         ~displayFunc = (f) => {
             canvas.deltaTime = f /. 1000.;
             if (!scene.inited) {
+                /* Create updateNodes */
+                scene.updateRoot = Some(createUpdateTree(scene, scene.root));
                 update(scene, [scene.initFlag]);
                 scene.inited = true;
             };
