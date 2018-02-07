@@ -885,6 +885,33 @@ module FrameBuffer = {
     };
 };
 
+module Scissor = {
+    let scissorTest = 3089;
+
+    /* x, y, width, height
+       all needs to be integers */
+    [@bs.send] external scissor : (Gl.contextT, int, int, int, int) => unit = "scissor";
+
+};
+
+module Stencil = {
+    let stencilTest = 2960;
+
+    /* Stencil funcs */
+    let always = 519;
+    let equal = 514;
+
+    /* Stencil ops */
+    let keep = 7680;
+    let replace = 7681;
+
+    /* context, func, ref, mask */
+    [@bs.send] external stencilFunc : (Gl.contextT, int, int, int) => unit = "stencilFunc";
+    /* context, fail, zfail, zpass */
+    [@bs.send] external stencilOp : (Gl.contextT, int, int, int) => unit = "stencilOp";
+    [@bs.send] external stencilMask : (Gl.contextT, int) => unit = "stencilMask";
+};
+
 module Canvas = {
     type keyboardT = {
         mutable keyCode: Reasongl.Gl.Events.keycodeT
@@ -976,9 +1003,17 @@ module Canvas = {
         );
     };
 
+    /* context, red, green, blue, alpha */
+    [@bs.send] external colorMask : (Gl.contextT, bool, bool, bool, bool) => unit = "colorMask";
+    [@bs.send] external depthMask : (Gl.contextT, bool) => unit = "depthMask";
+
     let clear = (canvas, r, g, b) => {
         Gl.clearColor(~context=canvas.context, ~r, ~g, ~b, ~a=1.);
         Gl.clear(~context=canvas.context, ~mask=Constants.color_buffer_bit);
+    };
+
+    let clearStencil = (canvas) => {
+        Gl.clear(~context=canvas.context, ~mask=Constants.stencil_buffer_bit);
     };
 
     let setFramebuffer = (canvas, frameBuffer : FrameBuffer.inited) => {

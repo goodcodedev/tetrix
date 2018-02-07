@@ -10,6 +10,8 @@ module Rect {
 
     let zeros = () => {x: 0.0, y: 0.0, w: 0.0, h: 0.0};
 
+    let equals = (self, rect) => (self.x == rect.x && self.y == rect.y && self.w == rect.w && self.h == rect.h);
+
     let contains = (self, rect) => {
         (
             self.x <= rect.x

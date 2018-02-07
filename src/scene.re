@@ -78,6 +78,7 @@ type t('state, 'flags) = {
     mutable loadingNodes: list((list('flags), node('state, 'flags))),
     mutable anims: list(anim('state, 'flags)),
     fbuffer: Hashtbl.t(fbufferConfig, Gpu.FrameBuffer.inited),
+    stencilDraw: StencilDraw.t,
     /* List of nodes that needs update on flags */
     onFlags: Hashtbl.t('flags, list(updateListNode('state, 'flags))),
     /* Update nodes keyed by node id/number,
@@ -231,7 +232,7 @@ and updateRect('state, 'flags) = {
     /* Node that may draw this rect, it will
        be checked for hidden and update state
        when setting active rects */
-    updNode: updateListNode('state, 'flags),
+    rNode: updateListNode('state, 'flags),
     /* List of stencils that are among child nodes,
        they will have active state determined by
        whether nodes are visible */
@@ -458,6 +459,7 @@ let make = (canvas, state, initFlag, frameFlag, resizeFlag, root) => {
     loadingNodes: [],
     anims: [],
     fbuffer: Hashtbl.create(1),
+    stencilDraw: StencilDraw.make(canvas),
     onFlags: Hashtbl.create(50),
     updateNodes: ArrayB.make(None)
 }
@@ -557,7 +559,7 @@ findInParents(node, key)
    Consider making one version for root without
    parent, and children (loopChild),
    .. just handle root in body of function */
-let getUpdateTree = (scene, root) => {
+let createUpdateTree = (scene, root) => {
     let rec loop = (node, parent, isDep, isDepRoot, stacked) => {
         let stencil = if (node.transparent || node.partialDraw) {
             None
@@ -652,15 +654,9 @@ let getUpdateTree = (scene, root) => {
         };
         updateNode
     };
+    ArrayB.ensureSize(scene.updateNodes, currNodeId^);
     loop(root, None, false)
 };
-
-
-type drawListItem =
-  | DrawNode
-  | SetRect
-  | ClearRect
-  | DrawStencil;
 
 let rec setChildToUpdate = (updNode) => {
     updNode.update = true;
@@ -737,7 +733,7 @@ and setToUpdate = (updNode) => {
     };
 };
 
-let rec actRectUntilCovered = (updNode) => {
+let actRectUntilCovered = (updNode) => {
     /* Repeating some checks a few places here
        percievely in the interest of a little
        performance as well as slightly
@@ -750,31 +746,32 @@ let rec actRectUntilCovered = (updNode) => {
     let rec loopNewRects = (parent) => {
         switch (parent) {
         | Some(parent) =>
-            let updRect = {
-                rect: parent.updNode.rect,
-                updNode: parent,
-                stencils: [],
-                covers: Shapes.Rect.contains(parent.updNode.rect, updNode.updNode.rect),
-                active: true
-            };
-            /* Hm should this even be the case that
-               a parent is hidden while a child is not,
-               in that case, perhaps a better user-land
-               implementation would be a stacked layout(?) */
-            if (updRect.updNode.updNode.hidden) {
-                [updRect, ...loopNewRects(updRect.updNode.parent)];
-            } else if (updRect.updNode.update) {
-                if (!updRect.covers) {
-                    [updRect, ...loopNewRects(updRect.updNode.parent)];
-                } else {
-                    [updRect]
-                }
+            if (!parent.updNode.selfDraw) {
+                /* Skipping layout nodes now,
+                   possibly there could be use of
+                   having rects there if they propagate
+                   to their children */
+                loopNewRects(parent.parent)
             } else {
-                updRect.active = true;
-                if (!updRect.covers) {
-                    [updRect, ...loopNewRects(updRect.updNode.parent)];
-                } else {
+                let covers = (
+                    !(parent.updNode.transparent || parent.updNode.partialDraw)
+                    && Shapes.Rect.contains(parent.updNode.rect, updNode.updNode.rect)
+                );
+                let updRect = {
+                    rect: parent.updNode.rect,
+                    rNode: parent,
+                    stencils: [],
+                    covers,
+                    active: !(parent.updNode.hidden || parent.update)
+                };
+                /* For normal childs they are hidden when parent
+                   are hidden, but stacked layouts are
+                   rearranged so a parent may be hidden while
+                   a child is not */
+                if (updRect.covers && updRect.active) {
                     [updRect]
+                } else {
+                    [updRect, ...loopNewRects(updRect.rNode.parent)];
                 }
             }
         | None => failwith("Could not find covering parent for: " ++ updNode.updNode.key
@@ -786,16 +783,16 @@ let rec actRectUntilCovered = (updNode) => {
         | [updRect] =>
             /* Check if we need to continue
                or have found a covering node */
-            if (updRect.updNode.updNode.hidden) {
+            if (updRect.rNode.updNode.hidden) {
                 updNode.parentRects = List.append(
                     updNode.parentRects,
-                    List.rev(loopNewRects(updRect.updNode.parent))
+                    loopNewRects(updRect.rNode.parent)
                 );
-            } else if (updRect.updNode.update) {
+            } else if (updRect.rNode.update) {
                 if (!updRect.covers) {
                     updNode.parentRects = List.append(
                         updNode.parentRects,
-                        List.rev(loopNewRects(updRect.updNode.parent))
+                        loopNewRects(updRect.rNode.parent)
                     );
                 };
             } else {
@@ -803,14 +800,14 @@ let rec actRectUntilCovered = (updNode) => {
                 if (!updRect.covers) {
                     updNode.parentRects = List.append(
                         updNode.parentRects,
-                        List.rev(loopNewRects(updRect.updNode.parent))
+                        loopNewRects(updRect.rNode.parent)
                     );
                 }
             };
         | [updRect, ...rest] =>
-            if (updRect.updNode.updNode.hidden) {
+            if (updRect.rNode.updNode.hidden) {
                 loopRects(rest);
-            } else if (updRect.updNode.update) {
+            } else if (updRect.rNode.update) {
                 if (!updRect.covers) {
                     loopRects(rest);
                 };
@@ -821,22 +818,26 @@ let rec actRectUntilCovered = (updNode) => {
                 }
             };
         | [] =>
-            updNode.parentRects = List.append(
-                updNode.parentRects,
-                List.rev(loopNewRects(updNode.parent))
-            );
+            /* This should only be case for initial empty list,
+               or actual empty list for rootish node */
+            updNode.parentRects = loopNewRects(updNode.parent);
         };
     };
-    let cl = updNode.updNode.calcLayout;
-    let rect = Shapes.Rect.make(cl.pXOffset, cl.pYOffset, cl.pWidth, cl.pHeight);
-    let updRect = {
-        rect,
-        updNode,
-        stencils: [],
-        covers: false,
-        active: true
-    };
+    loopRects(updNode.parentRects);
 };
+
+/* It would be nice to directly update these on resize etc */
+type stencilBuffers = {
+    mutable stencilVertices: Gpu.VertexBuffer.inited,
+    mutable stencilIndices: Gpu.IndexBuffer.inited,
+};
+
+type drawListItem('state, 'flags) =
+  | DrawNode(node('state, 'flags))
+  | SetRect(Shapes.Rect.t)
+  | ClearRect
+  | DrawStencil(stencilBuffers)
+  | ClearStencil;
 
 let createDrawList = (scene, flags, animIds, root) => {
     /* Set nodes to update */
@@ -864,11 +865,282 @@ let createDrawList = (scene, flags, animIds, root) => {
        ensure they are covered by a parent */
     List.iter((nodes) => {
         List.iter((updNode) => {
-            if (updNode.updNode.transparent) {
+            if (updNode.updNode.transparent || updNode.updNode.partialDraw) {
                 actRectUntilCovered(updNode);
             };
         }, nodes);
     }, updNodes);
+    /* State of stencils and rect to determine
+       when to clear them */
+    let activeStencils = ref(None);
+    let activeRect = ref(None);
+    let equalsActiveStencils = (stencils : list(updateStencil)) => {
+        let rec checkStencils = (stencils : list(updateStencil), activeStencils : list(updateStencil)) => switch (stencils, activeStencils) {
+        | ([], []) => true
+        | ([st1, ...rest1], [st2, ...rest2]) => {
+            if (Shapes.Rect.equals(st1.rect, st2.rect)) {
+                false
+            } else {
+                checkStencils(rest1, rest2)
+            }
+        }
+        | _ => false
+        };
+        switch (activeStencils^) {
+        | None => false
+        | Some(activeStencils) => checkStencils(stencils, activeStencils)
+        }
+    };
+    let equalsActiveRect = (rect) => {
+        switch (activeRect^) {
+        | None => false
+        | Some(activeRect) => Shapes.Rect.equals(activeRect, rect)
+        }
+    };
+    /* Generate draw list
+       The returned list will be reversed */
+    let rec drawListLoop = (updNode, drawList) => {
+        /* First collect from dependencies */
+        let drawList = List.fold_left((drawList, dep) => drawListLoop(dep, drawList), drawList, updNode.updDeps);
+        /* todo: possibly some microoptimizations if either lists are empty */
+        /* Check for active stencils */
+        let stencils = List.filter((stencil : updateStencil) => stencil.active, updNode.stencils);
+        /* Filter duplicate stencils/stencils contained by other stencils */
+        let rec nonDupStencils = (list : list(updateStencil)) => switch (list) {
+        | [] => []
+        | [stencil, ...rest] =>
+            /* !! Also negates active flag !! */
+            stencil.active = false;
+            if (List.exists((stencil2 : updateStencil) => Shapes.Rect.contains(stencil2.rect, stencil.rect), rest)) {
+                nonDupStencils(rest)
+            } else {
+                [stencil, ...nonDupStencils(rest)]
+            };
+        };
+        let stencils = nonDupStencils(stencils);
+        /* Possibly a slight optimization
+           would be to, in the case of one rect, draw
+           stencil after rect. In the case of several rects,
+           the stencils might take part in several of them
+           and more logic would be needed.
+           Or maybe better a bounding box over rects or node could
+           be used to shape the stencils on the cpu */
+        let drawList = switch (stencils) {
+        | [] =>
+            if (activeStencils^ == None) {
+                drawList
+            } else {
+                activeStencils := None;
+                [ClearStencil, ...drawList]
+            }
+        | stencils =>
+            if (activeStencils^ != None && equalsActiveStencils(stencils)) {
+                drawList
+            } else {
+                /* Create buffers */
+                let data = Array.concat(List.map((stencil : updateStencil) => {
+                    let rect = stencil.rect;
+                    [|
+                        rect.x, rect.y +. rect.h, /* Bottom left */
+                        rect.x, rect.y, /* Top left */
+                        rect.x +. rect.w, rect.y, /* Top right */
+                        rect.x +. rect.w, rect.y +. rect.h /* Bottom right */
+                    |]
+                }, stencils));
+                let vb = Gpu.VertexBuffer.makeQuad(
+                    ~data,
+                    ~usage=Gpu.DynamicDraw,
+                    ()
+                );
+                let ib = Gpu.IndexBuffer.make(
+                    Gpu.IndexBuffer.makeQuadsData(List.length(stencils)),
+                    Gpu.DynamicDraw
+                );
+                let stencilBuffers = {
+                    stencilVertices: Gpu.VertexBuffer.init(vb, scene.canvas.context, scene.stencilDraw.program.programRef),
+                    stencilIndices: Gpu.IndexBuffer.init(ib, scene.canvas.context),
+                };
+                [DrawStencil(stencilBuffers), ...drawList]
+            }
+        };
+        if (updNode.update) {
+            /* Clean up update flag */
+            updNode.update = false;
+            /* Clear active rect if any */
+            let drawList = if (activeRect^ != None) {
+                [ClearRect, ...drawList]
+            } else {
+                drawList
+            };
+            let drawList = [DrawNode(updNode.updNode), ...drawList];
+            /* Since this node is flagged for update, assume all children
+               will also be updated */
+            let drawList = List.fold_left((drawList, updChild) => {
+                drawListLoop(updChild, drawList)
+            }, drawList, updNode.updChildren);
+            drawList
+        } else {
+            /* Check for active rects */
+            let rects = List.filter((updRect : updateRect('state, 'flags)) => updRect.active, updNode.childRects);
+            /* Filter duplicate/contained  */
+            let rec nonDupRects = (list : list(updateRect('state, 'flags))) => switch (list) {
+            | [] => []
+            | [rect, ...rest] =>
+                /* !! Also negates active flag !! */
+                rect.active = false;
+                if (List.exists((rect2 : updateRect('state, 'flags)) => Shapes.Rect.contains(rect2.rect, rect.rect), rest)) {
+                    nonDupRects(rest)
+                } else {
+                    [rect, ...nonDupRects(rest)]
+                };
+            };
+            let rects = nonDupRects(rects);
+            let drawList = List.fold_left((drawList, rect: updateRect('a, 'b)) => {
+                if (equalsActiveRect(rect.rect)) {
+                    [DrawNode(updNode.updNode)]
+                } else {
+                    activeRect := Some(rect.rect);
+                    [
+                        DrawNode(updNode.updNode),
+                        SetRect(rect.rect),
+                        ClearRect,
+                        ...drawList
+                    ]
+                }
+            }, drawList, rects);
+            /* Recurse to children if they have update or childUpdate flagged */
+            let drawList = List.fold_left((drawList, updChild) => {
+                if (updChild.update) {
+                    drawListLoop(updChild, drawList)
+                } else if (updChild.childUpdate) {
+                    updChild.childUpdate = false;
+                    drawListLoop(updChild, drawList)
+                } else {
+                    drawList
+                }
+            }, drawList, updNode.updChildren);
+            drawList
+        }
+    };
+    /* Not sure if we need to useProgram for stencil buffers */
+    Reasongl.Gl.useProgram(~context=scene.canvas.context, scene.stencilDraw.program.programRef);
+    switch (scene.updateNodes.data[root.id]) {
+    | Some(updRoot) =>
+        let drawList = drawListLoop(updRoot, []);
+        /* Clear active rect if any */
+        let drawList = if (activeRect^ != None) {
+            [ClearRect, ...drawList]
+        } else {
+            drawList
+        };
+        /* Clear active stencils if any */
+        let drawList = if (activeStencils^ != None) {
+            [ClearStencil, ...drawList]
+        } else {
+            drawList
+        };
+        List.rev(drawList)
+    | None => failwith("Root update node not found");
+    }
+};
+
+let getFBuffer = (self, config : fbufferConfig) => {
+    if (Hashtbl.mem(self.fbuffer, config)) {
+        Hashtbl.find(self.fbuffer, config)
+    } else {
+        let fbuffer = Gpu.FrameBuffer.init(
+            Gpu.FrameBuffer.make(config.width, config.height),
+            self.canvas.context
+        );
+        Hashtbl.add(self.fbuffer, config, fbuffer);
+        fbuffer
+    }
+};
+
+let debugNodes = [];
+
+let draw = (self, node) => {
+    /*Js.log("Drawing " ++ node.key);*/
+    switch (node.drawState) {
+    | Some(drawState) =>
+        let drawToTexture = switch (node.drawToTexture) {
+        | Some(texture) =>
+            let config = {
+                width: 1024,
+                height: 1024
+            };
+            let fbuffer = getFBuffer(self, config);
+            Gpu.FrameBuffer.bindTexture(fbuffer, self.canvas.context, texture);
+            Gpu.Canvas.setFramebuffer(self.canvas, fbuffer);
+            if (node.clearOnDraw) {
+                Gpu.Canvas.clear(self.canvas, 0.0, 0.0, 0.0);
+            };
+            true
+        | None => false
+        };
+        if (node.transparent) {
+            let context = self.canvas.context;
+            Gpu.Gl.enable(~context, Gpu.Constants.blend);
+            Gpu.Gl.blendFunc(~context, Gpu.Constants.src_alpha, Gpu.Constants.one_minus_src_alpha);
+            Gpu.DrawState.draw(drawState, self.canvas);
+            Gpu.Gl.disable(~context, Gpu.Constants.blend);
+        } else {
+            if (List.exists((debug) => node.key == debug, debugNodes)) {
+                Gpu.DrawState.draw(drawState, self.canvas);
+                Gpu.Canvas.clearFramebuffer(self.canvas);
+                Gpu.DrawState.draw(drawState, self.canvas);
+                [%debugger];
+            } else {
+                Gpu.DrawState.draw(drawState, self.canvas);
+            };
+        };
+        if (drawToTexture) {
+            Gpu.Canvas.clearFramebuffer(self.canvas);
+        };
+    | None => failwith("Drawstate not found")
+    };
+};
+
+module Gl = Reasongl.Gl;
+
+let processDrawList = (scene, drawList) => {
+    let context = scene.canvas.context;
+    open Gpu;
+    module Gl = Reasongl.Gl;
+    let rec processDrawEl = (list) => switch (list) {
+    | [el, ...rest] =>
+        switch (el) {
+        | DrawNode(node) =>
+            draw(scene, node);
+        | DrawStencil(stencilBuffers) =>
+            Gl.enable(~context, Stencil.stencilTest);
+            Canvas.clearStencil(scene.canvas);
+            Stencil.stencilFunc(context, Stencil.always, 1, 0xFF);
+            Stencil.stencilOp(context, Stencil.keep, Stencil.keep, Stencil.replace);
+            Stencil.stencilMask(context, 0xFF);
+            Canvas.colorMask(context, false, false, false, false);
+            Canvas.depthMask(context, false);
+            StencilDraw.draw(scene.stencilDraw, stencilBuffers.stencilVertices, stencilBuffers.stencilIndices);
+            Canvas.colorMask(context, true, true, true, true);
+            Canvas.depthMask(context, true);
+        | ClearStencil =>
+            Gl.disable(~context, Stencil.stencilTest);
+        | SetRect(rect) =>
+            Gl.enable(~context, Scissor.scissorTest);
+            Scissor.scissor(
+                context,
+                int_of_float(rect.x),
+                int_of_float(rect.y),
+                int_of_float(rect.w),
+                int_of_float(rect.h)
+            );
+        | ClearRect =>
+            Gl.disable(~context, Scissor.scissorTest);
+        };
+        processDrawEl(rest);
+    | [] => ()
+    };
+    processDrawEl(drawList);
 };
 
 let getSceneNodesToUpdate = (flags, animIds, root) => {
@@ -1385,64 +1657,6 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
     calcNodeLayout(self.root);
 };
 
-
-let getFBuffer = (self, config : fbufferConfig) => {
-    if (Hashtbl.mem(self.fbuffer, config)) {
-        Hashtbl.find(self.fbuffer, config)
-    } else {
-        let fbuffer = Gpu.FrameBuffer.init(
-            Gpu.FrameBuffer.make(config.width, config.height),
-            self.canvas.context
-        );
-        Hashtbl.add(self.fbuffer, config, fbuffer);
-        fbuffer
-    }
-};
-
-let debugNodes = [];
-
-let draw = (self, node) => {
-    /*Js.log("Drawing " ++ node.key);*/
-    switch (node.drawState) {
-    | Some(drawState) =>
-        let drawToTexture = switch (node.drawToTexture) {
-        | Some(texture) =>
-            let config = {
-                width: 1024,
-                height: 1024
-            };
-            let fbuffer = getFBuffer(self, config);
-            Gpu.FrameBuffer.bindTexture(fbuffer, self.canvas.context, texture);
-            Gpu.Canvas.setFramebuffer(self.canvas, fbuffer);
-            if (node.clearOnDraw) {
-                Gpu.Canvas.clear(self.canvas, 0.0, 0.0, 0.0);
-            };
-            true
-        | None => false
-        };
-        if (node.transparent) {
-            let context = self.canvas.context;
-            Gpu.Gl.enable(~context, Gpu.Constants.blend);
-            Gpu.Gl.blendFunc(~context, Gpu.Constants.src_alpha, Gpu.Constants.one_minus_src_alpha);
-            Gpu.DrawState.draw(drawState, self.canvas);
-            Gpu.Gl.disable(~context, Gpu.Constants.blend);
-        } else {
-            if (List.exists((debug) => node.key == debug, debugNodes)) {
-                Gpu.DrawState.draw(drawState, self.canvas);
-                Gpu.Canvas.clearFramebuffer(self.canvas);
-                Gpu.DrawState.draw(drawState, self.canvas);
-                [%debugger];
-            } else {
-                Gpu.DrawState.draw(drawState, self.canvas);
-            };
-        };
-        if (drawToTexture) {
-            Gpu.Canvas.clearFramebuffer(self.canvas);
-        };
-    | None => failwith("Drawstate not found")
-    };
-};
-
 let update = (self, updateFlags) => {
     /* Anims */
     let animIds = List.sort((a, b) => (a < b) ? -1 : 1, List.map((anim : anim('state, 'flags)) => anim.animNode.id, self.anims));
@@ -1501,8 +1715,6 @@ let update = (self, updateFlags) => {
         };
     }, Hashtbl.find(self.updateLists, updateState));
 };
-
-module Gl = Reasongl.Gl;
 
 let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()) => {
     let canvas = Gpu.Canvas.init(width, height);
