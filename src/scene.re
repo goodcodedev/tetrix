@@ -100,6 +100,7 @@ and node('state, 'flags) = {
     layout: layout,
     calcLayout: calcLayout,
     rect: Shapes.Rect.t,
+    scissorRect: Shapes.Rect.t,
     selfDraw: bool,
     transparent: bool,
     partialDraw: bool,
@@ -118,6 +119,7 @@ and node('state, 'flags) = {
     uniforms: Hashtbl.t(string, Gpu.uniform),
     layoutUniform: option(Gpu.uniform),
     pixelSizeUniform: option(Gpu.uniform),
+    elapsedUniform: option(Gpu.uniform),
     drawToTexture: option(Gpu.Texture.t),
     clearOnDraw: bool,
     mutable parent: option(node('state, 'flags)),
@@ -231,6 +233,8 @@ and updateRect('state, 'flags) = {
        maybe this is not sufficient if nodes
        will be responsively rearranged */
     rect: Shapes.Rect.t,
+    /* Rect with scissor coords */
+    scRect: Shapes.Rect.t,
     /* Node that may draw this rect, it will
        be checked for hidden and update state
        when setting active rects */
@@ -330,6 +334,7 @@ let makeNode = (
     ~uniforms=[],
     ~layoutUniform=true,
     ~pixelSizeUniform=false,
+    ~elapsedUniform=false,
     ~size=Dimensions(Scale(1.0), Scale(1.0)),
     ~padding=?,
     ~margin=?,
@@ -371,6 +376,11 @@ let makeNode = (
     };
     let pixelSizeUniform = if (pixelSizeUniform) {
         Some(Gpu.UniformVec2f(ref(Data.Vec2.zeros())))
+    } else {
+        None
+    };
+    let elapsedUniform = if (elapsedUniform) {
+        Some(Gpu.UniformFloat(ref(0.0)))
     } else {
         None
     };
@@ -434,6 +444,7 @@ let makeNode = (
             pYOffset: 0.0
         },
         rect: Shapes.Rect.zeros(),
+        scissorRect: Shapes.Rect.zeros(),
         selfDraw,
         loading,
         transparent,
@@ -452,6 +463,7 @@ let makeNode = (
         uniforms,
         layoutUniform,
         pixelSizeUniform,
+        elapsedUniform,
         drawToTexture,
         clearOnDraw,
         parent: None,
@@ -754,6 +766,9 @@ let actRectUntilCovered = (updNode) => {
        performance as well as slightly
        different cases */
 
+    if (updNode.updNode.key == "element") {
+        [%debugger]
+    };
     /* This creates new updRects for unexplored
        parents, sets their active status and return
        a list of newly created updateRects until
@@ -773,12 +788,14 @@ let actRectUntilCovered = (updNode) => {
                     && Shapes.Rect.contains(parent.updNode.rect, updNode.updNode.rect)
                 );
                 let updRect = {
-                    rect: parent.updNode.rect,
+                    rect: updNode.updNode.rect,
+                    scRect: updNode.updNode.scissorRect,
                     rNode: parent,
                     stencils: [],
                     covers,
                     active: !(parent.updNode.hidden || parent.update)
                 };
+                parent.childRects = [updRect, ...parent.childRects];
                 /* For normal childs they are hidden when parent
                    are hidden, but stacked layouts are
                    rearranged so a parent may be hidden while
@@ -944,8 +961,6 @@ let createDrawList = (scene, flags, animIds, root) => {
             let rec nonDupStencils = (list : list(updateStencil)) => switch (list) {
             | [] => []
             | [stencil, ...rest] =>
-                /* !! Also negates active flag !! */
-                stencil.active = false;
                 if (List.exists((stencil2 : updateStencil) => Shapes.Rect.contains(stencil2.rect, stencil.rect), rest)) {
                     nonDupStencils(rest)
                 } else {
@@ -1003,6 +1018,7 @@ let createDrawList = (scene, flags, animIds, root) => {
                 updNode.update = false;
                 /* Clear active rect if any */
                 let drawList = if (activeRect^ != None) {
+                    activeRect := None;
                     [ClearRect, ...drawList]
                 } else {
                     drawList
@@ -1013,10 +1029,15 @@ let createDrawList = (scene, flags, animIds, root) => {
                 let drawList = List.fold_left((drawList, updChild) => {
                     drawListLoop(updChild, drawList)
                 }, drawList, updNode.updChildren);
+                /* Clean up active stencils */
+                List.iter((stencil) => stencil.active = false, stencils);
                 drawList
             } else {
                 /* Check for active rects */
                 let rects = List.filter((updRect : updateRect('state, 'flags)) => updRect.active, updNode.childRects);
+                if (List.length(rects) > 0) {
+                    [%debugger];
+                };
                 /* Filter duplicate/contained  */
                 let rec nonDupRects = (list : list(updateRect('state, 'flags))) => switch (list) {
                 | [] => []
@@ -1031,13 +1052,21 @@ let createDrawList = (scene, flags, animIds, root) => {
                 };
                 let rects = nonDupRects(rects);
                 let drawList = List.fold_left((drawList, rect: updateRect('a, 'b)) => {
-                    if (equalsActiveRect(rect.rect)) {
-                        [DrawNode(updNode.updNode)]
-                    } else {
-                        activeRect := Some(rect.rect);
+                    if (activeRect^ == None) {
+                        activeRect := Some(rect.scRect);
                         [
                             DrawNode(updNode.updNode),
-                            SetRect(rect.rect),
+                            SetRect(rect.scRect),
+                            ...drawList
+                        ]
+                    } else if (equalsActiveRect(rect.scRect)) {
+                        [DrawNode(updNode.updNode)]
+                    } else {
+                        /* Clear and set new rect */
+                        activeRect := Some(rect.scRect);
+                        [
+                            DrawNode(updNode.updNode),
+                            SetRect(rect.scRect),
                             ClearRect,
                             ...drawList
                         ]
@@ -1054,6 +1083,7 @@ let createDrawList = (scene, flags, animIds, root) => {
                         drawList
                     }
                 }, drawList, updNode.updChildren);
+                List.iter((stencil) => stencil.active = false, stencils);
                 drawList
             }
         }
@@ -1113,6 +1143,10 @@ let draw = (self, node) => {
             };
             true
         | None => false
+        };
+        switch (node.elapsedUniform) {
+        | Some(elapsedUniform) => Gpu.Uniform.setFloat(elapsedUniform, self.canvas.elapsed); Js.log2("elapsed",self.canvas.elapsed);
+        | None => ()
         };
         if (node.transparent) {
             let context = self.canvas.context;
@@ -1190,6 +1224,36 @@ let processDrawList = (scene, drawList, flags) => {
     processDrawEl(drawList);
 };
 
+let logDrawList = (scene, updateState, drawList) => {
+    Js.log2("Drawlist", updateState.flags);
+    List.iter((animId) => {
+        let n = scene.updateNodes.data[animId];
+        let key = switch (n) {
+        | Some(n) => n.updNode.key
+        | None => "No key"
+        };
+        Js.log2("Anim: ", key);
+    }, updateState.anims);
+    let rec processDrawEl = (list) => switch (list) {
+    | [el, ...rest] =>
+        switch (el) {
+        | DrawNode(node) =>
+            Js.log("Draw node: " ++ node.key);
+        | DrawStencil(stencilBuffers) =>
+            Js.log2("Draw stencil: ", stencilBuffers.stencilVertices.data);
+        | ClearStencil =>
+            Js.log("Clear stencil");
+        | SetRect(rect) =>
+            Js.log2("Set rect: ", rect);
+        | ClearRect =>
+            Js.log("Clear rect");
+        };
+        processDrawEl(rest);
+    | [] => ()
+    };
+    processDrawEl(drawList);
+};
+
 let getSceneNodesToUpdate = (flags, animIds, root) => {
     let rec loop = (node, list, parentUpdate) => {
         let depsToUpdate = List.fold_left((list, dep) => loop(dep, list, false), [], node.deps);
@@ -1221,6 +1285,11 @@ let uniforms = List.fold_left((uniforms, name) => {
     | None => uniforms
     }
 }, [], node.textureList);
+/* Elapsed uniform */
+let uniforms = switch (node.elapsedUniform) {
+| Some(elapsedUniform) => [Gpu.Uniform.make("elapsedScene", elapsedUniform), ...uniforms]
+| None => uniforms
+};
 /* PixelSize uniform */
 let uniforms = switch (node.pixelSizeUniform) {
 | Some(pixelSizeUniform) => [Gpu.Uniform.make("pixelSize", pixelSizeUniform), ...uniforms]
@@ -1608,8 +1677,12 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
         };
         node.rect.x = calcLayout.pXOffset;
         node.rect.y = calcLayout.pYOffset;
-        node.rect.w = calcLayout.pWidth;
-        node.rect.h = calcLayout.pHeight;
+        node.rect.w = calcLayout.inWidth;
+        node.rect.h = calcLayout.inHeight;
+        node.scissorRect.x = floor(calcLayout.pXOffset);
+        node.scissorRect.y = floor(vpHeight -. calcLayout.pYOffset -. calcLayout.inHeight);
+        node.scissorRect.w = ceil(calcLayout.inWidth);
+        node.scissorRect.h = ceil(calcLayout.inHeight);
         if (debug) {
             Js.log("Layout for " ++ node.key);
             Js.log2("pWidth: ", calcLayout.pWidth);
@@ -1789,6 +1862,7 @@ let update = (self, updateFlags) => {
     };
     if (!Hashtbl.mem(self.drawLists, updateState)) {
         Hashtbl.add(self.drawLists, updateState, createDrawList(self, sortedFlags, animIds, self.root));
+        logDrawList(self, updateState, Hashtbl.find(self.drawLists, updateState));
     };
     /* Check if any node in loadingNodes is loaded */
     let (newList, loaded) = List.partition((loading) => {
@@ -1828,6 +1902,7 @@ let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()
         ~window = canvas.window,
         ~displayFunc = (f) => {
             canvas.deltaTime = f /. 1000.;
+            canvas.elapsed = canvas.elapsed +. canvas.deltaTime;
             if (!scene.inited) {
                 /* Create updateNodes */
                 scene.updateRoot = Some(createUpdateTree(scene, scene.root));

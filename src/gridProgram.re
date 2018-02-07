@@ -11,9 +11,7 @@ let vertexSource = {|
     varying vec2 dropPos;
     void main() {
         vPosition = position;
-        float shrink = 0.99;
-        //shrink = 1.0;
-        vec2 transformed = (vec3(position, 1.0) * layout).xy * shrink;
+        vec2 transformed = (vec3(position, 1.0) * layout).xy;
         tileShadowsPos = (vec3(position, 1.0) * tileShadowsMat).xy;
         beamsPos = (vec3(position, 1.0) * beamsMat).xy;
         dropPos = (vec3(position, 1.0) * dropMat).xy;
@@ -124,16 +122,18 @@ let makeNode = (
     dropNode,
     dropColor,
     sdfTiles,
-    elState : SceneState.elState,
-    children
+    elState : SceneState.elState
 ) => {
     open UpdateFlags;
     open Scene;
     makeNode(
         "grid",
         ~updateOn=[Init,ElPosChanged,ElChanged],
-        ~size=Scene.Aspect(
-            float_of_int(Config.tileCols) /. float_of_int(Config.tileRows)
+        ~margin=Scene.MarginRBLT(
+            Scale(0.01),
+            Scale(0.002),
+            Scale(0.01),
+            Scale(0.005)
         ),
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
@@ -156,8 +156,6 @@ let makeNode = (
             tileShadows,
             dropNode
         ],
-        ~childLayout=Scene.Stacked,
-        ~children,
         ()
     )
 };

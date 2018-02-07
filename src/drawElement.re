@@ -6,7 +6,10 @@ let currElVertex = {|
     varying vec2 vPosition;
     void main() {
         // Doubled translation here for better precision
-        vPosition = position + translation / 2.0;
+        // Calibrated to not extend outside -1 to 1,
+        // it uses same code as board elements, just
+        // doing quick fix atleast for now.
+        vPosition = (position + translation / 2.0) * 0.75;
         vec3 transformed = vec3(vPosition, 1.0) * layout;
         gl_Position = vec4(transformed.xy, 0.0, 1.0);
     }
@@ -30,7 +33,8 @@ let makeNode = (elState : SceneState.elState) => {
         "element",
         ~updateOn=[UpdateFlags.ElChanged],
         ~size=Aspect(4.0 /. 3.0),
-        ~margin=MarginXY(Scale(0.28), Scale(0.03)),
+        ~partialDraw=true,
+        ~margin=MarginXY(Scale(0.21), Scale(0.022)),
         ~vertShader=Shader.make(currElVertex),
         ~fragShader=Shader.make(currElFragment),
         ~vo=elState.vo,

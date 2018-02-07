@@ -78,22 +78,26 @@ let createBoardNode = (state) => {
     sdfTiles
   );
   /* Grid node draws background to board */
-  /* Just passing deps for now, maybe it
-     would be nice to wire textures to nodes
-     or something */
-  GridProgram.makeNode(
+  let gridNode = GridProgram.makeNode(
     state.tilesTex,
     tileShadows,
     beamNode,
     dropNode,
     state.dropColor,
     sdfTiles,
-    state.elState,
+    state.elState
+  );
+  Layout.stacked(
+    ~key="boardLayout",
+    ~size=Scene.Aspect(
+      float_of_int(Config.tileCols) /. float_of_int(Config.tileRows)
+    ),
     [
+      gridNode,
       tilesDraw,
       currEl
     ]
-  );
+  )
 };
 
 let createLeftRow = (state) => {

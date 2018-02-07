@@ -927,7 +927,8 @@ module Canvas = {
         mutable currIndexBuffer: option(IndexBuffer.inited),
         mutable currTextures: array(ProgramTexture.inited),
         keyboard: keyboardT,
-        mutable deltaTime: float
+        mutable deltaTime: float,
+        mutable elapsed: float
     };
     type window;
     let window: window = [%bs.raw "window"];
@@ -957,7 +958,8 @@ module Canvas = {
             keyboard: {
                 keyCode: Gl.Events.Nothing
             },
-            deltaTime: 0.0
+            deltaTime: 0.0,
+            elapsed: 0.0
         }
     };
 
@@ -975,6 +977,7 @@ module Canvas = {
             ~window = canvas.window,
             ~displayFunc = (f) => {
                 canvas.deltaTime = f /. 1000.;
+                canvas.elapsed = canvas.elapsed +. canvas.deltaTime;
                 userState := draw(userState^, canvas);
             },
             ~windowResize = () => {
