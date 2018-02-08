@@ -99,8 +99,11 @@ and node('state, 'flags) = {
     onUpdate: option((node('state, 'flags), 'state, list('flags)) => unit),
     layout: layout,
     calcLayout: calcLayout,
+    /* Rect in pixels */
     rect: Shapes.Rect.t,
     scissorRect: Shapes.Rect.t,
+    /* Rect in screen -1.0 to 1.0 */
+    screenRect: Shapes.Rect.t,
     selfDraw: bool,
     transparent: bool,
     partialDraw: bool,
@@ -234,7 +237,7 @@ and updateRect('state, 'flags) = {
        will be responsively rearranged */
     rect: Shapes.Rect.t,
     /* Rect with scissor coords */
-    scRect: Shapes.Rect.t,
+    scisRect: Shapes.Rect.t,
     /* Node that may draw this rect, it will
        be checked for hidden and update state
        when setting active rects */
@@ -445,6 +448,7 @@ let makeNode = (
         },
         rect: Shapes.Rect.zeros(),
         scissorRect: Shapes.Rect.zeros(),
+        screenRect: Shapes.Rect.zeros(),
         selfDraw,
         loading,
         transparent,
@@ -591,8 +595,9 @@ let createUpdateTree = (scene, root) => {
         let stencil = if (node.transparent || node.partialDraw) {
             None
         } else {
+            /* Translate to screen coordinates */
             let updStencil = {
-                rect: node.rect,
+                rect: node.screenRect,
                 active: false,
             };
             /* There may not be much point to
@@ -760,15 +765,33 @@ and setToUpdate = (updNode) => {
     };
 };
 
+/* Traverses parents to ensure nodes that
+   are set to update, and are transparent
+   or partialDraw, are covered by a parent */
 let actRectUntilCovered = (updNode) => {
     /* Repeating some checks a few places here
        percievely in the interest of a little
        performance as well as slightly
        different cases */
 
-    if (updNode.updNode.key == "element") {
-        [%debugger]
+    let actStencil = (updNode) => {
+        /* Stencil should be present
+           when node is not transparent
+           or partialDraw */
+        /* Todo:(!) If we had rendered from
+           child upwards when not needing
+           to draw transparent nodes,
+           the stencil mask could
+           come from those renders, and the
+           stencil mask could be increased as
+           more is drawn, should be a nice
+           optimization */
+        switch (updNode.stencil) {
+        | Some(stencil) => stencil.active = true;
+        | None => ()
+        };
     };
+
     /* This creates new updRects for unexplored
        parents, sets their active status and return
        a list of newly created updateRects until
@@ -789,7 +812,7 @@ let actRectUntilCovered = (updNode) => {
                 );
                 let updRect = {
                     rect: updNode.updNode.rect,
-                    scRect: updNode.updNode.scissorRect,
+                    scisRect: updNode.updNode.scissorRect,
                     rNode: parent,
                     stencils: [],
                     covers,
@@ -801,19 +824,21 @@ let actRectUntilCovered = (updNode) => {
                    rearranged so a parent may be hidden while
                    a child is not */
                 if (parent.updNode.hidden) {
-                    /* Pass on rect, but it will not be active */
+                    /* Pass on rect for possible later use, but it will not be active */
                     [updRect, ...loopNewRects(updRect.rNode.parent)]
                 } else if (parent.update) {
                     if (updRect.covers) {
                         /* Update and covers, done */
                         [updRect]
                     } else {
+                        actStencil(updRect.rNode);
                         [updRect, ...loopNewRects(updRect.rNode.parent)]
                     }
                 } else {
                     if (updRect.covers) {
                         [updRect]
                     } else {
+                        actStencil(updRect.rNode);
                         [updRect, ...loopNewRects(updRect.rNode.parent)];
                     }
                 }
@@ -834,6 +859,7 @@ let actRectUntilCovered = (updNode) => {
                 );
             } else if (updRect.rNode.update) {
                 if (!updRect.covers) {
+                    actStencil(updRect.rNode);
                     updNode.parentRects = List.append(
                         updNode.parentRects,
                         loopNewRects(updRect.rNode.parent)
@@ -842,6 +868,7 @@ let actRectUntilCovered = (updNode) => {
             } else {
                 updRect.active = true;
                 if (!updRect.covers) {
+                    actStencil(updRect.rNode);
                     updNode.parentRects = List.append(
                         updNode.parentRects,
                         loopNewRects(updRect.rNode.parent)
@@ -853,11 +880,13 @@ let actRectUntilCovered = (updNode) => {
                 loopRects(rest);
             } else if (updRect.rNode.update) {
                 if (!updRect.covers) {
+                    actStencil(updRect.rNode);
                     loopRects(rest);
                 };
             } else {
                 updRect.active = true;
                 if (!updRect.covers) {
+                    actStencil(updRect.rNode);
                     loopRects(rest);
                 }
             };
@@ -991,10 +1020,10 @@ let createDrawList = (scene, flags, animIds, root) => {
                     let data = Array.concat(List.map((stencil : updateStencil) => {
                         let rect = stencil.rect;
                         [|
-                            rect.x, rect.y +. rect.h, /* Bottom left */
-                            rect.x, rect.y, /* Top left */
-                            rect.x +. rect.w, rect.y, /* Top right */
-                            rect.x +. rect.w, rect.y +. rect.h /* Bottom right */
+                            rect.x, rect.y, /* Bottom left */
+                            rect.x, rect.y +. rect.h, /* Top left */
+                            rect.x +. rect.w, rect.y +. rect.h, /* Top right */
+                            rect.x +. rect.w, rect.y /* Bottom right */
                         |]
                     }, stencils));
                     let vb = Gpu.VertexBuffer.makeQuad(
@@ -1035,9 +1064,6 @@ let createDrawList = (scene, flags, animIds, root) => {
             } else {
                 /* Check for active rects */
                 let rects = List.filter((updRect : updateRect('state, 'flags)) => updRect.active, updNode.childRects);
-                if (List.length(rects) > 0) {
-                    [%debugger];
-                };
                 /* Filter duplicate/contained  */
                 let rec nonDupRects = (list : list(updateRect('state, 'flags))) => switch (list) {
                 | [] => []
@@ -1053,20 +1079,20 @@ let createDrawList = (scene, flags, animIds, root) => {
                 let rects = nonDupRects(rects);
                 let drawList = List.fold_left((drawList, rect: updateRect('a, 'b)) => {
                     if (activeRect^ == None) {
-                        activeRect := Some(rect.scRect);
+                        activeRect := Some(rect.scisRect);
                         [
                             DrawNode(updNode.updNode),
-                            SetRect(rect.scRect),
+                            SetRect(rect.scisRect),
                             ...drawList
                         ]
-                    } else if (equalsActiveRect(rect.scRect)) {
+                    } else if (equalsActiveRect(rect.scisRect)) {
                         [DrawNode(updNode.updNode)]
                     } else {
                         /* Clear and set new rect */
-                        activeRect := Some(rect.scRect);
+                        activeRect := Some(rect.scisRect);
                         [
                             DrawNode(updNode.updNode),
-                            SetRect(rect.scRect),
+                            SetRect(rect.scisRect),
                             ClearRect,
                             ...drawList
                         ]
@@ -1145,7 +1171,7 @@ let draw = (self, node) => {
         | None => false
         };
         switch (node.elapsedUniform) {
-        | Some(elapsedUniform) => Gpu.Uniform.setFloat(elapsedUniform, self.canvas.elapsed); Js.log2("elapsed",self.canvas.elapsed);
+        | Some(elapsedUniform) => Gpu.Uniform.setFloat(elapsedUniform, self.canvas.elapsed);
         | None => ()
         };
         if (node.transparent) {
@@ -1196,14 +1222,24 @@ let processDrawList = (scene, drawList, flags) => {
         | DrawStencil(stencilBuffers) =>
             Gl.enable(~context, Stencil.stencilTest);
             Canvas.clearStencil(scene.canvas);
+            /* Always write 1s */
             Stencil.stencilFunc(context, Stencil.always, 1, 0xFF);
             Stencil.stencilOp(context, Stencil.keep, Stencil.keep, Stencil.replace);
             Stencil.stencilMask(context, 0xFF);
+            /* Disable color and depth writing when writing
+               stencil rects */
             Canvas.colorMask(context, false, false, false, false);
             Canvas.depthMask(context, false);
+            [%debugger];
             StencilDraw.draw(scene.stencilDraw, stencilBuffers.stencilVertices, stencilBuffers.stencilIndices);
             Canvas.colorMask(context, true, true, true, true);
             Canvas.depthMask(context, true);
+            /* Set stencil test function to check for 1's
+               when drawing nodes that should be affected
+               by the stencil */
+            Stencil.stencilFunc(context, Stencil.equal, 1, 0xFF);
+            /* We can also disable stencil writing */
+            Stencil.stencilMask(context, 0x00);
         | ClearStencil =>
             Gl.disable(~context, Stencil.stencilTest);
         | SetRect(rect) =>
@@ -1681,8 +1717,18 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
         node.rect.h = calcLayout.inHeight;
         node.scissorRect.x = floor(calcLayout.pXOffset);
         node.scissorRect.y = floor(vpHeight -. calcLayout.pYOffset -. calcLayout.inHeight);
-        node.scissorRect.w = ceil(calcLayout.inWidth);
-        node.scissorRect.h = ceil(calcLayout.inHeight);
+        node.scissorRect.w = ceil(calcLayout.inWidth +. (calcLayout.pXOffset -. floor(calcLayout.pXOffset))); /* Couldnt get modf to work */
+        node.scissorRect.h = ceil(calcLayout.inHeight +. (calcLayout.pYOffset -. floor(calcLayout.pYOffset)));
+        /* Bit torn on whether to do this for all nodes,
+           currently used for stencils, possibly there
+           are other uses, but generally layout matrix is also available.
+           We have vpWidth available, if calculations
+           are moved, vpWidth etc might beneficially
+           be stored. */
+        node.screenRect.x = (calcLayout.pXOffset /. vpWidth *. 2.0) -. 1.0;
+        node.screenRect.y = -1.0 +. (calcLayout.pYOffset /. vpHeight *. 2.0);
+        node.screenRect.w = calcLayout.inWidth /. vpWidth *. 2.0;
+        node.screenRect.h = calcLayout.inHeight /. vpHeight *. 2.0;
         if (debug) {
             Js.log("Layout for " ++ node.key);
             Js.log2("pWidth: ", calcLayout.pWidth);

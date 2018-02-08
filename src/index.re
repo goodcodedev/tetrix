@@ -303,6 +303,7 @@ let draw = (state, scene, canvas) => {
     hasDroppedDown: false,
     elChanged: false,
     posChanged: false,
+    rotateChanged: false,
     updateTiles: false
   };
   Scene.update(scene, [UpdateFlags.Frame, ...flags]);
