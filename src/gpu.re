@@ -284,6 +284,8 @@ module Program = {
 
 };
 
+[@bs.send] external _deleteBuffer : (Gl.contextT, Gl.bufferT) => unit = "deleteBuffer";
+
 module VertexBuffer = {
     type inited = {
         bufferRef: Gl.bufferT,
@@ -414,6 +416,10 @@ module VertexBuffer = {
         }
         }
     };
+    
+    let deleteBuffer = (context, buf) => {
+        _deleteBuffer(context, buf.bufferRef);
+    };
 };
 
 module IndexBuffer = {
@@ -517,6 +523,10 @@ module IndexBuffer = {
             inited
         }
         }
+    };
+
+    let deleteBuffer = (context, buf) => {
+        _deleteBuffer(context, buf.elBufferRef);
     };
 };
 

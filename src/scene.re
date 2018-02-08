@@ -1944,6 +1944,44 @@ let update = (self, updateFlags) => {
     processDrawList(self, Hashtbl.find(self.drawLists, updateState), sortedFlags);
 };
 
+let cleanUpDrawList = (scene, drawList) => {
+    let rec loop = (list) => {
+        switch (list) {
+        | [el, ...rest] =>
+            switch (el) {
+            | DrawNode(_node) => ()
+            | DrawStencil(stencilBuffers) =>
+                /* Clear gpu memory */
+                Gpu.VertexBuffer.deleteBuffer(scene.canvas.context, stencilBuffers.stencilVertices);
+                Gpu.IndexBuffer.deleteBuffer(scene.canvas.context, stencilBuffers.stencilIndices);
+            | ClearStencil => ()
+            | SetRect(_rect) => ()
+            | ClearRect => ()
+            };
+            loop(rest);
+        | [] => ()
+        };
+    };
+    loop(drawList);
+};
+
+let doResize = (scene) => {
+    let (width, height) = Gpu.Canvas.getViewportSize();
+    /* Todo: There is some bugs here, maybe we need some time after resize
+        before we should redraw background */
+    Gpu.Canvas.resize(scene.canvas, width, height);
+    /* Although rects are updated through calcLayout, we
+       simply reset the drawList cache for some time.
+       Stencil vertices would need to be updated/reset,
+       otherwise it would work I think to keep cache */
+    Hashtbl.iter((_, drawList) => {
+        cleanUpDrawList(scene, drawList);
+    }, scene.drawLists);
+    Hashtbl.clear(scene.drawLists);
+    calcLayout(scene);
+    update(scene, [scene.initFlag]);
+};
+
 let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()) => {
     let canvas = Gpu.Canvas.init(width, height);
     let userState = ref(setup(canvas));
@@ -1951,6 +1989,9 @@ let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()
     setNodeParentsAndScene(scene);
     calcLayout(scene);
     createDrawStates(scene);
+    /* Time for resize requested, this is throttled */
+    let resizeRequested = ref(None);
+    let resizeThrottle = 0.5;
     /* Start render loop */
     Gl.render(
         ~window = canvas.window,
@@ -1964,8 +2005,17 @@ let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()
                 scene.inited = true;
             };
             userState := draw(userState^, scene, canvas);
+            switch (resizeRequested^) {
+            | None => ()
+            | Some(resizeTime) =>
+                if (resizeTime > canvas.elapsed -. resizeThrottle) {
+                    resizeRequested := None;
+                    doResize(scene);
+                };
+            };
         },
         ~windowResize = () => {
+            resizeRequested := Some(canvas.elapsed);
             switch (resize) {
             | Some(resize) => resize(userState^)
             | None => ()
