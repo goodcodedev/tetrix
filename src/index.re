@@ -155,7 +155,9 @@ let createScene = (canvas, state) => {
     UpdateFlags.Init,
     UpdateFlags.Frame,
     UpdateFlags.Resize,
-    createRootNode(state)
+    createRootNode(state),
+    ~drawListDebug=true,
+    ()
   );
   switch (Scene.getNode(scene, "background")) {
   | Some(bg) =>

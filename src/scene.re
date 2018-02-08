@@ -76,6 +76,7 @@ type t('state, 'flags) = {
     resizeFlag: 'flags,
     updateLists: Hashtbl.t(updateState('flags), list(node('state, 'flags))),
     drawLists: Hashtbl.t(updateState('flags), list(drawListItem('state, 'flags))),
+    drawListsDebug: option(drawListDebug('state, 'flags)),
     mutable loadingNodes: list((list('flags), node('state, 'flags))),
     mutable anims: list(anim('state, 'flags)),
     fbuffer: Hashtbl.t(fbufferConfig, Gpu.FrameBuffer.inited),
@@ -86,6 +87,9 @@ type t('state, 'flags) = {
        array is sized to cover all nodes */
     updateNodes: ArrayB.t(option(updateListNode('state, 'flags))),
     mutable updateRoot: option(updateListNode('state, 'flags))
+}
+and drawListDebug('state, 'flags) = {
+    draw: DrawListDebug.t
 }
 and updateState('flags) = {
     flags: list('flags),
@@ -475,7 +479,23 @@ let makeNode = (
     }
 };
 
-let make = (canvas, state, initFlag, frameFlag, resizeFlag, root) => {
+let make = (
+    canvas,
+    state,
+    initFlag,
+    frameFlag,
+    resizeFlag,
+    root,
+    ~drawListDebug=false,
+    ()
+) => {
+    let drawListsDebug = switch (drawListDebug) {
+    | false => None
+    | true =>
+        Some({
+            draw: DrawListDebug.make(canvas)
+        })
+    };
 {
     state,
     canvas,
@@ -486,6 +506,7 @@ let make = (canvas, state, initFlag, frameFlag, resizeFlag, root) => {
     resizeFlag,
     updateLists: Hashtbl.create(5),
     drawLists: Hashtbl.create(5),
+    drawListsDebug,
     loadingNodes: [],
     anims: [],
     fbuffer: Hashtbl.create(1),
@@ -1207,24 +1228,35 @@ let draw = (self, node) => {
 
 module Gl = Reasongl.Gl;
 
-let processDrawList = (scene, drawList, flags) => {
+/* Debug parameter passed, it would be a slight optimization
+   to create own function for debug.. */
+let processDrawList = (scene, drawList, flags, debug) => {
     let context = scene.canvas.context;
+    let elapsed = scene.canvas.elapsed;
     open Gpu;
     module Gl = Reasongl.Gl;
     let rec processDrawEl = (list) => switch (list) {
     | [el, ...rest] =>
         switch (el) {
         | DrawNode(node) =>
-            if (node.loading) {
-                if (!List.exists(((_flags, loading)) => loading === node, scene.loadingNodes)) {
-                    /* todo: flags.. are they needed? */
-                    scene.loadingNodes = [(flags, node), ...scene.loadingNodes];
-                };
+            if (debug) {
+                switch (scene.drawListsDebug, node.layoutUniform, node.drawToTexture) {
+                | (Some(drawDebug), Some(UniformMat3f(uniformMat)), None) =>
+                    DrawListDebug.draw(drawDebug.draw, uniformMat^, elapsed);
+                | _ => ()
+                }
             } else {
-                switch (node.onUpdate) {
-                | Some(update) => update(node, scene.state, flags);
-                | None =>
-                    draw(scene, node);
+                if (node.loading) {
+                    if (!List.exists(((_flags, loading)) => loading === node, scene.loadingNodes)) {
+                        /* todo: flags.. are they needed? */
+                        scene.loadingNodes = [(flags, node), ...scene.loadingNodes];
+                    };
+                } else {
+                    switch (node.onUpdate) {
+                    | Some(update) => update(node, scene.state, flags);
+                    | None =>
+                        draw(scene, node);
+                    };
                 };
             };
         | DrawStencil(stencilBuffers) =>
@@ -1890,6 +1922,8 @@ let update2 = (self, updateFlags) => {
     }, Hashtbl.find(self.updateLists, updateState));
 };
 
+/* Creates a drawList that shows which
+   areas are updating */
 let update = (self, updateFlags) => {
     /* Anims */
     let animIds = List.sort((a, b) => (a < b) ? -1 : 1, List.map((anim : anim('state, 'flags)) => anim.animNode.id, self.anims));
@@ -1915,8 +1949,13 @@ let update = (self, updateFlags) => {
         anims: animIds
     };
     if (!Hashtbl.mem(self.drawLists, updateState)) {
-        Hashtbl.add(self.drawLists, updateState, createDrawList(self, sortedFlags, animIds, self.root));
-        logDrawList(self, updateState, Hashtbl.find(self.drawLists, updateState));
+        let drawList = createDrawList(self, sortedFlags, animIds, self.root);
+        Hashtbl.add(self.drawLists, updateState, drawList);
+        switch (self.drawListsDebug) {
+        | None => ()
+        | Some(_listsDebug) =>
+            logDrawList(self, updateState, Hashtbl.find(self.drawLists, updateState));
+        };
     };
     /* Check if any node in loadingNodes is loaded */
     let (newList, loaded) = List.partition((loading) => {
@@ -1937,11 +1976,20 @@ let update = (self, updateFlags) => {
         /* Drawing loaded nodes in a special drawlist
            The loaded node will redraw if they are
            in the main drawlist anyway, todo */
-        processDrawList(self, drawList, sortedFlags);
+        processDrawList(self, drawList, sortedFlags, false);
     };
     /* todo: possibly optimize with a second transformed data structure
        so the drawstate etc is readily available */
-    processDrawList(self, Hashtbl.find(self.drawLists, updateState), sortedFlags);
+    processDrawList(self, Hashtbl.find(self.drawLists, updateState), sortedFlags, false);
+    switch (self.drawListsDebug) {
+    | None => ()
+    | Some(_) =>
+        let context = self.canvas.context;
+        Gpu.Gl.enable(~context, Gpu.Constants.blend);
+        Gpu.Gl.blendFunc(~context, Gpu.Constants.src_alpha, Gpu.Constants.one_minus_src_alpha);
+        processDrawList(self, Hashtbl.find(self.drawLists, updateState), sortedFlags, true);
+        Gpu.Gl.disable(~context, Gpu.Constants.blend);
+    };
 };
 
 let cleanUpDrawList = (scene, drawList) => {
