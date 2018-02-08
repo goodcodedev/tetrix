@@ -1979,7 +1979,8 @@ let doResize = (scene) => {
     }, scene.drawLists);
     Hashtbl.clear(scene.drawLists);
     calcLayout(scene);
-    update(scene, [scene.initFlag]);
+    /* Todo: Draw whole scene instead of the flags(?) */
+    update(scene, [scene.initFlag,scene.resizeFlag]);
 };
 
 let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()) => {

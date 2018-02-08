@@ -83,7 +83,7 @@ let updateVertices = (self, vertices, canvas) => {
 let makeNode = (elColor, vo) => {
     Scene.makeNode(
         "beams",
-        ~updateOn=[UpdateFlags.ElPosChanged],
+        ~updateOn=[UpdateFlags.ElPosChanged,UpdateFlags.Resize],
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~uniforms=[

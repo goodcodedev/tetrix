@@ -226,7 +226,7 @@ let makeNode = (tilesTex) => {
     /* First draw unblurred */
     let unblurred = Scene.makeNode(
         "unblurred",
-        ~updateOn=[UpdateFlags.TilesChanged],
+        ~updateOn=[UpdateFlags.TilesChanged,UpdateFlags.Resize],
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~textures=[
@@ -238,7 +238,7 @@ let makeNode = (tilesTex) => {
     /* First blur */
     let blur1 = Scene.makeNode(
         "blur1",
-        ~updateOn=[UpdateFlags.TilesChanged],
+        ~updateOn=[UpdateFlags.TilesChanged,UpdateFlags.Resize],
         ~vertShader=Shader.make(blurVertex),
         ~fragShader=Shader.make(blurFragment),
         ~uniforms=[
@@ -254,7 +254,7 @@ let makeNode = (tilesTex) => {
     /* Second blur */
     Scene.makeNode(
         "blur2",
-        ~updateOn=[UpdateFlags.TilesChanged],
+        ~updateOn=[UpdateFlags.TilesChanged,UpdateFlags.Resize],
         ~vertShader=Shader.make(blurVertex),
         ~fragShader=Shader.make(blurFragment),
         ~uniforms=[
