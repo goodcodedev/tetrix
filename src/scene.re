@@ -1020,10 +1020,10 @@ let createDrawList = (scene, flags, animIds, root) => {
                     let data = Array.concat(List.map((stencil : updateStencil) => {
                         let rect = stencil.rect;
                         [|
-                            rect.x, rect.y, /* Bottom left */
-                            rect.x, rect.y +. rect.h, /* Top left */
-                            rect.x +. rect.w, rect.y +. rect.h, /* Top right */
-                            rect.x +. rect.w, rect.y /* Bottom right */
+                            rect.x, rect.y -. rect.h, /* Bottom left */
+                            rect.x, rect.y, /* Top left */
+                            rect.x +. rect.w, rect.y, /* Top right */
+                            rect.x +. rect.w, rect.y -. rect.h /* Bottom right */
                         |]
                     }, stencils));
                     let vb = Gpu.VertexBuffer.makeQuad(
@@ -1039,6 +1039,7 @@ let createDrawList = (scene, flags, animIds, root) => {
                         stencilVertices: Gpu.VertexBuffer.init(vb, scene.canvas.context, scene.stencilDraw.program.programRef),
                         stencilIndices: Gpu.IndexBuffer.init(ib, scene.canvas.context),
                     };
+                    activeStencils := Some(stencils);
                     [DrawStencil(stencilBuffers), ...drawList]
                 }
             };
@@ -1077,6 +1078,13 @@ let createDrawList = (scene, flags, animIds, root) => {
                     };
                 };
                 let rects = nonDupRects(rects);
+                /* When there are multiple rects, another strategy would
+                   be to set up a stencil buffer with all of them
+                   and regular stencils subtracted.
+                   Though I assume in some cases it may not be
+                   that much better as a scissor rect should be easier
+                   to deal with for the gpu? So it would be nice to
+                   see benchmarks */
                 let drawList = List.fold_left((drawList, rect: updateRect('a, 'b)) => {
                     if (activeRect^ == None) {
                         activeRect := Some(rect.scisRect);
@@ -1230,20 +1238,20 @@ let processDrawList = (scene, drawList, flags) => {
                stencil rects */
             Canvas.colorMask(context, false, false, false, false);
             Canvas.depthMask(context, false);
-            [%debugger];
             StencilDraw.draw(scene.stencilDraw, stencilBuffers.stencilVertices, stencilBuffers.stencilIndices);
             Canvas.colorMask(context, true, true, true, true);
             Canvas.depthMask(context, true);
             /* Set stencil test function to check for 1's
                when drawing nodes that should be affected
                by the stencil */
-            Stencil.stencilFunc(context, Stencil.equal, 1, 0xFF);
+            Stencil.stencilFunc(context, Stencil.notEqual, 1, 0xFF);
             /* We can also disable stencil writing */
             Stencil.stencilMask(context, 0x00);
         | ClearStencil =>
             Gl.disable(~context, Stencil.stencilTest);
         | SetRect(rect) =>
             Gl.enable(~context, Scissor.scissorTest);
+            /* todo: Int rect */
             Scissor.scissor(
                 context,
                 int_of_float(rect.x),
@@ -1726,7 +1734,7 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
            are moved, vpWidth etc might beneficially
            be stored. */
         node.screenRect.x = (calcLayout.pXOffset /. vpWidth *. 2.0) -. 1.0;
-        node.screenRect.y = -1.0 +. (calcLayout.pYOffset /. vpHeight *. 2.0);
+        node.screenRect.y = 1.0 -. (calcLayout.pYOffset /. vpHeight *. 2.0);
         node.screenRect.w = calcLayout.inWidth /. vpWidth *. 2.0;
         node.screenRect.h = calcLayout.inHeight /. vpHeight *. 2.0;
         if (debug) {

@@ -900,6 +900,7 @@ module Stencil = {
     /* Stencil funcs */
     let always = 519;
     let equal = 514;
+    let notEqual = 517;
 
     /* Stencil ops */
     let keep = 7680;
@@ -941,10 +942,17 @@ module Canvas = {
             int_of_float(winInnerHeight(window))
         )
     };
+
+    /* Todo: Pull request to reasongl to enable parameters? */
+    external __destructureWindowHack : (Gl.Window.t) => (Reasongl.canvasT, Reasongl.audioContextT) = "%identity";
+    [@bs.send] external getContext : (Reasongl.canvasT, string, 'options) => Gl.contextT = "getContext";
+
     let init = (width, height) => {
         let window = Gl.Window.init(~argv=[||]);
         Gl.Window.setWindowSize(~window, ~width, ~height);
-        let context = Gl.Window.getContext(window);
+        /*let context = Gl.Window.getContext(window);*/
+        let (canvasEl, _) = __destructureWindowHack(window);
+        let context = getContext(canvasEl, "webgl", {"preserveDrawingBuffer": true, "antialias": true, "stencil": true});
         Gl.viewport(~context, ~x=0, ~y=0, ~width, ~height);
         {
             window,
@@ -1006,9 +1014,17 @@ module Canvas = {
         );
     };
 
-    /* context, red, green, blue, alpha */
-    [@bs.send] external colorMask : (Gl.contextT, bool, bool, bool, bool) => unit = "colorMask";
-    [@bs.send] external depthMask : (Gl.contextT, bool) => unit = "depthMask";
+    [@bs.send] external _colorMask : (Gl.contextT, Js.boolean, Js.boolean, Js.boolean, Js.boolean) => unit = "colorMask";
+    [@bs.send] external _depthMask : (Gl.contextT, Js.boolean) => unit = "depthMask";
+
+    let colorMask = (context, r, g, b, a) => {
+        let jb = Js.Boolean.to_js_boolean;
+        _colorMask(context, jb(r), jb(g), jb(b), jb(a));
+    };
+
+    let depthMask = (context, flag) => {
+        _depthMask(context, Js.Boolean.to_js_boolean(flag));
+    };
 
     let clear = (canvas, r, g, b) => {
         Gl.clearColor(~context=canvas.context, ~r, ~g, ~b, ~a=1.);
