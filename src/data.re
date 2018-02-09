@@ -37,6 +37,23 @@ module Vec3 {
 
     let zeros = () : t => [|0.0, 0.0, 0.0|];
 
+    let normalize = (v: t) : t => {
+        let mag = sqrt(v[0] *. v[0] +. v[1] *. v[1] +. v[2] *. v[2]);
+        [|
+            v[0] /. mag,
+            v[1] /. mag,
+            v[2] /. mag
+        |]
+    };
+
+    let cross = (v1 : t, v2 : t) : t => {
+        [|
+            v1[1] *. v2[2] -. v1[2] *. v2[1],
+            v1[2] *. v2[0] -. v1[0] *. v2[2],
+            v1[0] *. v2[1] -. v1[1] *. v2[0]
+        |]
+    };
+
     let toGlsl = (v : t) => {
         "vec3(" ++ string_of_float(v[0]) ++ "," ++ string_of_float(v[1]) ++ "," ++ string_of_float(v[2]) ++ ")"
     }

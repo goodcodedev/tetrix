@@ -104,10 +104,10 @@ and node('state, 'flags) = {
     layout: layout,
     calcLayout: calcLayout,
     /* Rect in pixels */
-    rect: Shapes.Rect.t,
-    scissorRect: Shapes.Rect.t,
+    rect: Geom2d.Rect.t,
+    scissorRect: Geom2d.Rect.t,
     /* Rect in screen -1.0 to 1.0 */
-    screenRect: Shapes.Rect.t,
+    screenRect: Geom2d.Rect.t,
     selfDraw: bool,
     transparent: bool,
     partialDraw: bool,
@@ -168,7 +168,7 @@ and nodeTex('state, 'flags) = {
     offsetY: dimension
 }
 and updateStencil = {
-    mutable rect: Shapes.Rect.t,
+    mutable rect: Geom2d.Rect.t,
     mutable active: bool
 }
 /* A caching strategy could be to keep a list of
@@ -208,7 +208,7 @@ and updateListNode('state, 'flags) = {
        todo: Not sure whether this should be option or
        not, maybe not. If checks are maybe a little more
        jit */
-    mutable rect: option(Shapes.Rect.t),
+    mutable rect: option(Geom2d.Rect.t),
     /* Stencil rects/(shapes) from children.
        A childs stencil is referenced and flagged as active
        as the child is marked for update */
@@ -239,9 +239,9 @@ and updateRect('state, 'flags) = {
     /* Rectangle mutable for resize,
        maybe this is not sufficient if nodes
        will be responsively rearranged */
-    rect: Shapes.Rect.t,
+    rect: Geom2d.Rect.t,
     /* Rect with scissor coords */
-    scisRect: Shapes.Rect.t,
+    scisRect: Geom2d.Rect.t,
     /* Node that may draw this rect, it will
        be checked for hidden and update state
        when setting active rects */
@@ -265,7 +265,7 @@ and stencilBuffers = {
 }
 and  drawListItem('state, 'flags) =
   | DrawNode(node('state, 'flags))
-  | SetRect(Shapes.Rect.t)
+  | SetRect(Geom2d.Rect.t)
   | ClearRect
   | DrawStencil(stencilBuffers)
   | ClearStencil;
@@ -450,9 +450,9 @@ let makeNode = (
             pXOffset: 0.0,
             pYOffset: 0.0
         },
-        rect: Shapes.Rect.zeros(),
-        scissorRect: Shapes.Rect.zeros(),
-        screenRect: Shapes.Rect.zeros(),
+        rect: Geom2d.Rect.zeros(),
+        scissorRect: Geom2d.Rect.zeros(),
+        screenRect: Geom2d.Rect.zeros(),
         selfDraw,
         loading,
         transparent,
@@ -829,7 +829,7 @@ let actRectUntilCovered = (updNode) => {
             } else {
                 let covers = (
                     !(parent.updNode.transparent || parent.updNode.partialDraw)
-                    && Shapes.Rect.contains(parent.updNode.rect, updNode.updNode.rect)
+                    && Geom2d.Rect.contains(parent.updNode.rect, updNode.updNode.rect)
                 );
                 let updRect = {
                     rect: updNode.updNode.rect,
@@ -959,7 +959,7 @@ let createDrawList = (scene, flags, animIds, root) => {
         let rec checkStencils = (stencils : list(updateStencil), activeStencils : list(updateStencil)) => switch (stencils, activeStencils) {
         | ([], []) => true
         | ([st1, ...rest1], [st2, ...rest2]) => {
-            if (Shapes.Rect.equals(st1.rect, st2.rect)) {
+            if (Geom2d.Rect.equals(st1.rect, st2.rect)) {
                 false
             } else {
                 checkStencils(rest1, rest2)
@@ -975,7 +975,7 @@ let createDrawList = (scene, flags, animIds, root) => {
     let equalsActiveRect = (rect) => {
         switch (activeRect^) {
         | None => false
-        | Some(activeRect) => Shapes.Rect.equals(activeRect, rect)
+        | Some(activeRect) => Geom2d.Rect.equals(activeRect, rect)
         }
     };
     /* Generate draw list
@@ -1011,7 +1011,7 @@ let createDrawList = (scene, flags, animIds, root) => {
             let rec nonDupStencils = (list : list(updateStencil)) => switch (list) {
             | [] => []
             | [stencil, ...rest] =>
-                if (List.exists((stencil2 : updateStencil) => Shapes.Rect.contains(stencil2.rect, stencil.rect), rest)) {
+                if (List.exists((stencil2 : updateStencil) => Geom2d.Rect.contains(stencil2.rect, stencil.rect), rest)) {
                     nonDupStencils(rest)
                 } else {
                     [stencil, ...nonDupStencils(rest)]
@@ -1092,7 +1092,7 @@ let createDrawList = (scene, flags, animIds, root) => {
                 | [rect, ...rest] =>
                     /* !! Also negates active flag !! */
                     rect.active = false;
-                    if (List.exists((rect2 : updateRect('state, 'flags)) => Shapes.Rect.contains(rect2.rect, rect.rect), rest)) {
+                    if (List.exists((rect2 : updateRect('state, 'flags)) => Geom2d.Rect.contains(rect2.rect, rect.rect), rest)) {
                         nonDupRects(rest)
                     } else {
                         [rect, ...nonDupRects(rest)]
@@ -1242,7 +1242,7 @@ let processDrawList = (scene, drawList, flags, debug) => {
             if (debug) {
                 switch (scene.drawListsDebug, node.layoutUniform, node.drawToTexture) {
                 | (Some(drawDebug), Some(UniformMat3f(uniformMat)), None) =>
-                    DrawListDebug.draw(drawDebug.draw, uniformMat^, elapsed);
+                    DrawListDebug.draw(drawDebug.draw, uniformMat^, elapsed +. float_of_int(node.id));
                 | _ => ()
                 }
             } else {
@@ -1984,6 +1984,10 @@ let update = (self, updateFlags) => {
     switch (self.drawListsDebug) {
     | None => ()
     | Some(_) =>
+        /* When debugging, we could go through list of previous
+           draws and repaint with each debugNode knowing how long
+           since last paint, and maybe setting alpha
+           based on it */
         let context = self.canvas.context;
         Gpu.Gl.enable(~context, Gpu.Constants.blend);
         Gpu.Gl.blendFunc(~context, Gpu.Constants.src_alpha, Gpu.Constants.one_minus_src_alpha);

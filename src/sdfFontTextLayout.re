@@ -260,21 +260,21 @@ let vertexData = (self, glyphs) => {
     data[idx + 1] = y;
     data[idx + 2] = u0;
     data[idx + 3] = v1;
-    /* Top left */
-    data[idx + 4] = x;
-    data[idx + 5] = y +. h;
-    data[idx + 6] = u0;
-    data[idx + 7] = v0;
+    /* Bottom right */
+    data[idx + 4] = x +. w;
+    data[idx + 5] = y;
+    data[idx + 6] = u1;
+    data[idx + 7] = v1;
     /* Top right */
     data[idx + 8] = x +. w;
     data[idx + 9] = y +. h;
     data[idx + 10] = u1;
     data[idx + 11] = v0;
-    /* Bottom right */
-    data[idx + 12] = x +. w;
-    data[idx + 13] = y;
-    data[idx + 14] = u1;
-    data[idx + 15] = v1;
+    /* Top left */
+    data[idx + 12] = x;
+    data[idx + 13] = y +. h;
+    data[idx + 14] = u0;
+    data[idx + 15] = v0;
   }, glyphs);
   data
 };

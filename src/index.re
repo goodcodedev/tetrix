@@ -117,19 +117,33 @@ let createLeftRow = (state) => {
 };
 
 let createRightRow = (state) => {
-  Layout.vertical(
+  open Geom3d;
+  let bgShape = AreaBetweenQuads.make(
+    Quad.makeRect(-1.0, 1.0, 2.0, 2.0, 0.0),
+    Quad.makeRect(-0.7, 0.8, 1.0, 0.2, 0.5)
+  );
+  Layout.stacked(
     ~size=Scene.Dimensions(Scale(0.22), Scale(1.0)),
     [
-      FontDraw.makeNode(
-        "NEXT",
-        "digitalt",
-        ~height=0.3,
-        ~align=SdfFont.TextLayout.AlignCenter,
+      Node3d.make(
+        AreaBetweenQuads.makeVertexObject(bgShape, ()),
+        ~updateOn=[UpdateFlags.Frame],
         ()
       ),
-      DrawElement.makeNode(state.nextEls[0]),
-      DrawElement.makeNode(state.nextEls[1]),
-      DrawElement.makeNode(state.nextEls[2])
+      Layout.vertical(
+        [
+          FontDraw.makeNode(
+            "NEXT",
+            "digitalt",
+            ~height=0.3,
+            ~align=SdfFont.TextLayout.AlignCenter,
+            ()
+          ),
+          DrawElement.makeNode(state.nextEls[0]),
+          DrawElement.makeNode(state.nextEls[1]),
+          DrawElement.makeNode(state.nextEls[2])
+        ]
+      )
     ]
   )
 };
@@ -156,7 +170,7 @@ let createScene = (canvas, state) => {
     UpdateFlags.Frame,
     UpdateFlags.Resize,
     createRootNode(state),
-    ~drawListDebug=true,
+    ~drawListDebug=false,
     ()
   );
   switch (Scene.getNode(scene, "background")) {
@@ -199,12 +213,12 @@ let updateElTiles = (el : Game.elData, elState, rows, cols) => {
     /* 2x coord system with y 1.0 at top and -1.0 at bottom */
     let tileYScaled = float_of_int(tileY * -1) *. tileHeight;
     let tileXScaled = float_of_int(tileX) *. tileWidth;
-    /* Bottom left, Top left, Top right, Bottom right */
+    /* Bottom left, Bottom right, Top right, Top left */
     [|
       tileXScaled, tileYScaled -. tileHeight,
-      tileXScaled, tileYScaled,
+      tileXScaled +. tileWidth, tileYScaled -. tileHeight,
       tileXScaled +. tileWidth, tileYScaled,
-      tileXScaled +. tileWidth, tileYScaled -. tileHeight
+      tileXScaled, tileYScaled
     |]
   }, tiles));
   VertexObject.updateQuads(elState.vo, currElTiles);
@@ -223,16 +237,16 @@ let updateBeams = (beams, beamsVO, withFromDrop) => {
       let beamVertices = if (withFromDrop) {
         [|
           lx, by, 1.0,
-          lx, ty, 0.0,
+          rx, by, 1.0,
           rx, ty, 0.0,
-          rx, by, 1.0
+          lx, ty, 0.0
         |]
       } else {
         [|
           lx, by,
-          lx, ty,
+          rx, by,
           rx, ty,
-          rx, by
+          lx, ty
         |]
       };
       (i + 1, Array.append(vertices, beamVertices))

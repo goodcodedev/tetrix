@@ -547,6 +547,7 @@ let processAction = (state) => {
       ...state,
       dropColor,
       hasDroppedDown: true,
+      posChanged: true,
       action: None
     })
   }
@@ -623,9 +624,7 @@ let afterTouchdown = (state, canvas : Gpu.Canvas.t) => {
     {
       ...state,
       curTime: curTime,
-      lastTick: curTime,
-      posChanged: false,
-      rotateChanged: false
+      lastTick: curTime
     }
   }
 };

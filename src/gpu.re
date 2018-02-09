@@ -323,9 +323,9 @@ module VertexBuffer = {
         let bottomY = topY -. height;
         [|
             leftX, bottomY,
-            leftX, topY,
+            rightX, bottomY,
             rightX, topY,
-            rightX, bottomY
+            leftX, topY
         |]
     };
     let makeQuad = (~data=?, ~usage=StaticDraw, ()) => {
@@ -450,7 +450,6 @@ module IndexBuffer = {
         inited: None
     };
     let makeQuadsData = (num) => {
-        /* Assuming clockwise orientation */
         let rec quadData = (quadNum) => {
             if (quadNum >= num) {
                 []
@@ -957,12 +956,15 @@ module Canvas = {
     external __destructureWindowHack : (Gl.Window.t) => (Reasongl.canvasT, Reasongl.audioContextT) = "%identity";
     [@bs.send] external getContext : (Reasongl.canvasT, string, 'options) => Gl.contextT = "getContext";
 
+    let cull_face = 2884;
+
     let init = (width, height) => {
         let window = Gl.Window.init(~argv=[||]);
         Gl.Window.setWindowSize(~window, ~width, ~height);
         /*let context = Gl.Window.getContext(window);*/
         let (canvasEl, _) = __destructureWindowHack(window);
         let context = getContext(canvasEl, "webgl", {"preserveDrawingBuffer": true, "antialias": true, "stencil": true});
+        Gl.enable(~context, cull_face);
         Gl.viewport(~context, ~x=0, ~y=0, ~width, ~height);
         {
             window,

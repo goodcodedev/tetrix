@@ -19,7 +19,6 @@ let fragmentSource = {|
     precision mediump float;
     uniform float anim;
     uniform vec3 color;
-    uniform float elapsedScene;
     varying vec2 vPosition;
     varying vec2 pixelPos;
 
@@ -76,7 +75,7 @@ let fragmentSource = {|
         colorCoef = useClosest ?
             (isClosestDown ? closestDown : closestUp)
             : (isClosestDown ? closestUp : closestDown);
-        vec3 c = mix(vec3((sin(elapsedScene) + 1.0) / 2., 0.0, 0.0), color, colorCoef);
+        vec3 c = mix(vec3(0.0, 0.0, 0.0), color, colorCoef);
         gl_FragColor = vec4(c * anim, 1.0);
     }
 |};
@@ -124,7 +123,6 @@ let makeNode = (children) => {
             ("anim", UFloat.make(0.0))
         ],
         ~pixelSizeUniform=true,
-        ~elapsedUniform=true,
         ~size=Dimensions(Scale(1.0), Scale(1.0)),
         ~padding=Scale(0.05),
         ~vAlign=Scene.AlignMiddle,
