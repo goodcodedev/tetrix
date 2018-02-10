@@ -101,17 +101,51 @@ let createBoardNode = (state) => {
 };
 
 let createLeftRow = (state) => {
-  Layout.vertical(
+  open Geom3d;
+  let bgShape = AreaBetweenQuads.make(
+    Quad.make(
+      Point.make(-1.0, -0.4, 0.0),
+      Point.make(1.0, -0.7, 0.0),
+      Point.make(1.0, 1.0, 0.0),
+      Point.make(-1.0, 1.0, 0.0)
+    ),
+    Quad.make(
+      Point.make(-0.7, -0.2, 0.5),
+      Point.make(0.8, -0.24, 0.5),
+      Point.make(0.8, 0.98, 0.5),
+      Point.make(-0.7, 0.98, 0.5)
+    )
+  );
+  Layout.stacked(
     ~size=Scene.Dimensions(Scale(0.22), Scale(1.0)),
     [
-      FontDraw.makeNode(
-        "HOLD",
-        "digitalt",
-        ~height=0.3,
-        ~align=SdfFont.TextLayout.AlignCenter,
+      Node3d.make(
+        AreaBetweenQuads.makeVertexObject(bgShape, ()),
+        ~size=Scene.(Dimensions(Scale(1.0), Scale(0.6))),
+        ~updateOn=[UpdateFlags.ElChanged],
         ()
       ),
-      DrawElement.makeNode(state.holdingEl)
+      Layout.vertical(
+        ~margin=Scene.(
+          MarginRBLT(
+            Scale(0.0),
+            Scale(0.0),
+            Scale(0.0),
+            Scale(0.05)
+          )
+        ),
+        ~spacing=Scene.Scale(0.04),
+        [
+          FontDraw.makeNode(
+            "HOLD",
+            "digitalt",
+            ~height=0.27,
+            ~align=SdfFont.TextLayout.AlignCenter,
+            ()
+          ),
+          DrawElement.makeNode(state.holdingEl)
+        ]
+      )
     ]
   )
 };
@@ -119,23 +153,43 @@ let createLeftRow = (state) => {
 let createRightRow = (state) => {
   open Geom3d;
   let bgShape = AreaBetweenQuads.make(
-    Quad.makeRect(-1.0, 1.0, 2.0, 2.0, 0.0),
-    Quad.makeRect(-0.7, 0.8, 1.0, 0.2, 0.5)
+    Quad.make(
+      Point.make(-1.0, -1.0, 0.0),
+      Point.make(1.0, -0.7, 0.0),
+      Point.make(1.0, 1.0, 0.0),
+      Point.make(-1.0, 1.0, 0.0)
+    ),
+    Quad.make(
+      Point.make(-0.7, -0.54, 0.5),
+      Point.make(0.8, -0.5, 0.5),
+      Point.make(0.8, 0.98, 0.5),
+      Point.make(-0.7, 0.98, 0.5)
+    )
   );
   Layout.stacked(
     ~size=Scene.Dimensions(Scale(0.22), Scale(1.0)),
     [
       Node3d.make(
         AreaBetweenQuads.makeVertexObject(bgShape, ()),
-        ~updateOn=[UpdateFlags.Frame],
+        ~size=Scene.(Dimensions(Scale(1.0), Scale(0.6))),
+        ~updateOn=[UpdateFlags.ElChanged],
         ()
       ),
       Layout.vertical(
+        ~margin=Scene.(
+          MarginRBLT(
+            Scale(0.0),
+            Scale(0.0),
+            Scale(0.0),
+            Scale(0.05)
+          )
+        ),
+        ~spacing=Scene.Scale(0.04),
         [
           FontDraw.makeNode(
             "NEXT",
             "digitalt",
-            ~height=0.3,
+            ~height=0.27,
             ~align=SdfFont.TextLayout.AlignCenter,
             ()
           ),
@@ -152,7 +206,6 @@ let createRootNode = (state) => {
     Background.makeNode([
       Layout.horizontal(
         ~size=Scene.Aspect((14.0 +. 10.0) /. 26.0),
-        ~spacing=Scale(0.02),
         [
           createLeftRow(state),
           createBoardNode(state),

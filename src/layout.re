@@ -3,12 +3,14 @@ let vertical = (
     ~key="verticalLayout",
     ~size=Scene.Aspect(1.0),
     ~spacing=?,
+    ~margin=?,
     children
 ) => {
     Scene.makeNode(
         key,
         ~size,
         ~spacing=?spacing,
+        ~margin=?margin,
         ~childLayout=Scene.Vertical,
         ~selfDraw=false,
         ~children,

@@ -19,7 +19,7 @@ module Point = {
             p3.y -. p1.y,
             p3.z -. p1.z
         );
-        Data.Vec3.(cross(normalize(v1), normalize(v2)));
+        Data.Vec3.(normalize(cross(v1, v2)));
     };
 };
 
@@ -74,6 +74,7 @@ module AreaBetweenQuads = {
         let rNorm = Point.normal(q1.br, q2.br, q1.tr);
         let bNorm = Point.normal(q1.bl, q2.bl, q1.br);
         let lNorm = Point.normal(q1.tl, q2.tl, q1.bl);
+        Js.log2("lnorm", lNorm);
         let tNorm = Point.normal(q1.tr, q2.tr, q1.tl);
         /* Here it goes front face, right face,
            bottom face, left face, top face,

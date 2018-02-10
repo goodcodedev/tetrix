@@ -46,6 +46,10 @@ module Vec3 {
         |]
     };
 
+    let dot = (v1: t, v2: t) : t => {
+        [|v1[0] *. v2[0] +. v1[1] *. v2[1] +. v1[2] *. v2[2]|]
+    };
+
     let cross = (v1 : t, v2 : t) : t => {
         [|
             v1[1] *. v2[2] -. v1[2] *. v2[1],
@@ -54,7 +58,7 @@ module Vec3 {
         |]
     };
 
-    let toGlsl = (v : t) => {
+    let toGlsl = (v : t) : string => {
         "vec3(" ++ string_of_float(v[0]) ++ "," ++ string_of_float(v[1]) ++ "," ++ string_of_float(v[2]) ++ ")"
     }
 };
