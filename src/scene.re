@@ -1178,7 +1178,7 @@ let getFBuffer = (self, config : fbufferConfig) => {
     }
 };
 
-let debugNodes = [];
+let debugNodes = ["sdfTiles"];
 
 let draw = (self, node) => {
     /*Js.log("Drawing " ++ node.key);*/

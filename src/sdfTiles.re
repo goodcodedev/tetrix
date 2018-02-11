@@ -49,8 +49,8 @@ type t = {
     canvas: Canvas.t
 };
 
-let make = (canvas: Canvas.t) => {
-    let sdfProgram = SdfNode.init(SdfNode.make(sdfDist(12, 26), SdfNode.ZeroToOne, None, ()), canvas);
+let make = (canvas: Canvas.t, lighting) => {
+    let sdfProgram = SdfNode.init(SdfNode.make(sdfDist(12, 26), SdfNode.ZeroToOne, None, lighting, ()), canvas);
     let texture = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA, Texture.LinearFilter);
     let fbuffer = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
     {
@@ -68,15 +68,15 @@ let drawToTexture = (self) => {
     Canvas.clearFramebuffer(self.canvas);
 };
 
-let createCanvas = () => {
+let createCanvas = (lighting) => {
     let canvas = Canvas.init(240, 580);
-    let p = make(canvas);
+    let p = make(canvas, lighting);
     SdfNode.draw(p.sdfProgram);
 };
 
-let makeNode = (cols, rows) => {
+let makeNode = (cols, rows, lighting) => {
     let aspect = (float_of_int(cols) /. float_of_int(rows));
-    let sdfNode = SdfNode.make(sdfDist(cols, rows), SdfNode.ZeroToOne, None, ());
+    let sdfNode = SdfNode.make(sdfDist(cols, rows), SdfNode.ZeroToOne, None, lighting, ());
     SdfNode.makeNode(
         sdfNode,
         ~key="sdfTiles",

@@ -97,7 +97,7 @@ let setup = (canvas) => {
 let createBoardNode = (state) => {
   /* Todo: Greyscale textures, and implicit setup via pool by some param */
   /* Sdf tiles give 3d texture to tiles */
-  let sdfTiles = SdfTiles.makeNode(tileCols, tileRows);
+  let sdfTiles = SdfTiles.makeNode(tileCols, tileRows, state.sceneLight);
   /* Beam from current element downwards */
   let beamNode = TileBeam.makeNode(state.elState.color, state.beamVO);
   /* Drop down animation */
@@ -148,8 +148,8 @@ let createLeftRow = (state) => {
     Quad.make(
       Point.make(-0.7, -0.287, 0.5),
       Point.make(0.8, -0.34, 0.5),
-      Point.make(0.8, 0.98, 0.5),
-      Point.make(-0.7, 0.98, 0.5)
+      Point.make(0.8, 1.0, 0.5),
+      Point.make(-0.7, 1.0, 0.5)
     )
   );
   Layout.stacked(
@@ -168,7 +168,7 @@ let createLeftRow = (state) => {
             Scale(0.0),
             Scale(0.0),
             Scale(0.0),
-            Scale(0.04)
+            Scale(0.03)
           )
         ),
         ~spacing=Scene.Scale(0.04),
@@ -219,7 +219,7 @@ let createRightRow = (state) => {
             Scale(0.0),
             Scale(0.0),
             Scale(0.0),
-            Scale(0.04)
+            Scale(0.03)
           )
         ),
         ~spacing=Scene.Scale(0.04),

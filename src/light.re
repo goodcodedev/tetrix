@@ -84,11 +84,11 @@ module PointLight = {
         | DynamicPos(_) => "uPointPos" ++ istr
         };
         let point = switch (self.coords) {
-        | ScreenCoords => "vScreenPos"
-        | LocalCoords => "p"
+        | ScreenCoords => "screenP"
+        | LocalCoords => "localP"
         };
         let pointDir = "normalize(" ++ lightPoint ++ " - " ++ point ++ ")";
-        let dot = "max(dot(" ++ pointDir ++ ", vNormal), 0.0) * "
+        let dot = "max(dot(" ++ pointDir ++ ", normal), 0.0) * "
                         ++ string_of_float(self.factor);
         dot
     };
@@ -146,7 +146,7 @@ module Directional = {
         | StaticDir(v) => Data.Vec3.toGlsl(v)
         | DynamicDir(_) => "uDir"
         };
-        let dot = "max(dot(" ++ dir ++ ", vNormal), 0.0) * "
+        let dot = "max(dot(" ++ dir ++ ", normal), 0.0) * "
                         ++ string_of_float(self.factor);
         dot
     };
@@ -165,6 +165,17 @@ module ProgramLight = {
             points,
             specular
         }
+    };
+
+    let default = () => {
+        let dirLight = Directional.make(~dir=StaticDir(Data.Vec3.make(0.4, 0.3, 0.3)), ());
+        let pointLight = PointLight.make(~pos=StaticPos(Data.Vec3.make(0.0, -0.4, 2.0)), ());
+        let camera = Camera.make(Data.Vec3.make(0.0, 0.4, 4.0));
+        make(
+            dirLight,
+            [pointLight],
+            Specular.make(camera)
+        )
     };
 
     let getUniforms = (self) => {
@@ -193,7 +204,7 @@ module ProgramLight = {
             (i + 1, [PointLight.getLightFuncSource(p, i), ...addends])
         }, (0, []), self.points);
         let addends = [Directional.getLightFuncSource(self.dir), ...addends];
-        "float lighting(vec3 p) {\n"
+        "float lighting(vec3 localP, vec3 screenP, vec3 normal) {\n"
         ++ "float c = " ++ String.concat(" + ", addends) ++ ";\n"
         ++ "return c;\n"
         ++ "}\n"

@@ -194,15 +194,28 @@ module ElQueue {
     q
   };
 
+  let setBoardInitPos = (elData) => {
+    let middleX = tileCols / 2;
+    let (posX, posY) = switch (elData.el) {
+    | Cube => (middleX + 1, 3)
+    | Line => (middleX + 1, 2)
+    | Triangle => (middleX, 3)
+    | RightTurn => (middleX, 4)
+    | LeftTurn => (middleX, 4)
+    | LeftL => (middleX, 3)
+    | RightL => (middleX, 3)
+    };
+    {
+      ...elData,
+      posX,
+      posY
+    }
+  };
+
   /* Use nextEl(state) to account for holding element */
   let pop = (queue) => {
     Queue.push(randomEl(), queue);
-    let next = Queue.pop(queue);
-    {
-      ...next,
-      posX: tileCols / 2,
-      posY: 2
-    }
+    Queue.pop(queue)
   };
 };
 
@@ -240,11 +253,7 @@ let nextEl = (state) => {
     elChanged: true,
     posChanged: true,
     rotateChanged: true,
-    curEl: {
-      ...next,
-      posX: tileCols / 2,
-      posY: 2
-    }
+    curEl: ElQueue.setBoardInitPos(next)
   }
 };
 
@@ -303,7 +312,7 @@ let setup = (canvas, tiles) : stateT => {
   SdfTiles.draw(sdf);*/
   let state = {
     action: None,
-    curEl: ElQueue.pop(elQueue),
+    curEl: ElQueue.setBoardInitPos(ElQueue.pop(elQueue)),
     holdingEl: None,
     elChanged: true,
     posChanged: true,

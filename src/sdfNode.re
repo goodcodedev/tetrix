@@ -13,7 +13,7 @@ type t = {
     color: Color.t,
     opacity: option(float),
     alphaLimit: option(float),
-    lightPos: Data.Vec3.t
+    lighting: Light.ProgramLight.t
 };
 
 type inited = {
@@ -30,11 +30,13 @@ let makeVertexSource = (self) => {
         uniform mat3 model;
         uniform mat3 layout;
         varying vec2 vPosition;
+        varying vec3 vScreenPos;
         void main() {
             vec3 toModel = vec3(position, 1.0) * model;
             vec2 pos = (vec3(position, 1.0) * layout).xy;
             vPosition = toModel.xy;
-            gl_Position = vec4(pos, 0.0, 1.0);
+            vScreenPos = vec3(vPosition, 0.0);
+            gl_Position = vec4(vScreenPos, 1.0);
         }
     |}
     | (Some(_model), ZeroToOne) => {|
@@ -43,10 +45,12 @@ let makeVertexSource = (self) => {
         uniform mat3 model;
         uniform mat3 layout;
         varying vec2 vPosition;
+        varying vec3 vScreenPos;
         void main() {
             vec2 pos = (vec3(position, 1.0) * (layout * model)).xy;
+            vScreenPos = vec3(pos, 0.0);
             vPosition = position;
-            gl_Position = vec4(pos, 0.0, 1.0);
+            gl_Position = vec4(vScreenPos, 1.0);
         }
     |}
     | (None, ZeroToOne) => {|
@@ -54,10 +58,12 @@ let makeVertexSource = (self) => {
         attribute vec2 position;
         uniform mat3 layout;
         varying vec2 vPosition;
+        varying vec3 vScreenPos;
         void main() {
             vPosition = (position + vec2(1.0, -1.0)) * vec2(0.5, -0.5);
             vec2 pos = (vec3(position, 1.0) * layout).xy;
-            gl_Position = vec4(pos, 0.0, 1.0);
+            vScreenPos = vec3(pos, 0.0);
+            gl_Position = vec4(vScreenPos, 1.0);
         }
     |}
     | (None, _) => {|
@@ -65,10 +71,12 @@ let makeVertexSource = (self) => {
         attribute vec2 position;
         uniform mat3 layout;
         varying vec2 vPosition;
+        varying vec3 vScreenPos;
         void main() {
             vPosition = position;
             vec2 pos = (vec3(position, 1.0) * layout).xy;
-            gl_Position = vec4(pos, 0.0, 1.0);
+            vScreenPos = vec3(pos, 0.0);
+            gl_Position = vec4(vScreenPos, 1.0);
         }
     |}
     }
@@ -88,14 +96,21 @@ let makeFragmentSource = (self) => {
     | (None, Some(opacity)) => sf(opacity)
     | (None, None) => "1.0"
     };
+    let lightDecls = Light.ProgramLight.getFragVarDecls(self.lighting);
+    let lightSrc = Light.ProgramLight.getLightFunction(self.lighting);
     let source = {|
         precision mediump float;
         varying vec2 vPosition;
+        varying vec3 vScreenPos;
         
         float epsilon = 0.00005;
         float minDist = 1.0;
         float maxDist = 5.0;
         const int marchingSteps = 30;
+
+        |} ++ lightDecls ++ {|
+        
+        |} ++ lightSrc ++ {|
         
         float sdfDist(vec3 point) {
             |} ++ self.sdfDist ++ {|
@@ -126,21 +141,6 @@ let makeFragmentSource = (self) => {
             return end;
         }
 
-        float lighting(vec3 surfacePoint) {
-            vec3 N = estimateNormal(surfacePoint);
-            vec3 diffuseDir = vec3(0.4, -0.3, 0.3);
-            float NdotD = max(dot(diffuseDir, N), 0.0);
-            vec3 pointPos = |} ++ Data.Vec3.toGlsl(self.lightPos) ++ {|;
-            vec3 pointVec = pointPos - surfacePoint;
-            vec3 pointDir = normalize(pointVec);
-            float NdotP = max(dot(pointDir, N), 0.0);
-            float ambient = 0.0;
-            float c = NdotD * 0.1 + ambient + NdotP * 0.6 * max(0.0, 1.0 - length(pointVec));
-            //c = NdotD;
-            //c = NdotP;
-            return c;
-        }
-        
         void main() {
             vec2 viewport = vec2(1.0, 1.0);
             vec2 fragCoord = |} ++ fragCoords ++ {|;
@@ -150,7 +150,8 @@ let makeFragmentSource = (self) => {
             // All points should hit a shape in this shader
             vec3 p = pixelEye + dist * vec3(0.0, 0.0, -1.0);
             vec3 color = |} ++ glColor  ++ {|;
-            float light = lighting(p);
+            vec3 N = estimateNormal(p);
+            float light = lighting(p, vec3(vScreenPos.xy, p.z), N);
             color = mix(mix(color, vec3(1.0, 1.0, 1.0), max(light - 0.5, 0.0)) * 0.9, vec3(0.0, 0.0, 0.0), max(0.5 + light * -1.0, 0.0) * 1.5);
             float alpha = |} ++ glAlpha  ++ {|;
             gl_FragColor = vec4(color, alpha);
@@ -197,12 +198,12 @@ let make = (
     sdfDist,
     fragCoords,
     model,
+    lighting,
     ~width=1.0,
     ~height=1.0,
     ~color=Color.fromFloats(0.6, 0.6, 0.6),
     ~opacity=?,
     ~alphaLimit=?,
-    ~lightPos=Data.Vec3.make(0.6, 0.2, 0.4),
     ()
     ) => {
     {
@@ -214,7 +215,7 @@ let make = (
         color,
         opacity,
         alphaLimit,
-        lightPos
+        lighting
     }
 };
 

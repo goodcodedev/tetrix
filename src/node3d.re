@@ -31,7 +31,7 @@ let fragSource = (light) => {
         |} ++ lightSrc ++ {|
 
         void main() {
-            vec3 color = vec3(1.0, 1.0, 1.0) * lighting(vPos);
+            vec3 color = vec3(1.0, 1.0, 1.0) * lighting(vPos, vScreenPos, vNormal);
             gl_FragColor = vec4(color, 0.2);
         }
     |}
