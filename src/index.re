@@ -19,6 +19,17 @@ let makeElState = () => {
   }
 };
 
+let makeSceneLight = (camera) => {
+  open Light;
+  let dirLight = Directional.make(~dir=StaticDir(Data.Vec3.make(0.4, 0.3, 0.3)), ());
+  let pointLight = PointLight.make(~pos=StaticPos(Data.Vec3.make(-2.8, 0.2, 2.0)), ());
+  ProgramLight.make(
+    dirLight,
+    [pointLight],
+    Specular.make(camera)
+  )
+};
+
 let setup = (canvas) => {
   /* Element position and color uniforms */
   let beamVO = VertexObject.makeQuad(~usage=DynamicDraw, ());
@@ -43,6 +54,10 @@ let setup = (canvas) => {
   let elState = makeElState();
   let dropColor = Scene.UVec3f.zeros();
   let gameState = Game.setup(canvas, tiles);
+  let camera = Camera.make(Data.Vec3.make(0.0, 0.4, 4.0));
+  let sceneLight = makeSceneLight(camera);
+  Js.log2("Decl", Light.ProgramLight.getFragVarDecls(sceneLight));
+  Js.log2("Src", Light.ProgramLight.getLightFunction(sceneLight));
   {
     tiles,
     tilesTex,
@@ -56,6 +71,7 @@ let setup = (canvas) => {
     beamVO,
     dropBeamVO,
     dropColor,
+    sceneLight,
     gameState
   }
 };
@@ -104,14 +120,14 @@ let createLeftRow = (state) => {
   open Geom3d;
   let bgShape = AreaBetweenQuads.make(
     Quad.make(
-      Point.make(-1.0, -0.4, 0.0),
+      Point.make(-1.0, -0.45, 0.0),
       Point.make(1.0, -0.7, 0.0),
       Point.make(1.0, 1.0, 0.0),
       Point.make(-1.0, 1.0, 0.0)
     ),
     Quad.make(
-      Point.make(-0.7, -0.2, 0.5),
-      Point.make(0.8, -0.24, 0.5),
+      Point.make(-0.7, -0.287, 0.5),
+      Point.make(0.8, -0.34, 0.5),
       Point.make(0.8, 0.98, 0.5),
       Point.make(-0.7, 0.98, 0.5)
     )
@@ -123,6 +139,7 @@ let createLeftRow = (state) => {
         AreaBetweenQuads.makeVertexObject(bgShape, ()),
         ~size=Scene.(Dimensions(Scale(1.0), Scale(0.6))),
         ~updateOn=[UpdateFlags.ElChanged],
+        ~light=state.sceneLight,
         ()
       ),
       Layout.vertical(
@@ -173,6 +190,7 @@ let createRightRow = (state) => {
         AreaBetweenQuads.makeVertexObject(bgShape, ()),
         ~size=Scene.(Dimensions(Scale(1.0), Scale(0.6))),
         ~updateOn=[UpdateFlags.ElChanged],
+        ~light=state.sceneLight,
         ()
       ),
       Layout.vertical(

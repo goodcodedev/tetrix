@@ -129,12 +129,14 @@ let makeNode = (
     makeNode(
         "grid",
         ~updateOn=[Init,ElPosChanged,ElChanged],
+        /*
         ~margin=Scene.MarginRBLT(
             Scale(0.01),
             Scale(0.002),
             Scale(0.01),
             Scale(0.005)
         ),
+        */
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~uniforms=[

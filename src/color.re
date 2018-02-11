@@ -40,7 +40,7 @@ let white = () : t => {
 module HSL = {
     /* Hue in degrees from 0-360,
        saturation from 0.0 - 1.0
-       brightness from 0.0 - 1.0 */
+       luminance from 0.0 - 1.0 */
     type hsl = array(float);
 
     let fromRgb = (c : t) : hsl => {
