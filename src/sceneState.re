@@ -14,6 +14,8 @@ type sceneState = {
   dropBeamVO: Gpu.VertexObject.t,
   dropColor: Gpu.uniform,
   sceneLight: Light.ProgramLight.t,
+  elLightPos: Gpu.uniform,
+  sceneAndElLight: Light.ProgramLight.t,
   bgColor: Gpu.uniform,
   boardColor: Gpu.uniform,
   lineColor: Gpu.uniform,

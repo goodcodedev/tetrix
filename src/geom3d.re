@@ -74,7 +74,6 @@ module AreaBetweenQuads = {
         let rNorm = Point.normal(q1.br, q2.br, q1.tr);
         let bNorm = Point.normal(q1.bl, q2.bl, q1.br);
         let lNorm = Point.normal(q1.tl, q2.tl, q1.bl);
-        Js.log2("lnorm", lNorm);
         let tNorm = Point.normal(q1.tr, q2.tr, q1.tl);
         /* Here it goes front face, right face,
            bottom face, left face, top face,
@@ -123,7 +122,6 @@ module AreaBetweenQuads = {
 
     let makeVertexObject = (self, ~usage=Gpu.StaticDraw, ()) => {
         open Gpu;
-        Js.log(createVertexData(self));
         let vbuf = VertexBuffer.make(
             createVertexData(self),
             [|

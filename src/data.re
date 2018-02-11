@@ -35,6 +35,10 @@ module Vec3 {
         a
     };
 
+    let setZ = (v : t, newVal) => {
+        v[2] = newVal;
+    };
+
     let zeros = () : t => [|0.0, 0.0, 0.0|];
 
     let normalize = (v: t) : t => {

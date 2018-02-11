@@ -69,6 +69,16 @@ let setup = (canvas) => {
   let gameState = Game.setup(canvas, tiles);
   let camera = Camera.make(Data.Vec3.make(0.0, 0.4, 4.0));
   let sceneLight = makeSceneLight(camera);
+  let elLightPos = Scene.UVec3f.zeros();
+  let elLight = Light.PointLight.make(
+    ~pos=Light.DynamicPos(elLightPos),
+    ~color=Light.DynamicColor(elState.color),
+    ()
+  );
+  let sceneAndElLight = {
+    ...sceneLight,
+    points: [elLight, ...sceneLight.points]
+  };
   let bgColor = Scene.UVec3f.zeros();
   let boardColor = Scene.UVec3f.zeros();
   let lineColor = Scene.UVec3f.zeros();
@@ -86,6 +96,8 @@ let setup = (canvas) => {
     dropBeamVO,
     dropColor,
     sceneLight,
+    elLightPos,
+    sceneAndElLight,
     bgColor,
     boardColor,
     lineColor,
@@ -158,8 +170,8 @@ let createLeftRow = (state) => {
       Node3d.make(
         AreaBetweenQuads.makeVertexObject(bgShape, ()),
         ~size=Scene.(Dimensions(Scale(1.0), Scale(0.6))),
-        ~updateOn=[UpdateFlags.ElChanged],
-        ~light=state.sceneLight,
+        ~updateOn=[UpdateFlags.ElChanged,UpdateFlags.ElPosChanged],
+        ~light=state.sceneAndElLight,
         ()
       ),
       Layout.vertical(
@@ -209,8 +221,8 @@ let createRightRow = (state) => {
       Node3d.make(
         AreaBetweenQuads.makeVertexObject(bgShape, ()),
         ~size=Scene.(Dimensions(Scale(1.0), Scale(0.6))),
-        ~updateOn=[UpdateFlags.ElChanged],
-        ~light=state.sceneLight,
+        ~updateOn=[UpdateFlags.ElChanged,UpdateFlags.ElPosChanged],
+        ~light=state.sceneAndElLight,
         ()
       ),
       Layout.vertical(
@@ -394,6 +406,23 @@ let draw = (state, scene, canvas) => {
   };
   if (elMoved) {
     updateElTiles(state.gameState.curEl, state.elState, tileRows, tileCols);
+    /* We want elState.pos transformed by layout as light pos for element */
+    let elPos = switch (state.elState.pos) {
+    | Gpu.UniformVec2f(elPos) => elPos^
+    | _ => Data.Vec2.zeros()
+    };
+    switch (Scene.getNode(scene, "grid")) {
+    | Some(gridNode) => {
+      switch (gridNode.layoutUniform) {
+      | Some(Gpu.UniformMat3f(layout)) =>
+        let pointPos = Data.Mat3.vecmul(layout^, Data.Vec3.fromVec2(elPos, 1.0));
+        Data.Vec3.setZ(pointPos, 0.25);
+        Gpu.Uniform.setVec3f(state.elLightPos, pointPos);
+      | _ => ()
+      };
+    }
+    | None => ()
+    };
     updateBeams(state.gameState.beams, state.beamVO, false);
   };
   let flags = (elMoved) ? [UpdateFlags.ElPosChanged] : [];

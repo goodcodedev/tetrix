@@ -87,8 +87,12 @@ module PointLight = {
         | ScreenCoords => "screenP"
         | LocalCoords => "localP"
         };
+        let color = switch (self.color) {
+        | DynamicColor(_) => "uPointColor" ++ istr
+        | StaticColor(c) => Data.Vec3.toGlsl(c)
+        };
         let pointDir = "normalize(" ++ lightPoint ++ " - " ++ point ++ ")";
-        let dot = "max(dot(" ++ pointDir ++ ", normal), 0.0) * "
+        let dot = "max(dot(" ++ pointDir ++ ", normal), 0.0) * " ++ color ++ " * "
                         ++ string_of_float(self.factor);
         dot
     };
@@ -146,7 +150,11 @@ module Directional = {
         | StaticDir(v) => Data.Vec3.toGlsl(v)
         | DynamicDir(_) => "uDir"
         };
-        let dot = "max(dot(" ++ dir ++ ", normal), 0.0) * "
+        let color = switch (self.color) {
+        | DynamicColor(_) => "uDirColor"
+        | StaticColor(c) => Data.Vec3.toGlsl(c)
+        };
+        let dot = "max(dot(" ++ dir ++ ", normal), 0.0) * " ++ color ++ " * "
                         ++ string_of_float(self.factor);
         dot
     };
@@ -204,9 +212,8 @@ module ProgramLight = {
             (i + 1, [PointLight.getLightFuncSource(p, i), ...addends])
         }, (0, []), self.points);
         let addends = [Directional.getLightFuncSource(self.dir), ...addends];
-        "float lighting(vec3 localP, vec3 screenP, vec3 normal) {\n"
-        ++ "float c = " ++ String.concat(" + ", addends) ++ ";\n"
-        ++ "return c;\n"
+        "vec3 lighting(vec3 localP, vec3 screenP, vec3 normal) {\n"
+        ++ "return " ++ String.concat(" + ", addends) ++ ";\n"
         ++ "}\n"
     };
 };

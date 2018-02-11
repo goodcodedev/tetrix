@@ -151,7 +151,7 @@ let makeFragmentSource = (self) => {
             vec3 p = pixelEye + dist * vec3(0.0, 0.0, -1.0);
             vec3 color = |} ++ glColor  ++ {|;
             vec3 N = estimateNormal(p);
-            float light = lighting(p, vec3(vScreenPos.xy, p.z), N);
+            float light = (lighting(p, vec3(vScreenPos.xy, p.z), N)).x;
             color = mix(mix(color, vec3(1.0, 1.0, 1.0), max(light - 0.5, 0.0)) * 0.9, vec3(0.0, 0.0, 0.0), max(0.5 + light * -1.0, 0.0) * 1.5);
             float alpha = |} ++ glAlpha  ++ {|;
             gl_FragColor = vec4(color, alpha);

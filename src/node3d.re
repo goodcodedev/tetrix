@@ -31,7 +31,7 @@ let fragSource = (light) => {
         |} ++ lightSrc ++ {|
 
         void main() {
-            vec3 color = vec3(1.0, 1.0, 1.0) * lighting(vPos, vScreenPos, vNormal);
+            vec3 color = lighting(vPos, vScreenPos, vNormal);
             gl_FragColor = vec4(color, 0.2);
         }
     |}
@@ -50,6 +50,7 @@ let make = (
         "node3d",
         ~updateOn,
         ~size,
+        ~uniforms=Light.ProgramLight.getUniforms(light),
         ~transparent=true,
         ~vertShader=Gpu.Shader.make(vs),
         ~fragShader=Gpu.Shader.make(fs),
