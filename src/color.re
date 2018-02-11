@@ -37,11 +37,23 @@ let white = () : t => {
 };
 
 /* http://www.niwa.nu/2013/05/math-behind-colorspace-conversions-rgb-hsl/ */
-module HSL = {
+module Hsl = {
     /* Hue in degrees from 0-360,
        saturation from 0.0 - 1.0
        luminance from 0.0 - 1.0 */
     type hsl = array(float);
+
+    let clone = (hsl : hsl) : hsl => {
+        Array.copy(hsl)
+    };
+
+    let incrH = (hsl : hsl, increment) => {
+        hsl[0] = mod_float(hsl[0] +. increment, 360.0);
+    };
+
+    let setL = (hsl : hsl, l) => {
+        hsl[2] = l;
+    };
 
     let fromRgb = (c : t) : hsl => {
         let (r, g, b) = (c[0], c[1], c[2]);
@@ -79,8 +91,8 @@ module HSL = {
         } else {
             switch (maxChannel) {
             | Red => (g -. b) /. (rgbMax -. rgbMin) *. 60.0
-            | Green => 2.0 +. (b -. r) /. (rgbMax -. rgbMin) *. 60.0
-            | Blue => 4.0 +. (r -. g) /. (rgbMax -. rgbMin) *. 60.0
+            | Green => (2.0 +. (b -. r) /. (rgbMax -. rgbMin)) *. 60.0
+            | Blue => (4.0 +. (r -. g) /. (rgbMax -. rgbMin)) *. 60.0
             }
         };
         let h = (h < 0.0) ? h +. 360.0 : h;

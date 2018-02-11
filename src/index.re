@@ -22,12 +22,25 @@ let makeElState = () => {
 let makeSceneLight = (camera) => {
   open Light;
   let dirLight = Directional.make(~dir=StaticDir(Data.Vec3.make(0.4, 0.3, 0.3)), ());
-  let pointLight = PointLight.make(~pos=StaticPos(Data.Vec3.make(-2.8, 0.2, 2.0)), ());
+  let pointLight = PointLight.make(~pos=StaticPos(Data.Vec3.make(0.0, -0.4, 2.0)), ());
   ProgramLight.make(
     dirLight,
     [pointLight],
     Specular.make(camera)
   )
+};
+
+let setBg = (state) => {
+  open Color;
+  let bg = Hsl.fromRgb(fromFloats(0.14, 0.09, 0.20));
+  let board = Hsl.clone(bg);
+  Hsl.incrH(board, 20.0);
+  let line = Hsl.clone(board);
+  Hsl.setL(line, 0.2);
+  Gpu.Uniform.setVec3f(state.bgColor, toVec3(Hsl.toRgb(bg)));
+  Gpu.Uniform.setVec3f(state.boardColor, toVec3(Hsl.toRgb(board)));
+  Gpu.Uniform.setVec3f(state.lineColor, toVec3(Hsl.toRgb(line)));
+  state
 };
 
 let setup = (canvas) => {
@@ -56,9 +69,10 @@ let setup = (canvas) => {
   let gameState = Game.setup(canvas, tiles);
   let camera = Camera.make(Data.Vec3.make(0.0, 0.4, 4.0));
   let sceneLight = makeSceneLight(camera);
-  Js.log2("Decl", Light.ProgramLight.getFragVarDecls(sceneLight));
-  Js.log2("Src", Light.ProgramLight.getLightFunction(sceneLight));
-  {
+  let bgColor = Scene.UVec3f.zeros();
+  let boardColor = Scene.UVec3f.zeros();
+  let lineColor = Scene.UVec3f.zeros();
+  let state = {
     tiles,
     tilesTex,
     elState,
@@ -72,8 +86,12 @@ let setup = (canvas) => {
     dropBeamVO,
     dropColor,
     sceneLight,
+    bgColor,
+    boardColor,
+    lineColor,
     gameState
-  }
+  };
+  setBg(state)
 };
 
 let createBoardNode = (state) => {
@@ -95,6 +113,8 @@ let createBoardNode = (state) => {
   );
   /* Grid node draws background to board */
   let gridNode = GridProgram.makeNode(
+    state.boardColor,
+    state.lineColor,
     state.tilesTex,
     tileShadows,
     beamNode,
@@ -148,7 +168,7 @@ let createLeftRow = (state) => {
             Scale(0.0),
             Scale(0.0),
             Scale(0.0),
-            Scale(0.05)
+            Scale(0.04)
           )
         ),
         ~spacing=Scene.Scale(0.04),
@@ -179,8 +199,8 @@ let createRightRow = (state) => {
     Quad.make(
       Point.make(-0.7, -0.54, 0.5),
       Point.make(0.8, -0.5, 0.5),
-      Point.make(0.8, 0.98, 0.5),
-      Point.make(-0.7, 0.98, 0.5)
+      Point.make(0.8, 1.0, 0.5),
+      Point.make(-0.7, 1.0, 0.5)
     )
   );
   Layout.stacked(
@@ -199,7 +219,7 @@ let createRightRow = (state) => {
             Scale(0.0),
             Scale(0.0),
             Scale(0.0),
-            Scale(0.05)
+            Scale(0.04)
           )
         ),
         ~spacing=Scene.Scale(0.04),
@@ -221,7 +241,9 @@ let createRightRow = (state) => {
 };
 
 let createRootNode = (state) => {
-    Background.makeNode([
+  Background.makeNode(
+    state.bgColor,
+    [
       Layout.horizontal(
         ~size=Scene.Aspect((14.0 +. 10.0) /. 26.0),
         [
@@ -230,7 +252,8 @@ let createRootNode = (state) => {
           createRightRow(state)
         ]
       )
-    ])
+    ]
+  )
 };
 
 let createScene = (canvas, state) => {

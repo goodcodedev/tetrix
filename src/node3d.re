@@ -5,11 +5,13 @@ let vertSource = () => {
         attribute vec3 normal;
         uniform mat3 layout;
         varying vec3 vPos;
+        varying vec3 vScreenPos;
         varying vec3 vNormal;
         void main() {
             // Z currently not affected by layout
             vec3 pos2 = vec3((vec3(position.xy, 1.0) * layout).xy, position.z);
             vPos = position;
+            vScreenPos = pos2;
             vNormal = normal;
             gl_Position = vec4(pos2, 1.0);
         }
@@ -22,6 +24,7 @@ let fragSource = (light) => {
     {|
         precision mediump float;
         varying vec3 vPos;
+        varying vec3 vScreenPos;
         varying vec3 vNormal;
         |} ++ lightDecls ++ {|
         

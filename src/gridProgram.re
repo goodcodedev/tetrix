@@ -21,6 +21,7 @@ let vertexSource = {|
 
 let fragmentSource = {|
     precision mediump float;
+    uniform vec3 bg;
     uniform vec3 lineColor;
     uniform vec2 elPos;
     uniform vec3 elColor;
@@ -50,7 +51,6 @@ let fragmentSource = {|
         float xblank = (mod(coord.x + xsize / 1.0, 1.0 / numCols) > xsize) ? 1.0 : 0.0;
         float yblank = (mod(coord.y + ysize / 1.0, 1.0 / numRows) > ysize) ? 1.0 : 0.0;
         float alpha = 1.0 - xblank * yblank;
-        vec3 bg = vec3(0.08, 0.12, 0.22);
         vec2 elVec = vPosition - (elPos + vec2(-0.03, 0.1));
         vec2 elVecNorm = normalize(elVec);
         // Roughly light a triangle below element
@@ -116,6 +116,8 @@ let draw = (ds, canvas) => {
 };
 
 let makeNode = (
+    boardColor,
+    lineColor,
     tilesTex,
     tileShadows,
     beamNode,
@@ -126,6 +128,7 @@ let makeNode = (
 ) => {
     open UpdateFlags;
     open Scene;
+    /*let bg = UVec3f.vals(0.08, 0.12, 0.22);*/
     makeNode(
         "grid",
         ~updateOn=[Init,ElPosChanged,ElChanged],
@@ -140,7 +143,8 @@ let makeNode = (
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~uniforms=[
-            ("lineColor", UVec3f.vals(0.15, 0.2, 0.3)),
+            ("bg", boardColor),
+            ("lineColor", lineColor),
             ("elPos", elState.pos),
             ("elColor", elState.color),
             ("dropColor", dropColor)

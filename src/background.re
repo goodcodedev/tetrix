@@ -111,7 +111,7 @@ let draw = (self) => {
     DrawState.draw(self.drawState, self.canvas);
 };
 
-let makeNode = (children) => {
+let makeNode = (color, children) => {
     open Scene;
     Scene.makeNode(
         "background",
@@ -119,7 +119,7 @@ let makeNode = (children) => {
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~uniforms=[
-            ("color", UVec3f.vals(0.14, 0.09, 0.20)),
+            ("color", color),
             ("anim", UFloat.make(0.0))
         ],
         ~pixelSizeUniform=true,

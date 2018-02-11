@@ -79,11 +79,15 @@ module PointLight = {
 
     let getLightFuncSource = (self, i) => {
         let istr = string_of_int(i);
-        let point = switch (self.pos) {
+        let lightPoint = switch (self.pos) {
         | StaticPos(v) => Data.Vec3.toGlsl(v)
         | DynamicPos(_) => "uPointPos" ++ istr
         };
-        let pointDir = "normalize(" ++ point ++ " - p)";
+        let point = switch (self.coords) {
+        | ScreenCoords => "vScreenPos"
+        | LocalCoords => "p"
+        };
+        let pointDir = "normalize(" ++ lightPoint ++ " - " ++ point ++ ")";
         let dot = "max(dot(" ++ pointDir ++ ", vNormal), 0.0) * "
                         ++ string_of_float(self.factor);
         dot
