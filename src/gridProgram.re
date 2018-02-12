@@ -31,6 +31,7 @@ let fragmentSource = {|
     uniform sampler2D tileShadows;
     uniform sampler2D beams;
     uniform sampler2D drop;
+    uniform vec4 centerRadius;
 
     varying vec2 vPosition;
     varying vec2 tileShadowsPos;
@@ -50,34 +51,35 @@ let fragmentSource = {|
         vec2 coord = (vPosition + 1.0) * 0.5;
         float xblank = (mod(coord.x + xsize / 1.0, 1.0 / numCols) > xsize) ? 1.0 : 0.0;
         float yblank = (mod(coord.y + ysize / 1.0, 1.0 / numRows) > ysize) ? 1.0 : 0.0;
-        float alpha = 1.0 - xblank * yblank;
-        vec2 elVec = vPosition - (elPos + vec2(-0.03, 0.1));
+        float lineCoef = 1.0 - xblank * yblank;
+        vec2 elVec = vPosition - centerRadius.xy;
         vec2 elVecNorm = normalize(elVec);
-        // Roughly light a triangle below element
-        float dir = dot(elVecNorm, vec2(0.0, -1.0));
         float elVecLength = length(elVec);
+
         float lengthCoef = max(1.5 - elVecLength, 0.0);
-        float light = smoothstep(-0.3, 0.5, dir) * lengthCoef * 0.05;
-        float colorLight = max(0.35 - length(elVec * aspect), 0.0) * 0.3;
-        // Add some shadow from neighbour tiles
-        // Perspective coord
-        vec2 persp = vPosition + vec2(
-            vPosition.x * 0.05,
-            vPosition.y * 0.05 * aspect.x
-        );
+
+        // Roughly light a triangle below element
+        float triangleDir = dot(elVecNorm, vec2(0.0, -1.0));
+        float triangleLight = smoothstep(-0.3, 0.5, triangleDir) * lengthCoef * 0.05;
+
+        // Aura light
+        float skew = (vPosition.y - centerRadius.y + 0.15) / 0.8;
+        float auraLight = max(0.15 - length(elVec * centerRadius.wz) * skew, 0.0) * 0.05;
+
         // Shadow
         float shadow = texture2D(tileShadows, tileShadowsPos).x;
         vec3 color = mix(bg, vec3(0.0, 0.0, 0.0), shadow * 0.6);
+
         // Line
-        color = mix(color, lineColor, alpha);
+        color = mix(color, lineColor, lineCoef);
+
         // Beam
         vec3 beam = texture2D(beams, beamsPos).xyz;
-        float beamCoef = 0.04 - (1.0 - smoothstep(0.2, 0.4, elVecLength)) * 0.04;
-        color = mix(color, beam, (beam.x == 0.0) ? 0.0 : beamCoef);
+        color = mix(color, beam, (beam.x == 0.0) ? 0.0 : 0.05);
         float dropBeam = texture2D(drop, dropPos).x;
         color = mix(color, dropColor, dropBeam * 0.2);
-        color = color + elColor * colorLight;
-        gl_FragColor = vec4(color + light, 1.0);
+        color = color + elColor * auraLight;
+        gl_FragColor = vec4(color + triangleLight, 1.0);
     }
 |};
 
@@ -124,7 +126,8 @@ let makeNode = (
     dropNode,
     dropColor,
     sdfTiles,
-    elState : SceneState.elState
+    elState : SceneState.elState,
+    centerRadius
 ) => {
     open UpdateFlags;
     open Scene;
@@ -147,7 +150,8 @@ let makeNode = (
             ("lineColor", lineColor),
             ("elPos", elState.pos),
             ("elColor", elState.color),
-            ("dropColor", dropColor)
+            ("dropColor", dropColor),
+            ("centerRadius", centerRadius)
         ],
         ~pixelSizeUniform=true,
         ~textures=[

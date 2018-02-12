@@ -15,6 +15,7 @@ let make = (points, (translateX, translateY), colorIndex) => {
     let points270 = List.map(rotate90, points180);
     /* Translate and set upper left corner points */
     let toTilePoints = ((x, y)) => {
+        /* Not sure about why y is flipped.. */
         ((x - translateX) / 2 - 1, ((y - translateY) / -2) - 1)
     };
     {

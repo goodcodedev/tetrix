@@ -8,6 +8,7 @@ type sceneState = {
   tiles: array(int),
   tilesTex: Gpu.Texture.t,
   elState: elState,
+  elCenterRadius: Gpu.uniform,
   nextEls: array(elState),
   holdingEl: elState,
   beamVO: Gpu.VertexObject.t,

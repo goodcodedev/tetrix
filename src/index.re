@@ -70,6 +70,7 @@ let setup = (canvas) => {
   let gameState = Game.setup(canvas, tiles);
   let camera = Camera.make(Data.Vec3.make(0.0, 0.4, 4.0));
   let sceneLight = makeSceneLight(camera);
+  let elCenterRadius = Scene.UVec4f.zeros();
   let elLightPos = Scene.UVec3f.zeros();
   let elLight = Light.PointLight.make(
     ~pos=Light.DynamicPos(elLightPos),
@@ -87,6 +88,7 @@ let setup = (canvas) => {
     tiles,
     tilesTex,
     elState,
+    elCenterRadius,
     nextEls: [|
       makeElState(),
       makeElState(),
@@ -135,7 +137,8 @@ let createBoardNode = (state) => {
     dropNode,
     state.dropColor,
     sdfTiles,
-    state.elState
+    state.elState,
+    state.elCenterRadius
   );
   let tileBlink = TileBlink.makeNode(state.blinkVO);
   Layout.stacked(
@@ -207,7 +210,7 @@ let createRightRow = (state) => {
   open Geom3d;
   let bgShape = AreaBetweenQuads.make(
     Quad.make(
-      Point.make(-1.0, -1.0, 0.0),
+      Point.make(-1.0, -0.95, 0.0),
       Point.make(1.0, -0.7, 0.0),
       Point.make(1.0, 1.0, 0.0),
       Point.make(-1.0, 1.0, 0.0)
@@ -303,7 +306,7 @@ let resetElState = (elState) => {
   VertexObject.updateQuads(elState.vo, [||]);
 };
 
-let updateElTiles = (el : Game.elData, elState, rows, cols) => {
+let updateElTiles = (el : Game.elData, elState, rows, cols, uCenterRadius) => {
   /* todo: Consider caching some of this */
   let tiles = Game.elTiles(el.el, el.rotation);
   let color = Game.tileColors2[el.color];
@@ -319,6 +322,19 @@ let updateElTiles = (el : Game.elData, elState, rows, cols) => {
     1. +. float_of_int(y) *. -.tileHeight
   |];
   Gpu.Uniform.setVec2f(elState.pos, elPos);
+  /* If we got center radius uniform (gridProgram currently uses this) */
+  switch (uCenterRadius) {
+  | None => ()
+  | Some(uCenterRadius) =>
+    let data = Hashtbl.find(Game.centerRadius, (el.el, el.rotation));
+    let cx = elPos[0] +. data.centerX *. tileWidth;
+    let cy = elPos[1] +. data.centerY *. tileHeight;
+    let rx = data.radiusX *. tileWidth;
+    let ry = data.radiusY *. tileHeight;
+    Js.log2("elpos", elPos);
+    Js.log3(data, rx, ry);
+    Gpu.Uniform.setVec4f(uCenterRadius, Data.Vec4.make(cx, cy, rx, ry));
+  };
   let currElTiles = Array.concat(List.map(((tileX, tileY)) => {
     /* 2x coord system with y 1.0 at top and -1.0 at bottom */
     let tileYScaled = float_of_int(tileY * -1) *. tileHeight;
@@ -422,7 +438,7 @@ let draw = (state, scene, canvas) => {
         "sinceDrop",
         ~from=0.0,
         ~last=1.0,
-        ~duration=0.15,
+        ~duration=0.2,
         ()
       );
       Scene.doAnim(scene, dropAnim);
@@ -431,17 +447,17 @@ let draw = (state, scene, canvas) => {
   if (elChanged) {
     /* Redraw next elements */
     let _ = Queue.fold((i, nextEl) => {
-      updateElTiles(nextEl, state.nextEls[i], 3, 4);
+      updateElTiles(nextEl, state.nextEls[i], 3, 4, None);
       i + 1
     }, 0, state.gameState.elQueue);
     /* Handle holding element */
     switch (state.gameState.holdingEl) {
-    | Some(holdingEl) => updateElTiles(holdingEl, state.holdingEl, 3, 4);
+    | Some(holdingEl) => updateElTiles(holdingEl, state.holdingEl, 3, 4, None);
     | None => resetElState(state.holdingEl);
     };
   };
   if (elMoved) {
-    updateElTiles(state.gameState.curEl, state.elState, tileRows, tileCols);
+    updateElTiles(state.gameState.curEl, state.elState, tileRows, tileCols, Some(state.elCenterRadius));
     /* We want elState.pos transformed by layout as light pos for element */
     let elPos = switch (state.elState.pos) {
     | Gpu.UniformVec2f(elPos) => elPos^

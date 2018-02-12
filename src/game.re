@@ -85,6 +85,83 @@ let tileColors2 = Array.map((color) => {
   [|240, 130, 120, 255|], /* Red left shift */
 |]);
 
+let listRange = (countDown) => {
+  let rec addToList = (list, countDown) => {
+    if (countDown <= 0) {
+      list
+    } else {
+      addToList([countDown, ...list], countDown - 1)
+    }
+  };
+  addToList([], countDown)
+};
+
+/* Center position and radius
+   for each tetronimo in each rotation
+   Can add other aggregate element data */
+
+type posRadius = {
+  centerX: float,
+  centerY: float,
+  radiusX: float,
+  radiusY: float,
+  debug: string,
+  tiles: list((int,int))
+};
+
+let centerRadius = Hashtbl.create(7 * 4);
+let addCenterRadius = (el, rot) => {
+  let left = ref(10);
+  let right = ref(-10);
+  let top = ref(10);
+  let bottom = ref(-10);
+  List.iter(((x, y)) => {
+    if (left^ > x) {
+      left := x;
+    };
+    if (right^ < x + 1) {
+      right := x + 1;
+    };
+    /* Y is flipped from definition in tetronimo.re and canvas,
+      some accidentality. Maybe generally use gl coord system
+      possibly clean up */
+    if (top^ > y) {
+      top := y;
+    };
+    if (bottom^ < y + 1) {
+      bottom := y + 1;
+    };
+  }, elTiles(el, rot));
+  let radiusX = float_of_int(right^ - left^);
+  let centerX = float_of_int(left^) +. radiusX /. 2.0;
+  let radiusY = float_of_int(top^ - bottom^) *. -1.0;
+  let centerY = float_of_int(top^ * -1) -. radiusY /. 2.0;
+  let sf = string_of_int;
+  Hashtbl.add(centerRadius, (el, rot), {
+    centerX,
+    centerY,
+    radiusX,
+    radiusY,
+    debug: "r" ++ sf(right^) ++ ",l" ++ sf(left^) ++ ",b" ++ sf(bottom^) ++ ",t" ++ sf(top^),
+    tiles: elTiles(el, rot)
+  });
+};
+
+List.iter((el) => {
+  addCenterRadius(el, 0);
+  addCenterRadius(el, 1);
+  addCenterRadius(el, 2);
+  addCenterRadius(el, 3);
+}, [
+  Cube,
+  Line,
+  Triangle,
+  RightTurn,
+  LeftTurn,
+  LeftL,
+  RightL
+]);
+
 type elData = {
   el: element,
   posX: int,
@@ -497,17 +574,6 @@ let elToTiles = (state) => {
   }, elTiles(state.curEl.el, state.curEl.rotation));
 };
 
-let listRange = (countDown) => {
-  let rec addToList = (list, countDown) => {
-    if (countDown <= 0) {
-      list
-    } else {
-      addToList([countDown, ...list], countDown - 1)
-    }
-  };
-  addToList([], countDown)
-};
-
 let processAction = (state) => {
   switch state.action {
   | MoveLeft  => {
@@ -547,19 +613,30 @@ let processAction = (state) => {
       | (true, state) => dropDown(state)
       }
     };
-    /* Copy drop beams */
-    Array.iteri((i, (from, last)) => {
-      state.dropBeams[i] = (from, last);
-    }, state.beams);
     let elColor = tileColors2[state.curEl.color];
     let dropColor = Color.fromFloats(elColor[0], elColor[1], elColor[2]);
-    dropDown({
+    /* Set dropbeams,
+       copy drop beams "from", "last" from position after drop */
+    Array.iteri((i, (from, _last)) => {
+      state.dropBeams[i] = (from, beamNone);
+    }, state.beams);
+    let state = dropDown({
       ...state,
       dropColor,
       hasDroppedDown: true,
       posChanged: true,
       action: None
-    })
+    });
+    /* Set new "last" from current position */
+    List.iter(((x, y)) => {
+      let pointX = state.curEl.posX + x;
+      let pointY = state.curEl.posY + y;
+      let (beamFrom, beamTo) = state.dropBeams[pointX];
+      if (beamTo < pointY) {
+        state.dropBeams[pointX] = (beamFrom, pointY);
+      };
+    }, elTiles(state.curEl.el, state.curEl.rotation));
+    state
   }
   | RotateCW => {
     switch (attemptRotateCW(state)) {
