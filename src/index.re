@@ -46,6 +46,7 @@ let setBg = (state) => {
 let setup = (canvas) => {
   /* Element position and color uniforms */
   let beamVO = VertexObject.makeQuad(~usage=DynamicDraw, ());
+  let blinkVO = VertexObject.makeQuad(~usage=DynamicDraw, ());
   let dropBeamVO = VertexObject.make(
     VertexBuffer.make(
       [||],
@@ -95,6 +96,7 @@ let setup = (canvas) => {
     beamVO,
     dropBeamVO,
     dropColor,
+    blinkVO,
     sceneLight,
     elLightPos,
     sceneAndElLight,
@@ -135,6 +137,7 @@ let createBoardNode = (state) => {
     sdfTiles,
     state.elState
   );
+  let tileBlink = TileBlink.makeNode(state.blinkVO);
   Layout.stacked(
     ~key="boardLayout",
     ~size=Scene.Aspect(
@@ -143,7 +146,8 @@ let createBoardNode = (state) => {
     [
       gridNode,
       tilesDraw,
-      currEl
+      currEl,
+      tileBlink
     ]
   )
 };
@@ -363,6 +367,38 @@ let updateBeams = (beams, beamsVO, withFromDrop) => {
   VertexObject.updateQuads(beamsVO, vertices);
 };
 
+let blinkInit = (scene, state) => {
+  let blinkRows = state.gameState.blinkRows;
+  /* Update VO */
+  let rowHeight = 2.0 /. float_of_int(Config.tileRows);
+  let vertices = Array.fold_left((vertices, rowIdx) => {
+      Array.append(vertices, [|
+          -1.0, 1.0 -. rowHeight *. float_of_int(rowIdx + 1),
+          1.0, 1.0 -. rowHeight *. float_of_int(rowIdx + 1),
+          1.0, 1.0 -. rowHeight *. float_of_int(rowIdx),
+          -1.0, 1.0 -. rowHeight *. float_of_int(rowIdx)
+      |]);
+  }, [||], blinkRows.rows);
+  VertexObject.updateQuads(state.blinkVO, vertices);
+  blinkRows.elapsed = 0.0;
+  blinkRows.state = Blinking;
+  /* Show tileBlink node */
+  switch (Scene.getNode(scene, "tileBlink")) {
+  | Some(tileBlink) => Scene.showNode(scene, tileBlink);
+  | _ => ()
+  };
+};
+
+let blinkEnd = (scene, state) => {
+  let blinkRows = state.gameState.blinkRows;
+  blinkRows.state = JustBlinked;
+  /* Hide tileBlink node */
+  switch (Scene.getNode(scene, "tileBlink")) {
+  | Some(tileBlink) => Scene.hideNode(scene, tileBlink);
+  | _ => ()
+  };
+};
+
 let draw = (state, scene, canvas) => {
   state.gameState = Game.draw(state.gameState, canvas);
   let (hasDroppedDown, elMoved, elChanged) = {
@@ -444,6 +480,23 @@ let draw = (state, scene, canvas) => {
     posChanged: false,
     rotateChanged: false,
     updateTiles: false
+  };
+  /* Blink rows */
+  let flags = switch (state.gameState.blinkRows.state) {
+  | BlinkInit =>
+    blinkInit(scene, state);
+    [UpdateFlags.TileBlink, ...flags]
+  | Blinking =>
+    let blinkRows = state.gameState.blinkRows;
+    blinkRows.elapsed = blinkRows.elapsed +. scene.canvas.deltaTime;
+    if (blinkRows.elapsed >= Config.blinkTime) {
+      /* End blinking */
+      blinkEnd(scene, state);
+      flags
+    } else {
+      [UpdateFlags.TileBlink, ...flags]
+    }
+  | _ => flags
   };
   Scene.update(scene, [UpdateFlags.Frame, ...flags]);
   state

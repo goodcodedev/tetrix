@@ -13,6 +13,7 @@ type sceneState = {
   beamVO: Gpu.VertexObject.t,
   dropBeamVO: Gpu.VertexObject.t,
   dropColor: Gpu.uniform,
+  blinkVO: Gpu.VertexObject.t,
   sceneLight: Light.ProgramLight.t,
   elLightPos: Gpu.uniform,
   sceneAndElLight: Light.ProgramLight.t,

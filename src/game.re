@@ -103,6 +103,7 @@ let beamNone = -2;
 module BlinkRows {
     type blinkState =
       | NotBlinking
+      | BlinkInit
       | Blinking
       | JustBlinked;
 
@@ -693,7 +694,7 @@ let drawGame = (state, canvas : Gpu.Canvas.t) => {
     };
     if (Array.length(completedRowIndexes) > 0) {
       state.blinkRows.rows = completedRowIndexes;
-      state.blinkRows.state = BlinkRows.Blinking;
+      state.blinkRows.state = BlinkRows.BlinkInit;
       state
     } else {
       afterTouchdown(state, canvas)
@@ -752,7 +753,7 @@ let draw = (state, canvas) => {
     switch (state.blinkRows.state) {
     | BlinkRows.NotBlinking =>
       mainProcess(state);
-    | BlinkRows.Blinking =>
+    | BlinkRows.Blinking | BlinkRows.BlinkInit =>
       /* Blink animation */
       state
     | BlinkRows.JustBlinked =>

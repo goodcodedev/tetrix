@@ -86,14 +86,16 @@ type t('state, 'flags) = {
     /* Update nodes keyed by node id/number,
        array is sized to cover all nodes */
     updateNodes: ArrayB.t(option(updateListNode('state, 'flags))),
-    mutable updateRoot: option(updateListNode('state, 'flags))
+    mutable updateRoot: option(updateListNode('state, 'flags)),
+    mutable hiddenNodes: list(int)
 }
 and drawListDebug('state, 'flags) = {
     draw: DrawListDebug.t
 }
 and updateState('flags) = {
     flags: list('flags),
-    anims: list(int)
+    anims: list(int),
+    hiddenNodes: list(int)
 }
 and node('state, 'flags) = {
     key: string,
@@ -200,6 +202,11 @@ and updateListNode('state, 'flags) = {
     isDep: bool,
     /* Whether this is a node in the deps list */
     isDepRoot: bool,
+    /* Whether this is part of a stacked layout,
+       then placed as a child */
+    prevStacked: list(updateListNode('state, 'flags)),
+    /* Partitioned to prev and next stacked */
+    mutable nextStacked: list(updateListNode('state, 'flags)),
     /* Reference to the node */
     updNode: node('state, 'flags),
     /* Rectangle of the node, this is referenced in
@@ -513,8 +520,19 @@ let make = (
     stencilDraw: StencilDraw.make(canvas),
     onFlags: Hashtbl.create(50),
     updateNodes: ArrayB.make(None),
-    updateRoot: None
+    updateRoot: None,
+    hiddenNodes: []
 }
+};
+
+let hideNode = (scene, node) => {
+    node.hidden = true;
+    scene.hiddenNodes = List.sort((a, b) => (a > b) ? 1 : -1, [node.id, ...scene.hiddenNodes]);
+};
+
+let showNode = (scene, node) => {
+    node.hidden = false;
+    scene.hiddenNodes = List.filter((n) => n != node.id, scene.hiddenNodes);
 };
 
 let makeAnim = (node, onFrame, duration, ~next=?, ()) => {
@@ -612,7 +630,11 @@ findInParents(node, key)
    parent, and children (loopChild),
    .. just handle root in body of function */
 let createUpdateTree = (scene, root) => {
-    let rec loop = (node, parent, isDep, isDepRoot, stacked) => {
+    let rec loop = (node, parent, isDep, isDepRoot, prevStacked) => {
+        /* Check for hidden */
+        if (node.hidden) {
+            scene.hiddenNodes = [node.id, ...scene.hiddenNodes];
+        };
         let stencil = if (node.transparent || node.partialDraw) {
             None
         } else {
@@ -651,7 +673,9 @@ let createUpdateTree = (scene, root) => {
             parentRects: [],
             updDeps: [],
             updChildren: [],
-            parent: parent
+            parent: parent,
+            prevStacked,
+            nextStacked: []
         };
         /* Add to indexes for node id/number and flag */
         scene.updateNodes.data[node.id] = Some(updateNode);
@@ -666,36 +690,33 @@ let createUpdateTree = (scene, root) => {
         updateNode.updDeps = List.map((dep) => loop(dep, Some(updateNode), true, true, []), node.deps);
         switch (node.layout.childLayout) {
         | Stacked =>
-            /* Treat stacked layout as flattened children
-               where the stack nodes from parent are added as last child
-               as far as drawing is concerned */
-            switch (node.children) {
-            | [] =>
-                /* Stacked layout but no children */
-                switch (stacked) {
-                | [] => ();
-                | [first, ...rest] => updateNode.updChildren = [loop(first, Some(updateNode), isDep, false, rest)];
-                };
-            | [first, ...rest] =>
-                /* Append stacked from parent after this new list
-                   of stacked children */
-                updateNode.updChildren = [loop(first, Some(updateNode), isDep, false, List.append(rest, stacked))]
-            };
+            /* Loop stacked children, and pass on accumulated children as prevStacked */
+            let updChildren = List.fold_left((updChildren, stackedChild) => {
+                let updChild = loop(stackedChild, Some(updateNode), isDep, false, updChildren);
+                [updChild, ...updChildren]
+            }, [], node.children);
+            /* Set nextStacked, updChildren is in reverse order from original child order */
+            let _ = List.fold_left((nextStacked, updChild) => {
+                updChild.nextStacked = nextStacked;
+                [updChild, ...nextStacked]
+            }, [], updChildren);
+            updateNode.updChildren = List.rev(updChildren);
         | _ =>
-            switch (stacked) {
-            | [] =>
-                /* Normal processing of children */
-                updateNode.updChildren = List.map((child) => loop(child, Some(updateNode), isDep, false, []), node.children);
-            | [first, ...rest] =>
-                /* We are in middle of a stacked layout, collect children,
-                   and keep next stacked item as last child */
-                updateNode.updChildren = List.rev(List.fold_left((list, child) => {
-                    [loop(child, Some(updateNode), isDep, false, []), ...list]
-                }, [loop(first, Some(updateNode), isDep, false, rest)], node.children));
-            };
+            updateNode.updChildren = List.map((child) => loop(child, Some(updateNode), isDep, false, []), node.children);
         };
         /* All children have added their stencils,
-           propagate them to parent */
+           propagate them to prevStacked and parent */
+        let rec addStencilsToNodeAndChildren = (updNode) => {
+            /* Add to updNode */
+            List.iter((updStencil) => {
+                updNode.stencils = [updStencil, ...updNode.stencils];
+            }, updateNode.stencils);
+            /* And updNodes children */
+            List.iter((updNodeChild) => addStencilsToNodeAndChildren(updNodeChild), updNode.updChildren);
+        };
+        List.iter((prevStacked) => {
+            addStencilsToNodeAndChildren(prevStacked);
+        }, prevStacked);
         if (!updateNode.isDepRoot) {
             switch (updateNode.parent) {
             | Some(parent) =>
@@ -708,81 +729,104 @@ let createUpdateTree = (scene, root) => {
         updateNode
     };
     ArrayB.ensureSize(scene.updateNodes, currNodeId^);
-    loop(root, None, false, false, [])
+    let tree = loop(root, None, false, false, []);
+    /* Sort added hidden nodes */
+    scene.hiddenNodes = List.sort((a, b) => (a > b) ? 1 : -1, scene.hiddenNodes);
+    tree
 };
 
 let rec setChildToUpdate = (updNode) => {
-    updNode.update = true;
-    List.iter((updChild) => {
-        if (!updChild.update) {
-            setChildToUpdate(updChild);
-        };
-    }, updNode.updChildren);
+    if (!updNode.updNode.hidden) {
+        updNode.update = true;
+        List.iter((updChild) => {
+            if (!updChild.update) {
+                setChildToUpdate(updChild);
+            };
+        }, updNode.updChildren);
+    }
 };
 
 let rec setDepParentToUpdate = (updNode) => {
-    /* todo: more fine grained update
-       when coming from deps. Currently
-       just turning on update
-       There should be a rect propagated up
-       to node with this dependency, then
-       to it's children */
-    updNode.update = true;
-    /* This might be uneccesary if we do more
-       fine grained update */
-    List.iter((updChild) => {
-        if (!updChild.update) {
-            setChildToUpdate(updChild);
-        };
-    }, updNode.updChildren);
-    switch (updNode.parent) {
-    | Some(parent) =>
-        if (parent.isDep) {
-            if (!parent.update) {
-                setDepParentToUpdate(parent);
+    if (!updNode.updNode.hidden) {
+        /* todo: more fine grained update
+        when coming from deps. Currently
+        just turning on update
+        There should be a rect propagated up
+        to node with this dependency, then
+        to it's children */
+        updNode.update = true;
+        /* This might be uneccesary if we do more
+        fine grained update */
+        List.iter((updChild) => {
+            if (!updChild.update) {
+                setChildToUpdate(updChild);
             };
-        } else {
-            /* Propagate to regular update of node that
-               has this as dependency */
-            if (!parent.update) {
-                setToUpdate(parent);
-            };
-        };
-    | None => ();
-    };
-}
-and setToUpdate = (updNode) => {
-    updNode.update = true;
-    List.iter((updChild) => {
-        if (!updChild.update) {
-            setChildToUpdate(updChild);
-        };
-    }, updNode.updChildren);
-    if (updNode.isDep) {
+        }, updNode.updChildren);
         switch (updNode.parent) {
         | Some(parent) =>
-            if (!parent.update) {
-                if (parent.isDep) {
+            if (parent.isDep) {
+                if (!parent.update) {
                     setDepParentToUpdate(parent);
-                } else {
+                };
+            } else {
+                /* Propagate to regular update of node that
+                has this as dependency */
+                if (!parent.update) {
                     setToUpdate(parent);
                 };
             };
-        | None => failwith("Dependency without parent");
+        | None => ();
         };
     };
-    /* Mark upwards in the tree that a child
-        needs update */
-    let rec markChildUpdate = (updNode) => {
-        updNode.childUpdate = true;
+}
+and setToUpdate = (updNode) => {
+    if (!updNode.updNode.hidden) {
+        updNode.update = true;
+        /* If this is stacked layout, set
+        previous children to update */
+        List.iter((prevStacked) => {
+            if (!prevStacked.update) {
+                setToUpdate(prevStacked);
+            };
+        }, updNode.prevStacked);
+        List.iter((updChild) => {
+            if (!updChild.update) {
+                setChildToUpdate(updChild);
+            };
+        }, updNode.updChildren);
+        /* Then next stacked if this is in the middle
+        of a stacked layout */
+        List.iter((nextStacked) => {
+            if (!nextStacked.update) {
+                setToUpdate(nextStacked);
+            };
+        }, updNode.nextStacked);
+        if (updNode.isDep) {
+            switch (updNode.parent) {
+            | Some(parent) =>
+                if (!parent.update) {
+                    if (parent.isDep) {
+                        setDepParentToUpdate(parent);
+                    } else {
+                        setToUpdate(parent);
+                    };
+                };
+            | None => failwith("Dependency without parent");
+            };
+        };
+        /* Mark upwards in the tree that a child
+            needs update */
+        let rec markChildUpdate = (updNode) => {
+            updNode.childUpdate = true;
+            switch (updNode.parent) {
+            | Some(parent) when (parent.childUpdate == false) => markChildUpdate(parent);
+            | _ => ();
+            };
+        };
         switch (updNode.parent) {
         | Some(parent) when (parent.childUpdate == false) => markChildUpdate(parent);
         | _ => ();
         };
-    };
-    switch (updNode.parent) {
-    | Some(parent) when (parent.childUpdate == false) => markChildUpdate(parent);
-    | _ => ();
     };
 };
 
@@ -817,50 +861,55 @@ let actRectUntilCovered = (updNode) => {
        parents, sets their active status and return
        a list of newly created updateRects until
        a covering node is found */
-    let rec loopNewRects = (parent) => {
-        switch (parent) {
-        | Some(parent) =>
-            if (!parent.updNode.selfDraw) {
+    let rec loopNewRects = (updNode : updateListNode('state, 'flags)) => {
+        /* First process any prevStacked */
+        let next = switch (updNode.prevStacked) {
+        | [] => updNode.parent
+        | [prev, ..._rest] => Some(prev)
+        };
+        switch (next) {
+        | Some(next) =>
+            if (!next.updNode.selfDraw) {
                 /* Skipping layout nodes now,
                    possibly there could be use of
                    having rects there if they propagate
                    to their children */
-                loopNewRects(parent.parent)
+                loopNewRects(next)
             } else {
                 let covers = (
-                    !(parent.updNode.transparent || parent.updNode.partialDraw)
-                    && Geom2d.Rect.contains(parent.updNode.rect, updNode.updNode.rect)
+                    !(next.updNode.transparent || next.updNode.partialDraw)
+                    && Geom2d.Rect.contains(next.updNode.rect, updNode.updNode.rect)
                 );
                 let updRect = {
                     rect: updNode.updNode.rect,
                     scisRect: updNode.updNode.scissorRect,
-                    rNode: parent,
+                    rNode: next,
                     stencils: [],
                     covers,
-                    active: !(parent.updNode.hidden || parent.update)
+                    active: !(next.updNode.hidden || next.update)
                 };
-                parent.childRects = [updRect, ...parent.childRects];
+                next.childRects = [updRect, ...next.childRects];
                 /* For normal childs they are hidden when parent
                    are hidden, but stacked layouts are
                    rearranged so a parent may be hidden while
                    a child is not */
-                if (parent.updNode.hidden) {
+                if (next.updNode.hidden) {
                     /* Pass on rect for possible later use, but it will not be active */
-                    [updRect, ...loopNewRects(updRect.rNode.parent)]
-                } else if (parent.update) {
+                    [updRect, ...loopNewRects(updRect.rNode)]
+                } else if (next.update) {
                     if (updRect.covers) {
                         /* Update and covers, done */
                         [updRect]
                     } else {
                         actStencil(updRect.rNode);
-                        [updRect, ...loopNewRects(updRect.rNode.parent)]
+                        [updRect, ...loopNewRects(updRect.rNode)]
                     }
                 } else {
                     if (updRect.covers) {
                         [updRect]
                     } else {
                         actStencil(updRect.rNode);
-                        [updRect, ...loopNewRects(updRect.rNode.parent)];
+                        [updRect, ...loopNewRects(updRect.rNode)];
                     }
                 }
             }
@@ -876,14 +925,14 @@ let actRectUntilCovered = (updNode) => {
             if (updRect.rNode.updNode.hidden) {
                 updNode.parentRects = List.append(
                     updNode.parentRects,
-                    loopNewRects(updRect.rNode.parent)
+                    loopNewRects(updRect.rNode)
                 );
             } else if (updRect.rNode.update) {
                 if (!updRect.covers) {
                     actStencil(updRect.rNode);
                     updNode.parentRects = List.append(
                         updNode.parentRects,
-                        loopNewRects(updRect.rNode.parent)
+                        loopNewRects(updRect.rNode)
                     );
                 };
             } else {
@@ -892,7 +941,7 @@ let actRectUntilCovered = (updNode) => {
                     actStencil(updRect.rNode);
                     updNode.parentRects = List.append(
                         updNode.parentRects,
-                        loopNewRects(updRect.rNode.parent)
+                        loopNewRects(updRect.rNode)
                     );
                 }
             };
@@ -914,7 +963,7 @@ let actRectUntilCovered = (updNode) => {
         | [] =>
             /* This should only be case for initial empty list,
                or actual empty list for rootish node */
-            updNode.parentRects = loopNewRects(updNode.parent);
+            updNode.parentRects = loopNewRects(updNode);
         };
     };
     loopRects(updNode.parentRects);
@@ -1885,7 +1934,8 @@ let update2 = (self, updateFlags) => {
     let sortedFlags = List.sort((a, b) => (a < b) ? -1 : 1, updateFlags);
     let updateState = {
         flags: sortedFlags,
-        anims: animIds
+        anims: animIds,
+        hiddenNodes: self.hiddenNodes
     };
     if (!Hashtbl.mem(self.updateLists, updateState)) {
         Hashtbl.add(self.updateLists, updateState, getSceneNodesToUpdate(sortedFlags, animIds, self.root));
@@ -1946,7 +1996,8 @@ let update = (self, updateFlags) => {
     let sortedFlags = List.sort((a, b) => (a < b) ? -1 : 1, updateFlags);
     let updateState = {
         flags: sortedFlags,
-        anims: animIds
+        anims: animIds,
+        hiddenNodes: self.hiddenNodes
     };
     if (!Hashtbl.mem(self.drawLists, updateState)) {
         let drawList = createDrawList(self, sortedFlags, animIds, self.root);
