@@ -49,9 +49,12 @@ let fragmentSource = {|
         vec2 aspect = vec2(numCols / numRows, 1.0);
         // Normalized coord to 0.0 - 1.0
         vec2 coord = (vPosition + 1.0) * 0.5;
-        float xblank = (mod(coord.x + xsize / 1.0, 1.0 / numCols) > xsize) ? 1.0 : 0.0;
-        float yblank = (mod(coord.y + ysize / 1.0, 1.0 / numRows) > ysize) ? 1.0 : 0.0;
-        float lineCoef = 1.0 - xblank * yblank;
+        float colSize = 1.0 / numCols;
+        float rowSize = 1.0 / numRows;
+        float xblank = (mod(coord.x + xsize, colSize) > xsize) ? 1.0 : 0.0;
+        float x3blank = (mod(coord.x + xsize + colSize*3.0, colSize * 6.0) > xsize * 2.0) ? 1.0 : 0.0;
+        float yblank = (mod(coord.y + ysize, rowSize) > ysize) ? 1.0 : 0.0;
+        float lineCoef = 1.0 - xblank * yblank * x3blank;
         vec2 elVec = vPosition - centerRadius.xy;
         vec2 elVecNorm = normalize(elVec);
         float elVecLength = length(elVec);
@@ -64,6 +67,7 @@ let fragmentSource = {|
 
         // Aura light
         float skew = (vPosition.y - centerRadius.y + 0.15) / 0.8;
+        skew = 1.0;
         float auraLight = max(0.15 - length(elVec * centerRadius.wz) * skew, 0.0) * 0.05;
 
         // Shadow

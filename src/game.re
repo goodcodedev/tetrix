@@ -36,6 +36,7 @@ type inputAction =
   | MoveDown
   | BlockLeft
   | BlockRight
+  | BlockEnd
   | CancelDown
   | DropDown
   | RotateCW
@@ -105,8 +106,9 @@ type posRadius = {
   centerY: float,
   radiusX: float,
   radiusY: float,
-  debug: string,
-  tiles: list((int,int))
+  width: int,
+  height: int,
+  offsetX: int
 };
 
 let centerRadius = Hashtbl.create(7 * 4);
@@ -120,8 +122,7 @@ let addCenterRadius = (el, rot) => {
       left := x;
     };
     if (right^ < x + 1) {
-      right := x + 1;
-    };
+      right := x + 1; };
     /* Y is flipped from definition in tetronimo.re and canvas,
       some accidentality. Maybe generally use gl coord system
       possibly clean up */
@@ -132,18 +133,22 @@ let addCenterRadius = (el, rot) => {
       bottom := y + 1;
     };
   }, elTiles(el, rot));
-  let radiusX = float_of_int(right^ - left^);
+  let width = right^ - left^;
+  let height = top^ - bottom^;
+  let radiusX = float_of_int(width);
   let centerX = float_of_int(left^) +. radiusX /. 2.0;
-  let radiusY = float_of_int(top^ - bottom^) *. -1.0;
+  let radiusY = float_of_int(height) *. -1.0;
   let centerY = float_of_int(top^ * -1) -. radiusY /. 2.0;
+  let offsetX = left^;
   let sf = string_of_int;
   Hashtbl.add(centerRadius, (el, rot), {
     centerX,
     centerY,
     radiusX,
     radiusY,
-    debug: "r" ++ sf(right^) ++ ",l" ++ sf(left^) ++ ",b" ++ sf(bottom^) ++ ",t" ++ sf(top^),
-    tiles: elTiles(el, rot)
+    width,
+    height,
+    offsetX
   });
 };
 
@@ -585,12 +590,49 @@ let processAction = (state) => {
     action: None
   }
   | BlockLeft => {
-    ...List.fold_left((state, _) => attemptMove(state, (-1, 0)), state, listRange(3)),
-    action: None
+    let data = Hashtbl.find(centerRadius, (state.curEl.el, state.curEl.rotation));
+    let leftPos = state.curEl.posX + data.offsetX;
+    let toMove = leftPos - if (leftPos > 9) {
+      9
+    } else if (leftPos > 3) {
+      3
+    } else {
+      0
+    };
+    {
+      ...List.fold_left((state, _) => attemptMove(state, (-1, 0)), state, listRange(toMove)),
+      action: None
+    }
   }
   | BlockRight => {
-    ...List.fold_left((state, _) => attemptMove(state, (1, 0)), state, listRange(3)),
-    action: None
+    let data = Hashtbl.find(centerRadius, (state.curEl.el, state.curEl.rotation));
+    let leftPos = state.curEl.posX + data.offsetX;
+    let toMove = (if (leftPos < 3) {
+      3
+    } else if (leftPos < 9) {
+      9
+    } else {
+      14
+    }) - leftPos;
+    {
+      ...List.fold_left((state, _) => attemptMove(state, (1, 0)), state, listRange(toMove)),
+      action: None
+    }
+  }
+  | BlockEnd => {
+    let data = Hashtbl.find(centerRadius, (state.curEl.el, state.curEl.rotation));
+    let rightPos = state.curEl.posX + data.offsetX + data.width;
+    let toMove = (if (rightPos < 3) {
+      3
+    } else if (rightPos < 9) {
+      9
+    } else {
+      12
+    }) - rightPos;
+    {
+      ...List.fold_left((state, _) => attemptMove(state, (1, 0)), state, listRange(toMove)),
+      action: None
+    }
   }
   | MoveBeginning => {
     ...List.fold_left((state, _) => attemptMove(state, (-1, 0)), state, listRange(state.curEl.posX)),
@@ -853,9 +895,13 @@ let keyPressed = (state, canvas : Gpu.Canvas.t) => {
       ...state,
       action: MoveRight
     }
-    | W | E => {
+    | W => {
       ...state,
       action: BlockRight
+    }
+    | E => {
+      ...state,
+      action: BlockEnd
     }
     | B => {
       ...state,

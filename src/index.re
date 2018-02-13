@@ -331,8 +331,6 @@ let updateElTiles = (el : Game.elData, elState, rows, cols, uCenterRadius) => {
     let cy = elPos[1] +. data.centerY *. tileHeight;
     let rx = data.radiusX *. tileWidth;
     let ry = data.radiusY *. tileHeight;
-    Js.log2("elpos", elPos);
-    Js.log3(data, rx, ry);
     Gpu.Uniform.setVec4f(uCenterRadius, Data.Vec4.make(cx, cy, rx, ry));
   };
   let currElTiles = Array.concat(List.map(((tileX, tileY)) => {
