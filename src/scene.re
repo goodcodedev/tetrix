@@ -130,6 +130,7 @@ and node('state, 'flags) = {
     pixelSizeUniform: option(Gpu.uniform),
     elapsedUniform: option(Gpu.uniform),
     drawToTexture: option(Gpu.Texture.t),
+    texTransUniform: option(Gpu.uniform),
     clearOnDraw: bool,
     mutable parent: option(node('state, 'flags)),
     mutable scene: option(t('state, 'flags))
@@ -364,6 +365,7 @@ let makeNode = (
     ~hidable=false,
     ~deps=[],
     ~drawTo=Framebuffer,
+    ~texTransUniform=false,
     ~clearOnDraw=false,
     ()
 ) => {
@@ -438,6 +440,15 @@ let makeNode = (
     | TextureItem(texture) =>
         Some(texture)
     };
+    /* Texture transformation could either
+       come with layout uniform, or in a separate
+       uniform for example if the shader wants
+       to do lighting based on layout coords */
+    let texTransUniform = switch (drawTo, texTransUniform) {
+    | (Framebuffer, _) => None
+    | (_, false) => None
+    | (_, true) => Some(Gpu.UniformMat3f(ref(Data.Mat3.id())))
+    };
     {
         key,
         id: nextNodeId(),
@@ -481,6 +492,7 @@ let makeNode = (
         elapsedUniform,
         drawToTexture,
         clearOnDraw,
+        texTransUniform,
         parent: None,
         scene: None
     }
@@ -1227,7 +1239,7 @@ let getFBuffer = (self, config : fbufferConfig) => {
     }
 };
 
-let debugNodes = ["sdfTiles"];
+let debugNodes = [];
 
 let draw = (self, node) => {
     /*Js.log("Drawing " ++ node.key);*/
@@ -1423,6 +1435,11 @@ let uniforms = switch (node.pixelSizeUniform) {
 /* Layout uniform */
 let uniforms = switch (node.layoutUniform) {
 | Some(layoutUniform) => [Gpu.Uniform.make("layout", layoutUniform), ...uniforms]
+| None => uniforms
+};
+/* TexTrans uniform */
+let uniforms = switch (node.texTransUniform) {
+| Some(texTransUniform) => [Gpu.Uniform.make("texTrans", texTransUniform), ...uniforms]
 | None => uniforms
 };
 let uniforms = Array.of_list(List.append(List.map(
@@ -1701,6 +1718,11 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
         /* Set width/height of children and deps */
         List.iter((dep) => calcNodeDimensions(dep, paddedWidth, paddedHeight), node.deps);
         List.iter((child) => calcNodeDimensions(child, paddedWidth, paddedHeight), node.children);
+        /* Set x and y offset for deps */
+        List.iter((dep) => {
+            dep.calcLayout.pXOffset = x;
+            dep.calcLayout.pYOffset = y;
+        }, node.deps);
         /* Todo: allow to set a pixel value or something for one child,
            then allow one of the other elements to stretch to available space */
         /* Handle aligns */
@@ -1831,8 +1853,8 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
             let scaleX = calcLayout.inWidth /. vpWidth;
             let scaleY = calcLayout.inHeight /. vpHeight;
             let scale = Data.Mat3.scale(scaleX, scaleY);
-            switch (node.drawToTexture) {
-            | Some(texture) =>
+            switch (node.drawToTexture, node.texTransUniform) {
+            | (Some(texture), None) =>
                 /* Translate texture to begin from 0,0.
                    The important thing is correspondance with texture
                    uniforms below */
@@ -1850,7 +1872,7 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
                 if (debug) {
                     Js.log2("Layout: ", layoutMat);
                 };
-            | None =>
+            | (None, _) =>
                 /* Can this be simplified? */
                 let translate = Data.Mat3.trans(
                     ((calcLayout.pXOffset +. (calcLayout.inWidth /. 2.0) -. vpWidthCenter) /. vpWidth *. 2.0),
@@ -1863,6 +1885,26 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
                     Js.log2("Translate: ", translate);
                     Js.log2("Layout: ", layoutMat);
                 };
+            | (Some(texture), Some(texTransUniform)) =>
+                /* First regular layout uniform */
+                let transX = ((calcLayout.pXOffset +. (calcLayout.inWidth /. 2.0) -. vpWidthCenter) /. vpWidth *. 2.0);
+                let transY = ((calcLayout.pYOffset +. (calcLayout.inHeight /. 2.0) -. vpHeightMiddle) /. vpHeight *. -2.0);
+                let translate = Data.Mat3.trans(
+                    transX,
+                    transY
+                );
+                let layoutMat = Data.Mat3.matmul(translate, scale);
+                Gpu.Uniform.setMat3f(layoutUniform, layoutMat);
+                /* texTransUniform */
+                let (texWidth, texHeight) = switch (Gpu.Texture.getSize(texture)) {
+                | Some((texWidth, texHeight)) => (float_of_int(texWidth), float_of_int(texHeight))
+                | None => failwith("Could not find texture size");
+                };
+                let translate = Data.Mat3.trans(
+                    (texWidth -. scaleX *. texWidth) /. texWidth *. -1.0 -. transX,
+                    (texHeight -. scaleY *. texHeight) /. texHeight -. transY
+                );
+                Gpu.Uniform.setMat3f(texTransUniform, translate);
             }
         };
         switch (node.pixelSizeUniform) {

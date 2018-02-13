@@ -22,6 +22,9 @@ type inited = {
     canvas: Canvas.t
 };
 
+/* Some of these are incomplete,
+   should rethink some of the options here
+   that are accidental */
 let makeVertexSource = (self) => {
     switch (self.model, self.fragCoords) {
     | (Some(_model), ByModel) => {|
@@ -29,6 +32,7 @@ let makeVertexSource = (self) => {
         attribute vec2 position;
         uniform mat3 model;
         uniform mat3 layout;
+        uniform mat3 texTrans;
         varying vec2 vPosition;
         varying vec3 vScreenPos;
         void main() {
@@ -44,39 +48,48 @@ let makeVertexSource = (self) => {
         attribute vec2 position;
         uniform mat3 model;
         uniform mat3 layout;
+        uniform mat3 texTrans;
         varying vec2 vPosition;
         varying vec3 vScreenPos;
         void main() {
             vec2 pos = (vec3(position, 1.0) * (layout * model)).xy;
             vScreenPos = vec3(pos, 0.0);
             vPosition = position;
-            gl_Position = vec4(vScreenPos, 1.0);
+            // texTrans
+            pos = (vec3(pos, 1.0) * texTrans).xy;
+            gl_Position = vec4(pos, 0.0, 1.0);
         }
     |}
     | (None, ZeroToOne) => {|
         precision mediump float;
         attribute vec2 position;
         uniform mat3 layout;
+        uniform mat3 texTrans;
         varying vec2 vPosition;
         varying vec3 vScreenPos;
         void main() {
             vPosition = (position + vec2(1.0, -1.0)) * vec2(0.5, -0.5);
             vec2 pos = (vec3(position, 1.0) * layout).xy;
             vScreenPos = vec3(pos, 0.0);
-            gl_Position = vec4(vScreenPos, 1.0);
+            // texTrans
+            pos = (vec3(pos, 1.0) * texTrans).xy;
+            gl_Position = vec4(pos, 0.0, 1.0);
         }
     |}
     | (None, _) => {|
         precision mediump float;
         attribute vec2 position;
         uniform mat3 layout;
+        uniform mat3 texTrans;
         varying vec2 vPosition;
         varying vec3 vScreenPos;
         void main() {
             vPosition = position;
             vec2 pos = (vec3(position, 1.0) * layout).xy;
             vScreenPos = vec3(pos, 0.0);
-            gl_Position = vec4(vScreenPos, 1.0);
+            // texTrans
+            pos = (vec3(pos, 1.0) * texTrans).xy;
+            gl_Position = vec4(pos, 0.0, 1.0);
         }
     |}
     }
@@ -151,6 +164,8 @@ let makeFragmentSource = (self) => {
             vec3 p = pixelEye + dist * vec3(0.0, 0.0, -1.0);
             vec3 color = |} ++ glColor  ++ {|;
             vec3 N = estimateNormal(p);
+            // todo: Adjust estimateNormal?
+            N.y = N.y * -1.0;
             float light = (lighting(p, vec3(vScreenPos.xy, p.z), N)).x;
             color = mix(mix(color, vec3(1.0, 1.0, 1.0), max(light - 0.5, 0.0)) * 0.9, vec3(0.0, 0.0, 0.0), max(0.5 + light * -1.0, 0.0) * 1.5);
             float alpha = |} ++ glAlpha  ++ {|;
@@ -261,6 +276,7 @@ let makeNode = (
         ~uniforms,
         ~children,
         ~drawTo=?drawTo,
+        ~texTransUniform=true,
         ()
     )
 };
