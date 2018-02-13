@@ -240,21 +240,20 @@ let makeNode = (
         StaticDraw
     );
     let indexBuffer = IndexBuffer.make([||], StaticDraw);
-    open Data;
-    let uModel = UniformMat3f(ref(Mat3.id()));
+    let uModel = Scene.UMat3f.id();
     let aspect = 1.0 /. height *. float_of_int(numLines);
+    let vo = Scene.SceneVO.make(vertexBuffer, Some(indexBuffer));
     let node = Scene.makeNode(
         "fontDraw",
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~updateOn=[UpdateFlags.Init],
-        ~textures=[("map", Scene.NodeTex.tex(fontTexture))],
-        ~vertices=vertexBuffer,
-        ~indices=indexBuffer,
+        ~textures=[("map", Scene.SceneTex.tex(fontTexture))],
+        ~vo,
         ~uniforms=[
             ("model", uModel),
-            ("color", UniformVec3f(ref(Color.toVec3(color)))),
-            ("opacity", UniformFloat(ref(opacity)))
+            ("color", Scene.UVec3f.vec(Color.toVec3(color))),
+            ("opacity", Scene.UFloat.make(opacity))
         ],
         ~pixelSizeUniform=true,
         ~transparent=true,
@@ -290,7 +289,7 @@ let makeNode = (
             Data.Mat3.trans(xTrans, 1.0 -. height),
             Data.Mat3.scale(scale, scale *. aspect)
         );
-        Uniform.setMat3f(uModel, modelMat);
+        Uniform.setMat3f(uModel.uniform, modelMat);
         node.loading = false;
     });
     node

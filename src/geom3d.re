@@ -134,6 +134,6 @@ module AreaBetweenQuads = {
             IndexBuffer.makeQuadsData(6),
             usage
         );
-        VertexObject.make(vbuf, Some(ibuf))
+        Scene.SVertexObject.make(vbuf, Some(ibuf))
     };
 };

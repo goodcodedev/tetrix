@@ -11,7 +11,7 @@ let resize = (state) => {
 let makeElState = () => {
   let pos = Scene.UVec2f.zeros();
   let color = Scene.UVec3f.zeros();
-  let vo = VertexObject.makeQuad(~usage=DynamicDraw, ());
+  let vo = Scene.SVertexObject.makeQuad(~usage=DynamicDraw, ());
   {
     vo,
     pos,
@@ -44,17 +44,17 @@ let setBg = (state) => {
   Hsl.incrH(board, 20.0);
   let line = Hsl.clone(board);
   Hsl.setL(line, 0.2);
-  Gpu.Uniform.setVec3f(state.bgColor, toVec3(Hsl.toRgb(bg)));
-  Gpu.Uniform.setVec3f(state.boardColor, toVec3(Hsl.toRgb(board)));
-  Gpu.Uniform.setVec3f(state.lineColor, toVec3(Hsl.toRgb(line)));
+  Scene.UVec3f.set(state.bgColor, toVec3(Hsl.toRgb(bg)));
+  Scene.UVec3f.set(state.boardColor, toVec3(Hsl.toRgb(board)));
+  Scene.UVec3f.set(state.lineColor, toVec3(Hsl.toRgb(line)));
   state
 };
 
 let setup = (canvas) => {
   /* Element position and color uniforms */
-  let beamVO = VertexObject.makeQuad(~usage=DynamicDraw, ());
-  let blinkVO = VertexObject.makeQuad(~usage=DynamicDraw, ());
-  let dropBeamVO = VertexObject.make(
+  let beamVO = Scene.SVertexObject.makeQuad(~usage=DynamicDraw, ());
+  let blinkVO = Scene.SVertexObject.makeQuad(~usage=DynamicDraw, ());
+  let dropBeamVO = Scene.SVertexObject.make(
     VertexBuffer.make(
       [||],
       [|
@@ -67,11 +67,11 @@ let setup = (canvas) => {
   );
   let tiles = Array.make(tileRows * tileCols, 0);
   /* Texture with tiles data */
-  let tilesTex = Texture.make(
+  let tilesTex = Scene.SceneTex.tex(Texture.make(
     IntDataTexture(tiles, tileCols, tileRows),
     Texture.Luminance,
     Texture.NearestFilter
-  );
+  ));
   let elState = makeElState();
   let dropColor = Scene.UVec3f.zeros();
   let gameState = Game.setup(canvas, tiles);
@@ -281,14 +281,14 @@ let createRootNode = (state) => {
               createBoardNode(state),
               createRightRow(state)
             ]
-          )/*,
+          ),
           FontDraw.makeNode(
             "3",
             "digitalt",
             ~height=0.27,
             ~align=SdfFont.TextLayout.AlignCenter,
             ()
-          )*/
+          )
         ]
       )
     ]
@@ -323,7 +323,7 @@ let createScene = (canvas, state) => {
 };
 
 let resetElState = (elState) => {
-  VertexObject.updateQuads(elState.vo, [||]);
+  Scene.SVertexObject.updateQuads(elState.vo, [||]);
 };
 
 let updateElTiles = (el : Game.elData, elState, rows, cols, uCenterRadius) => {
@@ -332,7 +332,7 @@ let updateElTiles = (el : Game.elData, elState, rows, cols, uCenterRadius) => {
   let color = Game.tileColors2[el.color];
   let x = el.posX;
   let y = el.posY;
-  Gpu.Uniform.setVec3f(elState.color, color);
+  Scene.UVec3f.set(elState.color, color);
   /* Translate to -1.0 to 1.0 coords */
   let tileHeight = 2.0 /. float_of_int(rows);
   let tileWidth = 2.0 /. float_of_int(cols);
@@ -341,7 +341,7 @@ let updateElTiles = (el : Game.elData, elState, rows, cols, uCenterRadius) => {
     -1. +. float_of_int(x) *. tileWidth,
     1. +. float_of_int(y) *. -.tileHeight
   |];
-  Gpu.Uniform.setVec2f(elState.pos, elPos);
+  Scene.UVec2f.set(elState.pos, elPos);
   /* If we got center radius uniform (gridProgram currently uses this) */
   switch (uCenterRadius) {
   | None => ()
@@ -351,7 +351,7 @@ let updateElTiles = (el : Game.elData, elState, rows, cols, uCenterRadius) => {
     let cy = elPos[1] +. data.centerY *. tileHeight;
     let rx = data.radiusX *. tileWidth;
     let ry = data.radiusY *. tileHeight;
-    Gpu.Uniform.setVec4f(uCenterRadius, Data.Vec4.make(cx, cy, rx, ry));
+    Scene.UVec4f.set(uCenterRadius, Data.Vec4.make(cx, cy, rx, ry));
   };
   let currElTiles = Array.concat(List.map(((tileX, tileY)) => {
     /* 2x coord system with y 1.0 at top and -1.0 at bottom */
@@ -365,7 +365,7 @@ let updateElTiles = (el : Game.elData, elState, rows, cols, uCenterRadius) => {
       tileXScaled, tileYScaled
     |]
   }, tiles));
-  VertexObject.updateQuads(elState.vo, currElTiles);
+  Scene.SVertexObject.updateQuads(elState.vo, currElTiles);
 };
 
 let updateBeams = (beams, beamsVO, withFromDrop) => {
@@ -398,7 +398,7 @@ let updateBeams = (beams, beamsVO, withFromDrop) => {
       (i + 1, vertices)
     };
   }, (0, [||]), beams);
-  VertexObject.updateQuads(beamsVO, vertices);
+  Scene.SVertexObject.updateQuads(beamsVO, vertices);
 };
 
 let blinkInit = (scene, state) => {
@@ -413,7 +413,7 @@ let blinkInit = (scene, state) => {
           -1.0, 1.0 -. rowHeight *. float_of_int(rowIdx)
       |]);
   }, [||], blinkRows.rows);
-  VertexObject.updateQuads(state.blinkVO, vertices);
+  Scene.SVertexObject.updateQuads(state.blinkVO, vertices);
   blinkRows.elapsed = 0.0;
   blinkRows.state = Blinking;
   /* Show tileBlink node */
@@ -450,7 +450,7 @@ let draw = (state, scene, canvas) => {
     | Some(dropNode) =>
       /* Copy beam before updating it to use in animation */
       updateBeams(state.gameState.dropBeams, state.dropBeamVO, true);
-      Gpu.Uniform.setVec3f(state.dropColor, Color.toVec3(state.gameState.dropColor));
+      Scene.UVec3f.set(state.dropColor, Color.toVec3(state.gameState.dropColor));
       let dropAnim = Animate.uniform(
         dropNode,
         "sinceDrop",
@@ -477,8 +477,8 @@ let draw = (state, scene, canvas) => {
   if (elMoved) {
     updateElTiles(state.gameState.curEl, state.elState, tileRows, tileCols, Some(state.elCenterRadius));
     /* We want elState.pos transformed by layout as light pos for element */
-    let elPos = switch (state.elState.pos) {
-    | Gpu.UniformVec2f(elPos) => elPos^
+    let elPos = switch (Scene.UVec2f.get(state.elState.pos)) {
+    | Some(elPos) => elPos
     | _ => Data.Vec2.zeros()
     };
     switch (Scene.getNode(scene, "grid")) {
@@ -487,7 +487,7 @@ let draw = (state, scene, canvas) => {
       | Some(Gpu.UniformMat3f(layout)) =>
         let pointPos = Data.Mat3.vecmul(layout^, Data.Vec3.fromVec2(elPos, 1.0));
         Data.Vec3.setZ(pointPos, 0.25);
-        Gpu.Uniform.setVec3f(state.elLightPos, pointPos);
+        Scene.UVec3f.set(state.elLightPos, pointPos);
       | _ => ()
       };
     }
@@ -498,7 +498,7 @@ let draw = (state, scene, canvas) => {
   let flags = (elMoved) ? [UpdateFlags.ElPosChanged] : [];
   let flags = (elChanged) ? [UpdateFlags.ElChanged, ...flags] : flags;
   let flags = if (state.gameState.updateTiles) {
-    switch (state.tilesTex.inited) {
+    switch (state.tilesTex.texture.inited) {
     | Some(inited) => inited.update = true;
     | None => ()
     };

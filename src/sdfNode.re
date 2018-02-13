@@ -258,7 +258,7 @@ let makeNode = (
     let uniforms = switch(self.model) {
     | Some(model) => 
         [
-            ("model", UniformMat3f(ref(model))),
+            ("model", Scene.UMat3f.mat(model)),
         ]
     | None => []
     };

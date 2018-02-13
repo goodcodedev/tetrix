@@ -1,25 +1,25 @@
 type elState = {
-  vo: Gpu.VertexObject.t,
-  pos: Gpu.uniform,
-  color: Gpu.uniform
+  vo: Scene.sceneVertexObject,
+  pos: Scene.sceneUniform,
+  color: Scene.sceneUniform
 };
 
 type sceneState = {
   tiles: array(int),
-  tilesTex: Gpu.Texture.t,
+  tilesTex: Scene.sceneTexture,
   elState: elState,
-  elCenterRadius: Gpu.uniform,
+  elCenterRadius: Scene.sceneUniform,
   nextEls: array(elState),
   holdingEl: elState,
-  beamVO: Gpu.VertexObject.t,
-  dropBeamVO: Gpu.VertexObject.t,
-  dropColor: Gpu.uniform,
-  blinkVO: Gpu.VertexObject.t,
+  beamVO: Scene.sceneVertexObject,
+  dropBeamVO: Scene.sceneVertexObject,
+  dropColor: Scene.sceneUniform,
+  blinkVO: Scene.sceneVertexObject,
   sceneLight: Light.ProgramLight.t,
-  elLightPos: Gpu.uniform,
+  elLightPos: Scene.sceneUniform,
   sceneAndElLight: Light.ProgramLight.t,
-  bgColor: Gpu.uniform,
-  boardColor: Gpu.uniform,
-  lineColor: Gpu.uniform,
+  bgColor: Scene.sceneUniform,
+  boardColor: Scene.sceneUniform,
+  lineColor: Scene.sceneUniform,
   mutable gameState: Game.stateT
 };

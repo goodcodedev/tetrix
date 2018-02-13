@@ -46,7 +46,7 @@ let makeNode = (elState : SceneState.elState, sdfTiles) => {
             ("translation", elState.pos)
         ],
         ~textures=[
-            ("sdfTiles", Scene.NodeTex.node(sdfTiles))
+            ("sdfTiles", Scene.SceneTex.node(sdfTiles))
         ],
         ()
     )

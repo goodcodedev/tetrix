@@ -230,7 +230,7 @@ let makeNode = (tilesTex) => {
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~textures=[
-            ("tiles", Scene.NodeTex.tex(tilesTex))
+            ("tiles", tilesTex)
         ],
         ~drawTo=Scene.TextureRGBA,
         ()
@@ -246,7 +246,7 @@ let makeNode = (tilesTex) => {
         ],
         ~pixelSizeUniform=true,
         ~textures=[
-            ("unblurred", Scene.NodeTex.node(unblurred))
+            ("unblurred", Scene.SceneTex.node(unblurred))
         ],
         ~drawTo=Scene.TextureRGBA,
         ()
@@ -262,7 +262,7 @@ let makeNode = (tilesTex) => {
         ],
         ~pixelSizeUniform=true,
         ~textures=[
-            ("unblurred", Scene.NodeTex.node(blur1))
+            ("unblurred", Scene.SceneTex.node(blur1))
         ],
         ~drawTo=Scene.TextureRGB,
         ~deps=[

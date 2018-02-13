@@ -58,8 +58,8 @@ let makeNode = (tilesTex, sdfTiles) => {
         ~transparent=true,
         ~partialDraw=true,
         ~textures=[
-            ("tiles", NodeTex.tex(tilesTex)),
-            ("sdfTiles", NodeTex.node(sdfTiles))
+            ("tiles", tilesTex),
+            ("sdfTiles", SceneTex.node(sdfTiles))
         ],
         ()
     )

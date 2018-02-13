@@ -31,7 +31,7 @@ let makeNode = (~node, ()) => {
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~textures=[
-            ("tex", Scene.NodeTex.node(node))
+            ("tex", Scene.SceneTex.node(node))
         ],
         ~drawTo=Scene.TextureRGB,
         ()

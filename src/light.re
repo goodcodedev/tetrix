@@ -1,14 +1,14 @@
 type lightColor =
   | StaticColor(Color.t)
-  | DynamicColor(Gpu.uniform);
+  | DynamicColor(Scene.sceneUniform);
 
 type lightPos =
   | StaticPos(Data.Vec3.t)
-  | DynamicPos(Gpu.uniform);
+  | DynamicPos(Scene.sceneUniform);
 
 type lightDir =
   | StaticDir(Data.Vec3.t)
-  | DynamicDir(Gpu.uniform);
+  | DynamicDir(Scene.sceneUniform);
 
 type coordSystem =
   | ScreenCoords

@@ -122,10 +122,9 @@ and node('state, 'flags) = {
     fragShader: option(Gpu.Shader.t),
     textureList: list(string),
     textures: Hashtbl.t(string, nodeTex('state, 'flags)),
-    vertices: Gpu.VertexBuffer.t,
-    indices: option(Gpu.IndexBuffer.t),
+    vo: sceneVertexObject,
     uniformList: list(string),
-    uniforms: Hashtbl.t(string, Gpu.uniform),
+    uniforms: Hashtbl.t(string, sceneUniform),
     layoutUniform: option(Gpu.uniform),
     pixelSizeUniform: option(Gpu.uniform),
     elapsedUniform: option(Gpu.uniform),
@@ -134,6 +133,32 @@ and node('state, 'flags) = {
     clearOnDraw: bool,
     mutable parent: option(node('state, 'flags)),
     mutable scene: option(t('state, 'flags))
+}
+/* Also consider assigning id's to these
+   objects, then connecting id's to nodes */
+and sceneUniform = {
+    mutable nodes: list(int),
+    uniform: Gpu.uniform
+}
+and sceneVertexObject = {
+    mutable nodes: list(int),
+    vertexBuffer: Gpu.VertexBuffer.t,
+    indexBuffer: option(Gpu.IndexBuffer.t)
+}
+and sceneTexture = {
+    mutable nodes: list(int),
+    texture: Gpu.Texture.t,
+    texNode: option(int),
+    uniformMat: option(Gpu.uniform),
+    offsetX: dimension,
+    offsetY: dimension
+}
+and nodeTex('state, 'flags) = {
+    texture: Gpu.Texture.t,
+    texNode: option(node('state, 'flags)),
+    uniformMat: option(Gpu.uniform),
+    offsetX: dimension,
+    offsetY: dimension
 }
 and layout = {
     size: blockSize,
@@ -162,13 +187,6 @@ and anim('state, 'flags) = {
     duration: float,
     mutable elapsed: float,
     next: option(anim('state, 'flags))
-}
-and nodeTex('state, 'flags) = {
-    texture: Gpu.Texture.t,
-    texNode: option(node('state, 'flags)),
-    uniformMat: option(Gpu.uniform),
-    offsetX: dimension,
-    offsetY: dimension
 }
 and updateStencil = {
     mutable rect: Geom2d.Rect.t,
@@ -301,13 +319,51 @@ let makeLayout = (
         vAlign
     }
 };
-/* todo: greyscale */
+
+module SceneVO = {
+    let make = (vertexBuffer, indexBuffer) => {
+        {
+            nodes: [],
+            vertexBuffer,
+            indexBuffer
+        }
+    };
+};
+
 type drawTo =
   | Framebuffer
   | TextureRGBA
   | TextureRGB
   | TextureGreyscale
   | TextureItem(Gpu.Texture.t);
+
+module SceneTex {
+    let node = (~offsetX=Scale(0.0), ~offsetY=Scale(0.0), node) => {
+        let texture = switch (node.drawToTexture) {
+        | Some(texture) => texture
+        | None => failwith("Provided node does not draw to texture");
+        };
+        {
+            nodes: [],
+            texture,
+            texNode: Some(node.id),
+            uniformMat: Some(UniformMat3f(ref(Data.Mat3.id()))),
+            offsetX,
+            offsetY
+        }
+    };
+
+    let tex = (~offsetX=Scale(0.0), ~offsetY=Scale(0.0), texture) => {
+        {
+            nodes: [],
+            texture,
+            texNode: None,
+            uniformMat: None,
+            offsetX,
+            offsetY
+        }
+    };
+};
 
 module NodeTex {
     let node = (~offsetX=Scale(0.0), ~offsetY=Scale(0.0), node) => {
@@ -342,11 +398,9 @@ let makeNode = (
     ~updateOn=[],
     ~update=?,
     ~children=[],
-    ~textures : list((string, nodeTex('state, 'flags))) =[],
-    ~vertices=?,
-    ~indices=?,
-    ~vo : option(Gpu.VertexObject.t) =?,
-    ~uniforms=[],
+    ~textures : list((string, sceneTexture)) =[],
+    ~vo : option(sceneVertexObject) =?,
+    ~uniforms : list((string, sceneUniform))=[],
     ~layoutUniform=true,
     ~pixelSizeUniform=false,
     ~elapsedUniform=false,
@@ -376,7 +430,9 @@ let makeNode = (
         tbl
     };
     let textureList = List.map(((key, _texture)) => key, textures);
-    let textures = listToTbl(textures);
+    let textures = listToTbl(List.map(((name, tex)) => {
+        (name, NodeTex.tex(tex.texture))
+    }, textures));
     /* Provided uniform list */
     let uniformList = List.map(((key, _uniform)) => key, uniforms);
     let uniforms = listToTbl(uniforms);
@@ -400,13 +456,12 @@ let makeNode = (
     } else {
         None
     };
-    /* Vertices and indices can be passed as
-       separate objects, or as a vertex object */
-    let (vertices, indices) = switch (vo) {
-    | Some(vo) => (vo.vertices, vo.indices)
-    | None => switch (vertices, indices) {
-    | (Some(vertices), indices) => (vertices, indices)
-    | (None, _) => (quadVertices, Some(quadIndices))
+    let vo = switch (vo) {
+    | Some(vo) => vo
+    | None => {
+        nodes: [],
+        vertexBuffer: quadVertices,
+        indexBuffer: Some(quadIndices)
     }
     };
     let layout = {
@@ -483,8 +538,7 @@ let makeNode = (
         fragShader,
         textureList,
         textures,
-        vertices,
-        indices,
+        vo,
         uniformList,
         uniforms,
         layoutUniform,
@@ -1444,7 +1498,8 @@ let uniforms = switch (node.texTransUniform) {
 };
 let uniforms = Array.of_list(List.append(List.map(
     (key) => {
-        Gpu.Uniform.make(key, Hashtbl.find(node.uniforms, key))
+        let sUniform = Hashtbl.find(node.uniforms, key);
+        Gpu.Uniform.make(key, sUniform.uniform)
     },
     node.uniformList
 ), uniforms));
@@ -1470,8 +1525,8 @@ node.drawState = Some(Gpu.DrawState.init(
         fragShader,
         uniforms
     ),
-    node.vertices,
-    node.indices,
+    node.vo.vertexBuffer,
+    node.vo.indexBuffer,
     textures
 ));
 };
@@ -1541,22 +1596,22 @@ if (self.root.key == key) {
 
 let setUniformFloat = (node, key, value) => {
 let uniform = Hashtbl.find(node.uniforms, key);
-Gpu.Uniform.setFloat(uniform, value);
+Gpu.Uniform.setFloat(uniform.uniform, value);
 };
 
 let setUniformVec2f = (node, key, value) => {
 let uniform = Hashtbl.find(node.uniforms, key);
-Gpu.Uniform.setVec2f(uniform, value);
+Gpu.Uniform.setVec2f(uniform.uniform, value);
 };
 
 let setUniformVec3f = (node, key, value) => {
 let uniform = Hashtbl.find(node.uniforms, key);
-Gpu.Uniform.setVec3f(uniform, value);
+Gpu.Uniform.setVec3f(uniform.uniform, value);
 };
 
 let setUniformMat3f = (node, key, value) => {
 let uniform = Hashtbl.find(node.uniforms, key);
-Gpu.Uniform.setMat3f(uniform, value);
+Gpu.Uniform.setMat3f(uniform.uniform, value);
 };
 
 let calcLayout = (self) => {
@@ -2191,31 +2246,96 @@ let doAnim = (scene, anim) => {
     scene.anims = [anim, ...scene.anims];
 };
 
+module SVertexObject = {
+    let make = (vertexBuffer, indexBuffer) : sceneVertexObject => {
+        {
+            nodes: [],
+            vertexBuffer,
+            indexBuffer
+        }
+    };
+
+    let makeQuad = (~usage=Gpu.StaticDraw, ()) => {
+        let vBuffer = Gpu.VertexBuffer.makeQuad(~usage, ());
+        let iBuffer = Some(Gpu.IndexBuffer.make(Gpu.IndexBuffer.makeQuadsData(1), usage));
+        make(vBuffer, iBuffer)
+    };
+
+    let updateQuads = (self, vertices) => {
+        Gpu.VertexBuffer.setDataT(self.vertexBuffer, vertices);
+        let perElement = self.vertexBuffer.perElement * 4;
+        switch (self.indexBuffer) {
+        | Some(indices) =>
+            Gpu.IndexBuffer.setDataT(
+                indices,
+                Gpu.IndexBuffer.makeQuadsData(Array.length(vertices) / perElement)
+            );
+        | None => ()
+        };
+    };
+};
+
+let makeSceneUniform = (uniform) : sceneUniform => {
+    nodes: [],
+    uniform
+};
+
 module UFloat {
-    let make = (value) => Gpu.UniformFloat(ref(value));
-    let zero = () => Gpu.UniformFloat(ref(0.0));
-    let one = () => Gpu.UniformFloat(ref(1.0));
+    let make = (value) => makeSceneUniform(Gpu.UniformFloat(ref(value)));
+    let zero = () => makeSceneUniform(Gpu.UniformFloat(ref(0.0)));
+    let one = () => makeSceneUniform(Gpu.UniformFloat(ref(1.0)));
+    let set = (self, v) => {
+        Gpu.Uniform.setFloat(self.uniform, v);
+    };
 };
 
 module UVec2f {
-    let zeros = () => Gpu.UniformVec2f(ref(Data.Vec2.zeros()));
-    let vals = (a, b) => Gpu.UniformVec2f(ref(Data.Vec2.make(a, b)));
-    let fromArray = (arr) => Gpu.UniformVec2f(ref(Data.Vec2.fromArray(arr)));
+    let zeros = () => makeSceneUniform(Gpu.UniformVec2f(ref(Data.Vec2.zeros())));
+    let vals = (a, b) => makeSceneUniform(Gpu.UniformVec2f(ref(Data.Vec2.make(a, b))));
+    let fromArray = (arr) => makeSceneUniform(Gpu.UniformVec2f(ref(Data.Vec2.fromArray(arr))));
+    let set = (self, v) => {
+        Gpu.Uniform.setVec2f(self.uniform, v);
+    };
+    let setArr = (self, arr) => {
+        Gpu.Uniform.setVec2f(self.uniform, Data.Vec2.fromArray(arr));
+    };
+    let get = (self) => {
+        switch (self.uniform) {
+        | Gpu.UniformVec2f(v) => Some(v^)
+        | _ => None
+        }
+    };
 };
 
 module UVec3f {
-    let zeros = () => Gpu.UniformVec3f(ref(Data.Vec3.zeros()));
-    let vals = (a, b, c) => Gpu.UniformVec3f(ref(Data.Vec3.make(a, b, c)));
-    let fromArray = (arr) => Gpu.UniformVec3f(ref(Data.Vec3.fromArray(arr)));
+    let zeros = () => makeSceneUniform(Gpu.UniformVec3f(ref(Data.Vec3.zeros())));
+    let vals = (a, b, c) => makeSceneUniform(Gpu.UniformVec3f(ref(Data.Vec3.make(a, b, c))));
+    let fromArray = (arr) => makeSceneUniform(Gpu.UniformVec3f(ref(Data.Vec3.fromArray(arr))));
+    let vec = (v) => makeSceneUniform(Gpu.UniformVec3f(ref(v)));
+    let set = (self, v) => {
+        Gpu.Uniform.setVec3f(self.uniform, v);
+    };
+    let setArr = (self, arr) => {
+        Gpu.Uniform.setVec3f(self.uniform, Data.Vec3.fromArray(arr));
+    };
 };
 
 module UVec4f {
-    let zeros = () => Gpu.UniformVec4f(ref(Data.Vec4.zeros()));
-    let vals = (a, b, c, d) => Gpu.UniformVec4f(ref(Data.Vec4.make(a, b, c, d)));
-    let fromArray = (arr) => Gpu.UniformVec4f(ref(Data.Vec4.fromArray(arr)));
+    let zeros = () => makeSceneUniform(Gpu.UniformVec4f(ref(Data.Vec4.zeros())));
+    let vals = (a, b, c, d) => makeSceneUniform(Gpu.UniformVec4f(ref(Data.Vec4.make(a, b, c, d))));
+    let fromArray = (arr) => makeSceneUniform(Gpu.UniformVec4f(ref(Data.Vec4.fromArray(arr))));
+    let set = (self, v) => {
+        Gpu.Uniform.setVec4f(self.uniform, v);
+    };
+    let setArr = (self, arr) => {
+        Gpu.Uniform.setVec4f(self.uniform, Data.Vec4.fromArray(arr));
+    };
 };
 
 module UMat3f {
-    let id = () => Gpu.UniformMat3f(ref(Data.Mat3.id()));
-    let mat = (mat) => Gpu.UniformMat3f(ref(mat));
+    let id = () => makeSceneUniform(Gpu.UniformMat3f(ref(Data.Mat3.id())));
+    let mat = (mat) => makeSceneUniform(Gpu.UniformMat3f(ref(mat)));
+    let set = (self, v) => {
+        Gpu.Uniform.setMat3f(self.uniform, v);
+    };
 };

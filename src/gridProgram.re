@@ -54,7 +54,7 @@ let fragmentSource = {|
         float xblank = (mod(coord.x + xsize, colSize) > xsize) ? 1.0 : 0.0;
         float x3blank = (mod(coord.x + xsize + colSize*3.0, colSize * 6.0) > xsize * 2.0) ? 1.0 : 0.0;
         float yblank = (mod(coord.y + ysize, rowSize) > ysize) ? 1.0 : 0.0;
-        float lineCoef = 1.0 - xblank * yblank * x3blank;
+        float lineCoef = (1.0 - xblank * yblank * x3blank) * 0.9 + (1.0 - x3blank) * 0.1;
         vec2 elVec = vPosition - centerRadius.xy;
         vec2 elVecNorm = normalize(elVec);
         float elVecLength = length(elVec);
@@ -159,10 +159,10 @@ let makeNode = (
         ],
         ~pixelSizeUniform=true,
         ~textures=[
-            ("tiles", NodeTex.tex(tilesTex)),
-            ("tileShadows", NodeTex.node(tileShadows)),
-            ("beams", NodeTex.node(beamNode)),
-            ("drop", NodeTex.node(dropNode))
+            ("tiles", tilesTex),
+            ("tileShadows", SceneTex.node(tileShadows)),
+            ("beams", SceneTex.node(beamNode)),
+            ("drop", SceneTex.node(dropNode))
         ],
         ~deps=[
             sdfTiles,
