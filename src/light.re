@@ -14,18 +14,9 @@ type coordSystem =
   | ScreenCoords
   | LocalCoords;
 
-module Specular = {
-    type t = {
-        power: int,
-        camera: Camera.t
-    };
-
-    let make = (~power=16, camera) => {
-        {
-            power,
-            camera
-        }
-    };
+type fragSource = {
+    statements: string,
+    addend: string
 };
 
 module PointLight = {
@@ -33,7 +24,8 @@ module PointLight = {
         pos: lightPos,
         color: lightColor,
         coords: coordSystem,
-        factor: float
+        factor: float,
+        specular: int
     };
 
     let make = (
@@ -41,13 +33,15 @@ module PointLight = {
         ~color=StaticColor(Color.white()),
         ~coords=ScreenCoords,
         ~factor=0.6,
+        ~specular=12,
         ()
     ) => {
         {
             pos,
             color,
             coords,
-            factor
+            factor,
+            specular
         }
     };
 
@@ -77,7 +71,7 @@ module PointLight = {
         dir ++ color
     };
 
-    let getLightFuncSource = (self, i) => {
+    let getLightFuncSource = (self, i, camera : Camera.t) => {
         let istr = string_of_int(i);
         let lightPoint = switch (self.pos) {
         | StaticPos(v) => Data.Vec3.toGlsl(v)
@@ -91,10 +85,32 @@ module PointLight = {
         | DynamicColor(_) => "uPointColor" ++ istr
         | StaticColor(c) => Data.Vec3.toGlsl(c)
         };
-        let pointDir = "normalize(" ++ lightPoint ++ " - " ++ point ++ ")";
-        let dot = "max(dot(" ++ pointDir ++ ", normal), 0.0) * " ++ color ++ " * "
-                        ++ string_of_float(self.factor);
-        dot
+        /* todo: some should be done in vertex shader:
+           lightDir and cameraDir, which then should be
+           normalized in fragment shader */
+        let pointDir = "pointDir" ++ istr;
+        let pointDirStm = "vec3 " ++ pointDir ++ " = normalize(" ++ lightPoint ++ " - " ++ point ++ ");";
+        let dot = "max(dot(" ++ pointDir ++ ", normal), 0.0) * "
+                ++ color ++ " * " ++ string_of_float(self.factor);
+        if (self.specular == 0) {
+            {
+                statements: pointDirStm,
+                addend: dot
+            }
+        } else {
+            let lightDir = "lightDir" ++ istr;
+            let lightDirStm = "vec3 " ++ lightDir ++ " = normalize(" ++ point ++ " - " ++ lightPoint ++ ");";
+            let reflLight = "reflect(" ++ lightDir ++ ", normal)";
+            let cameraDir = "normalize(" ++ Data.Vec3.toGlsl(camera.pos) ++ " - " ++ point ++ ")";
+            let specular = "pow(clamp(dot(" ++ cameraDir ++ ", " ++ reflLight ++ "), 0.0, 1.0), "
+                            ++ string_of_int(self.specular) ++ ".0)";
+            let specularColor = "vec3(1.0, 1.0, 1.0)";
+            let specularAddend = specular ++ " * " ++ specularColor;
+            {
+                statements: pointDirStm ++ lightDirStm,
+                addend: specularAddend ++ " + " ++ dot
+            }
+        }
     };
 };
 
@@ -103,7 +119,8 @@ module Directional = {
         dir: lightDir,
         color: lightColor,
         coords: coordSystem,
-        factor: float
+        factor: float,
+        specular: int,
     };
 
     let make = (
@@ -111,13 +128,15 @@ module Directional = {
         ~color=StaticColor(Color.white()),
         ~coords=ScreenCoords,
         ~factor=0.4,
+        ~specular=16,
         ()
     ) => {
         {
             dir,
             color,
             coords,
-            factor
+            factor,
+            specular
         }
     };
 
@@ -145,7 +164,7 @@ module Directional = {
         dir ++ color
     };
 
-    let getLightFuncSource = (self) => {
+    let getLightFuncSource = (self, camera) => {
         let dir = switch (self.dir) {
         | StaticDir(v) => Data.Vec3.toGlsl(v)
         | DynamicDir(_) => "uDir"
@@ -156,7 +175,10 @@ module Directional = {
         };
         let dot = "max(dot(" ++ dir ++ ", normal), 0.0) * " ++ color ++ " * "
                         ++ string_of_float(self.factor);
-        dot
+        {
+            statements: "",
+            addend: dot
+        }
     };
 };
 
@@ -164,14 +186,14 @@ module ProgramLight = {
     type t = {
         dir: Directional.t,
         points: list(PointLight.t),
-        specular: Specular.t
+        camera: Camera.t
     };
 
-    let make = (dir, points, specular) => {
+    let make = (dir, points, camera) => {
         {
             dir,
             points,
-            specular
+            camera
         }
     };
 
@@ -182,7 +204,7 @@ module ProgramLight = {
         make(
             dirLight,
             [pointLight],
-            Specular.make(camera)
+            camera
         )
     };
 
@@ -208,11 +230,15 @@ module ProgramLight = {
     let getLightFunction = (self) => {
         /* Bit simplistic now, expecting expressions
            from the parts */
-        let (_, addends) = List.fold_left(((i, addends), p) => {
-            (i + 1, [PointLight.getLightFuncSource(p, i), ...addends])
+        let (_, parts) = List.fold_left(((i, parts), p) => {
+            (i + 1, [PointLight.getLightFuncSource(p, i, self.camera), ...parts])
         }, (0, []), self.points);
-        let addends = [Directional.getLightFuncSource(self.dir), ...addends];
+        let parts = [Directional.getLightFuncSource(self.dir, self.camera), ...parts];
+        let (statements, addends) = List.fold_left(((statements, addends), part) => {
+            (statements ++ part.statements, [part.addend, ...addends])
+        }, ("", []), parts);
         "vec3 lighting(vec3 localP, vec3 screenP, vec3 normal) {\n"
+        ++ statements
         ++ "return " ++ String.concat(" + ", addends) ++ ";\n"
         ++ "}\n"
     };

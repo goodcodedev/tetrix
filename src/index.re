@@ -21,12 +21,19 @@ let makeElState = () => {
 
 let makeSceneLight = (camera) => {
   open Light;
-  let dirLight = Directional.make(~dir=StaticDir(Data.Vec3.make(0.4, 0.3, 0.3)), ());
-  let pointLight = PointLight.make(~pos=StaticPos(Data.Vec3.make(0.0, -0.4, 2.0)), ());
+  let dirLight = Directional.make(
+    ~dir=StaticDir(Data.Vec3.make(0.4, 0.3, 0.3)),
+    ()
+  );
+  let pointLight = PointLight.make(
+    ~pos=StaticPos(Data.Vec3.make(0.0, -0.4, 2.0)),
+    ~specular=12,
+    ()
+  );
   ProgramLight.make(
     dirLight,
     [pointLight],
-    Specular.make(camera)
+    camera
   )
 };
 
@@ -75,6 +82,7 @@ let setup = (canvas) => {
   let elLight = Light.PointLight.make(
     ~pos=Light.DynamicPos(elLightPos),
     ~color=Light.DynamicColor(elState.color),
+    ~specular=0,
     ()
   );
   let sceneAndElLight = {
@@ -260,15 +268,27 @@ let createRightRow = (state) => {
 };
 
 let createRootNode = (state) => {
+  let mainSize = Scene.Aspect((14.0 +. 10.0) /. 26.0);
   Background.makeNode(
     state.bgColor,
     [
-      Layout.horizontal(
-        ~size=Scene.Aspect((14.0 +. 10.0) /. 26.0),
+      Layout.stacked(
         [
-          createLeftRow(state),
-          createBoardNode(state),
-          createRightRow(state)
+          Layout.horizontal(
+            ~size=mainSize,
+            [
+              createLeftRow(state),
+              createBoardNode(state),
+              createRightRow(state)
+            ]
+          )/*,
+          FontDraw.makeNode(
+            "3",
+            "digitalt",
+            ~height=0.27,
+            ~align=SdfFont.TextLayout.AlignCenter,
+            ()
+          )*/
         ]
       )
     ]
