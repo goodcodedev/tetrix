@@ -18,7 +18,7 @@ let vertexSource = {|
         // Took rise over run with smoothFactor as run and factor as rise,
         // subtracted x - x*slope to get + constant.
         smoothFactor = model[0][0] * pixelSize.x;
-        smoothFactor = (smoothFactor * -1.5211904762 + 15.4452380953);
+        smoothFactor = (smoothFactor * -1.6211904762 + 15.4452380953);
         vec2 pos = vec3(vec3(position, 1.0) * model * layout).xy;
         gl_Position = vec4(pos, 0.0, 1.0);
     }

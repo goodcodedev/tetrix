@@ -1860,11 +1860,34 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
         /* Handle aligns */
         switch (layout.childLayout) {
         | Stacked =>
-            List.iter((child) => {
-                let cl = child.calcLayout;
-                cl.pXOffset = x +. cl.marginX1;
-                cl.pYOffset = y +. cl.marginY1;
-            }, node.children);
+            switch (layout.hAlign) {
+            | AlignLeft => 
+                List.iter((child) => {
+                    child.calcLayout.pXOffset = x +. child.calcLayout.marginX1;
+                }, node.children);
+            | AlignCenter =>
+                List.iter((child) => {
+                    child.calcLayout.pXOffset = x +. ((paddedWidth -. child.calcLayout.pWidth) /. 2.0) +. child.calcLayout.marginX1;
+                }, node.children);
+            | AlignRight =>
+                List.iter((child) => {
+                    child.calcLayout.pXOffset = x +. paddedWidth -. child.calcLayout.pWidth +. child.calcLayout.marginX1;
+                }, node.children);
+            };
+            switch (layout.vAlign) {
+            | AlignTop =>
+                List.iter((child) => {
+                    child.calcLayout.pYOffset = y +. child.calcLayout.marginY1;
+                }, node.children);
+            | AlignMiddle =>
+                List.iter((child) => {
+                    child.calcLayout.pYOffset = y +. ((paddedHeight -. child.calcLayout.pHeight) /. 2.0) +. child.calcLayout.marginY1;
+                }, node.children);
+            | AlignBottom =>
+                List.iter((child) => {
+                    child.calcLayout.pYOffset = y +. paddedHeight -. child.calcLayout.pHeight +. child.calcLayout.marginY1;
+                }, node.children);
+            };
         | Horizontal =>
             /* Use ratio as scale. Not sure if it makes total sense,
                possibly restrict to width, height dimensions */

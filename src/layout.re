@@ -5,6 +5,8 @@ let vertical = (
     ~spacing=?,
     ~margin=?,
     ~hidden=false,
+    ~hAlign=Scene.AlignCenter,
+    ~vAlign=Scene.AlignMiddle,
     children
 ) => {
     Scene.makeNode(
@@ -13,6 +15,8 @@ let vertical = (
         ~spacing=?spacing,
         ~margin=?margin,
         ~childLayout=Scene.Vertical,
+        ~hAlign,
+        ~vAlign,
         ~selfDraw=false,
         ~children,
         ~hidden,

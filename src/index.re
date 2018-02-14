@@ -275,21 +275,34 @@ let createRootNode = (state) => {
         [
           Layout.horizontal(
             ~size=mainSize,
-            ~hidden=false,
+            ~hidden=true,
             [
               createLeftRow(state),
               createBoardNode(state),
               createRightRow(state)
             ]
           ),
-          FontDraw.makeNode(
-            "3210000123",
-            "digitalt",
-            ~key="countdown",
-            ~height=0.27,
-            ~align=SdfFont.TextLayout.AlignCenter,
-            ~hidden=false,
-            ()
+          Layout.vertical(
+            [
+              FontDraw.makeNode(
+                "Vimtris",
+                "digitalt",
+                ~key="countdown",
+                ~height=0.25,
+                ~align=SdfFont.TextLayout.AlignCenter,
+                ~hidden=false,
+                ()
+              ),
+              FontDraw.makeNode(
+                "Press N to play",
+                "digitalt",
+                ~key="countdown",
+                ~height=0.08,
+                ~align=SdfFont.TextLayout.AlignCenter,
+                ~hidden=false,
+                ()
+              )
+            ]
           )
         ]
       )
