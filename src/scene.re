@@ -75,6 +75,8 @@ type t('state, 'flags) = {
     updateLists: Hashtbl.t(updateState('flags), list(node('state, 'flags))),
     drawLists: Hashtbl.t(updateState('flags), list(drawListItem('state, 'flags))),
     drawListsDebug: option(drawListDebug('state, 'flags)),
+    initedLists: Hashtbl.t(updateState('flags), bool),
+    initedDeps: Hashtbl.t(int, bool),
     mutable loadingNodes: list((list('flags), node('state, 'flags))),
     mutable anims: list(anim('state, 'flags)),
     fbuffer: Hashtbl.t(fbufferConfig, Gpu.FrameBuffer.inited),
@@ -93,6 +95,7 @@ and drawListDebug('state, 'flags) = {
 and updateState('flags) = {
     flags: list('flags),
     anims: list(int),
+    updateNodes: list(int),
     hiddenNodes: list(int)
 }
 and node('state, 'flags) = {
@@ -569,8 +572,10 @@ let make = (
     root,
     inited: false,
     updateLists: Hashtbl.create(5),
-    drawLists: Hashtbl.create(5),
+    drawLists: Hashtbl.create(30),
     drawListsDebug,
+    initedLists: Hashtbl.create(30),
+    initedDeps: Hashtbl.create(10),
     loadingNodes: [],
     anims: [],
     fbuffer: Hashtbl.create(1),
@@ -1037,7 +1042,8 @@ let actRectUntilCovered = (updNode) => {
     loopRects(updNode.parentRects);
 };
 
-let createDrawList = (scene, flags, animIds, root) => {
+/* UpdateNodes should be check for visibility up front */
+let createDrawList = (scene, flags, updateNodes, updRoot) => {
     /* Set nodes to update */
     let updNodes = List.fold_left((updNodes, flag) => {
         if (Hashtbl.mem(scene.onFlags, flag)) {
@@ -1057,7 +1063,7 @@ let createDrawList = (scene, flags, animIds, root) => {
             [updNode, ...nodes]
         | None => failwith("Could not find update node with id: " ++ string_of_int(nodeId));
         };
-    }, [], animIds), ...updNodes];
+    }, [], updateNodes), ...updNodes];
     /* Do second pass on nodes to update
        to check for transparent nodes and
        ensure they are covered by a parent */
@@ -1289,7 +1295,7 @@ let createDrawList = (scene, flags, animIds, root) => {
     };
     /* Not sure if we need to useProgram for stencil buffers */
     Reasongl.Gl.useProgram(~context=scene.canvas.context, scene.stencilDraw.program.programRef);
-    switch (scene.updateNodes.data[root.id]) {
+    switch (scene.updateNodes.data[updRoot.id]) {
     | Some(updRoot) =>
         let drawList = drawListLoop(updRoot, [], false);
         /* Clear active rect if any */
@@ -1444,8 +1450,13 @@ let processDrawList = (scene, drawList, flags, debug) => {
     processDrawEl(drawList);
 };
 
-let logDrawList = (scene, updateState, drawList) => {
-    Js.log2("Drawlist", updateState.flags);
+let logDrawList = (scene, updateState : updateState('flags), drawList) => {
+    Js.log2("====\nDrawlist", List.fold_left((str, id) => {
+        switch (scene.updateNodes.data[id]) {
+        | Some(node) => str ++ ", " ++ node.updNode.key
+        | None => str
+        }
+    }, "", updateState.updateNodes));
     List.iter((animId) => {
         let n = scene.updateNodes.data[animId];
         let key = switch (n) {
@@ -2065,6 +2076,7 @@ let update2 = (self, updateFlags) => {
     let updateState = {
         flags: sortedFlags,
         anims: animIds,
+        updateNodes: [],
         hiddenNodes: self.hiddenNodes
     };
     if (!Hashtbl.mem(self.updateLists, updateState)) {
@@ -2102,25 +2114,50 @@ let update2 = (self, updateFlags) => {
     }, Hashtbl.find(self.updateLists, updateState));
 };
 
-/* Returns list of node ids with dep node ids added */
-let collectDeps = (scene, nodeIds) => {
+/* Returns list of dep node ids */
+let collectDeps = (scene, nodeIds, hiddenNodes) => {
     let rec loop = (node, list) => {
-        /* Add deps and loop them */
-        let list = List.fold_left((list, dep) => {
-            loop(dep, [dep.id, ...list])
-        }, list, node.deps);
-        /* Traverse children */
-        List.fold_left((list, child) => {
-            loop(child, list)
-        }, list, node.children)
+        if (List.exists((hiddenId) => hiddenId == node.id, hiddenNodes)) {
+            list
+        } else {
+            /* Add deps and loop them */
+            let list = List.fold_left((list, dep) => {
+                loop(dep, [dep.id, ...list])
+            }, list, node.deps);
+            /* Traverse children */
+            List.fold_left((list, child) => {
+                loop(child, list)
+            }, list, node.children)
+        }
     };
     List.fold_left((list, nodeId) => {
         let node = switch (scene.updateNodes.data[nodeId]) {
         | Some(updNode) => updNode.updNode
         | None => failwith("Could not find node");
         };
-        loop(node, [nodeId, ...list])
+        loop(node, list)
     }, [], nodeIds)
+};
+
+/* Checks node and parents for hidden flag
+   Would feel a little better to take in
+   a list of hidden nodes, on the other
+   hand this is probably more efficient */
+let isNodeHidden = (scene, nodeId) => {
+    let rec loop = (node) => {
+        if (node.hidden) {
+            true
+        } else {
+            switch (node.parent) {
+            | Some(parent) => loop(parent)
+            | None => false
+            }
+        }
+    };
+    switch (scene.updateNodes.data[nodeId]) {
+    | Some(node) => loop(node.updNode)
+    | None => failwith("Could not find node");
+    }
 };
 
 /* Creates a drawList that shows which
@@ -2144,7 +2181,7 @@ let update = (self, updateFlags) => {
     self.anims = doAnims(self.anims);
     /* Queued nodes, these are queued because of
        updates in uniforms, vertices or textures */
-    let updates = List.sort_uniq((a, b) => (a < b) ? -1 : (a > b) ? 1 : 0, List.append(animIds, self.queuedUpdates));
+    let updateNodes = List.sort_uniq((a, b) => (a < b) ? -1 : (a > b) ? 1 : 0, List.append(animIds, self.queuedUpdates));
     /* todo: Consider filtering hidden node ids.
        Those hidden may be hidden below another hidden node,
        requiring some traversal. Maybe a cache could be used,
@@ -2154,14 +2191,54 @@ let update = (self, updateFlags) => {
     /* todo: is this ok to sort variant types?
        use some hashset type? */
     let sortedFlags = List.sort((a, b) => (a < b) ? -1 : 1, updateFlags);
-    let sortedFlags = [];
     let updateState = {
         flags: sortedFlags,
-        anims: updates,
+        anims: animIds,
+        updateNodes,
         hiddenNodes: self.hiddenNodes
     };
+    /* Ensure state is inited */
+    /* Both here and when creating drawList, we could
+       use filtered list of visible nodes,
+       but this is called 60 times a second so we don't want to
+       do it when uneccesary, so we keep an option around */
+    let visibleNodes = if (!Hashtbl.mem(self.initedLists, updateState)) {
+        let visibleNodes = List.filter((nodeId) => !isNodeHidden(self, nodeId), updateNodes);
+        Hashtbl.add(self.initedLists, updateState, true);
+        List.iter((nodeId) => {
+            let depIds = collectDeps(self, [nodeId], self.hiddenNodes);
+            List.iter((depId) => {
+                if (!Hashtbl.mem(self.initedDeps, depId)) {
+                    Hashtbl.add(self.initedDeps, depId, true);
+                    /* If dep is in list of update nodes, let other
+                        drawlist include dep */
+                    if (!List.exists((nodeId) => nodeId == depId, updateNodes)) {
+                        switch (self.updateNodes.data[depId]) {
+                        | Some(depNode) =>
+                            let depDraws = createDrawList(self, [], [depId], depNode.updNode);
+                            processDrawList(self, depDraws, [], false);
+                            switch (self.drawListsDebug) {
+                            | None => ()
+                            | Some(_listsDebug) =>
+                                Js.log("==\nDep drawlist: " ++ depNode.updNode.key);
+                                logDrawList(self, updateState, depDraws);
+                            };
+                        | None => failwith("Could not find dep node");
+                        };
+                    };
+                };
+            }, depIds);
+        }, visibleNodes);
+        Some(visibleNodes)
+    } else {
+        None
+    };
     if (!Hashtbl.mem(self.drawLists, updateState)) {
-        let drawList = createDrawList(self, sortedFlags, updates, self.root);
+        let visibleNodes = switch (visibleNodes) {
+        | None => List.filter((nodeId) => !isNodeHidden(self, nodeId), updateNodes)
+        | Some(visibleNodes) => visibleNodes
+        };
+        let drawList = createDrawList(self, sortedFlags, visibleNodes, self.root);
         Hashtbl.add(self.drawLists, updateState, drawList);
         switch (self.drawListsDebug) {
         | None => ()
@@ -2244,7 +2321,7 @@ let doResize = (scene) => {
     Hashtbl.clear(scene.drawLists);
     calcLayout(scene);
     /* Todo: Draw whole scene instead of the flags(?) */
-    queueUpdates(scene, collectDeps(scene, [scene.root.id]));
+    queueUpdates(scene, [scene.root.id]);
     /* Not sure how well it fits to do update, but it
        might make cleaner draw lists */
     update(scene, []);
@@ -2269,7 +2346,7 @@ let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()
             canvas.elapsed = canvas.elapsed +. canvas.deltaTime;
             if (!scene.inited) {
                 /* Create updateNodes */
-                queueUpdates(scene, collectDeps(scene, [scene.root.id]));
+                queueUpdates(scene, [scene.root.id]);
                 update(scene, []);
                 scene.inited = true;
             };

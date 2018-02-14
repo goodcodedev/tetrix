@@ -274,6 +274,7 @@ let createRootNode = (state) => {
         [
           Layout.horizontal(
             ~size=mainSize,
+            ~hidden=false,
             [
               createLeftRow(state),
               createBoardNode(state),
@@ -283,6 +284,7 @@ let createRootNode = (state) => {
           FontDraw.makeNode(
             "3",
             "digitalt",
+            ~key="countdown",
             ~height=0.27,
             ~align=SdfFont.TextLayout.AlignCenter,
             ~hidden=true,

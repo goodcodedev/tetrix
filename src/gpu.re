@@ -922,6 +922,48 @@ module Stencil = {
     [@bs.send] external stencilMask : (Gl.contextT, int) => unit = "stencilMask";
 };
 
+module Error = {
+
+    type glError = 
+      | NoError
+      | InvalidEnum
+      | InvalidValue
+      | InvalidOperation
+      | InvalidFramebufferOperation
+      | OutOfMemory
+      | ContextLostWebgl
+      | OtherError(int);
+
+    [@bs.send]
+    external _getError : (Gl.contextT) => int = "getError";
+
+    let getError = (context) => {
+        switch (_getError(context)) {
+        | 0 => NoError
+        | 1280 => InvalidEnum
+        | 1281 => InvalidValue
+        | 1282 => InvalidOperation
+        | 1286 => InvalidFramebufferOperation
+        | 1285 => OutOfMemory
+        | 37442 => ContextLostWebgl
+        | other => OtherError(other)
+        }
+    };
+
+    let getErrorString = (context) => {
+        switch (getError(context)) {
+        | NoError => None
+        | InvalidEnum => Some("Invalid enum")
+        | InvalidValue => Some("Invalid value")
+        | InvalidOperation => Some("Invalid operation")
+        | InvalidFramebufferOperation => Some("Invalid framebuffer operation")
+        | OutOfMemory => Some("Out of memory")
+        | ContextLostWebgl => Some("Context lost webgl")
+        | OtherError(other) => Some("Other error: " ++ string_of_int(other))
+        }
+    };
+};
+
 module Canvas = {
     type keyboardT = {
         mutable keyCode: Reasongl.Gl.Events.keycodeT
@@ -1164,6 +1206,12 @@ module Canvas = {
             ~type_=Constants.unsigned_short,
             ~offset=0
         );
+        switch (Error.getErrorString(context)) {
+        | None => ()
+        | Some(error) =>
+            Js.log(error);
+            [%debugger];
+        };
     };
 };
 
