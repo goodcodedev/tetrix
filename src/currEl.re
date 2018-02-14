@@ -36,7 +36,6 @@ open Gpu;
 let makeNode = (elState : SceneState.elState, sdfTiles) => {
     Scene.makeNode(
         "currEl",
-        ~updateOn=[UpdateFlags.ElPosChanged],
         ~vertShader=Shader.make(currElVertex),
         ~fragShader=Shader.make(currElFragment),
         ~vo=elState.vo,

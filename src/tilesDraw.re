@@ -51,7 +51,6 @@ let makeNode = (tilesTex, sdfTiles) => {
     open Scene;
     Scene.makeNode(
         "tilesDraw",
-        ~updateOn=[UpdateFlags.TilesChanged, UpdateFlags.ElPosChanged],
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~uniforms=[],

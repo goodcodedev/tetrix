@@ -24,7 +24,6 @@ open Gpu;
 let makeNode = (vo) => {
     Scene.makeNode(
         "tileBlink",
-        ~updateOn=[UpdateFlags.TileBlink],
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~transparent=true,

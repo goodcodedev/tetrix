@@ -44,9 +44,9 @@ let setBg = (state) => {
   Hsl.incrH(board, 20.0);
   let line = Hsl.clone(board);
   Hsl.setL(line, 0.2);
-  Scene.UVec3f.set(state.bgColor, toVec3(Hsl.toRgb(bg)));
-  Scene.UVec3f.set(state.boardColor, toVec3(Hsl.toRgb(board)));
-  Scene.UVec3f.set(state.lineColor, toVec3(Hsl.toRgb(line)));
+  Scene.UVec3f.setQuiet(state.bgColor, toVec3(Hsl.toRgb(bg)));
+  Scene.UVec3f.setQuiet(state.boardColor, toVec3(Hsl.toRgb(board)));
+  Scene.UVec3f.setQuiet(state.lineColor, toVec3(Hsl.toRgb(line)));
   state
 };
 
@@ -185,7 +185,6 @@ let createLeftRow = (state) => {
       Node3d.make(
         AreaBetweenQuads.makeVertexObject(bgShape, ()),
         ~size=Scene.(Dimensions(Scale(1.0), Scale(0.6))),
-        ~updateOn=[UpdateFlags.ElChanged,UpdateFlags.ElPosChanged],
         ~light=state.sceneAndElLight,
         ()
       ),
@@ -236,7 +235,6 @@ let createRightRow = (state) => {
       Node3d.make(
         AreaBetweenQuads.makeVertexObject(bgShape, ()),
         ~size=Scene.(Dimensions(Scale(1.0), Scale(0.6))),
-        ~updateOn=[UpdateFlags.ElChanged,UpdateFlags.ElPosChanged],
         ~light=state.sceneAndElLight,
         ()
       ),
@@ -287,6 +285,7 @@ let createRootNode = (state) => {
             "digitalt",
             ~height=0.27,
             ~align=SdfFont.TextLayout.AlignCenter,
+            ~hidden=true,
             ()
           )
         ]
@@ -299,9 +298,6 @@ let createScene = (canvas, state) => {
   let scene = Scene.make(
     canvas,
     state,
-    UpdateFlags.Init,
-    UpdateFlags.Frame,
-    UpdateFlags.Resize,
     createRootNode(state),
     ~drawListDebug=false,
     ()
@@ -322,17 +318,17 @@ let createScene = (canvas, state) => {
   scene
 };
 
-let resetElState = (elState) => {
-  Scene.SVertexObject.updateQuads(elState.vo, [||]);
+let resetElState = (scene, elState) => {
+  Scene.SVertexObject.updateQuads(scene, elState.vo, [||]);
 };
 
-let updateElTiles = (el : Game.elData, elState, rows, cols, uCenterRadius) => {
+let updateElTiles = (scene, el : Game.elData, elState, rows, cols, uCenterRadius) => {
   /* todo: Consider caching some of this */
   let tiles = Game.elTiles(el.el, el.rotation);
   let color = Game.tileColors2[el.color];
   let x = el.posX;
   let y = el.posY;
-  Scene.UVec3f.set(elState.color, color);
+  Scene.UVec3f.set(scene, elState.color, color);
   /* Translate to -1.0 to 1.0 coords */
   let tileHeight = 2.0 /. float_of_int(rows);
   let tileWidth = 2.0 /. float_of_int(cols);
@@ -341,7 +337,7 @@ let updateElTiles = (el : Game.elData, elState, rows, cols, uCenterRadius) => {
     -1. +. float_of_int(x) *. tileWidth,
     1. +. float_of_int(y) *. -.tileHeight
   |];
-  Scene.UVec2f.set(elState.pos, elPos);
+  Scene.UVec2f.set(scene, elState.pos, elPos);
   /* If we got center radius uniform (gridProgram currently uses this) */
   switch (uCenterRadius) {
   | None => ()
@@ -351,7 +347,7 @@ let updateElTiles = (el : Game.elData, elState, rows, cols, uCenterRadius) => {
     let cy = elPos[1] +. data.centerY *. tileHeight;
     let rx = data.radiusX *. tileWidth;
     let ry = data.radiusY *. tileHeight;
-    Scene.UVec4f.set(uCenterRadius, Data.Vec4.make(cx, cy, rx, ry));
+    Scene.UVec4f.set(scene, uCenterRadius, Data.Vec4.make(cx, cy, rx, ry));
   };
   let currElTiles = Array.concat(List.map(((tileX, tileY)) => {
     /* 2x coord system with y 1.0 at top and -1.0 at bottom */
@@ -365,10 +361,10 @@ let updateElTiles = (el : Game.elData, elState, rows, cols, uCenterRadius) => {
       tileXScaled, tileYScaled
     |]
   }, tiles));
-  Scene.SVertexObject.updateQuads(elState.vo, currElTiles);
+  Scene.SVertexObject.updateQuads(scene, elState.vo, currElTiles);
 };
 
-let updateBeams = (beams, beamsVO, withFromDrop) => {
+let updateBeams = (scene, beams, beamsVO, withFromDrop) => {
   /* Create vertices for beams */
   let rowHeight = 2.0 /. float_of_int(tileRows);
   let colWidth = 2.0 /. float_of_int(tileCols);
@@ -398,7 +394,7 @@ let updateBeams = (beams, beamsVO, withFromDrop) => {
       (i + 1, vertices)
     };
   }, (0, [||]), beams);
-  Scene.SVertexObject.updateQuads(beamsVO, vertices);
+  Scene.SVertexObject.updateQuads(scene, beamsVO, vertices);
 };
 
 let blinkInit = (scene, state) => {
@@ -413,7 +409,7 @@ let blinkInit = (scene, state) => {
           -1.0, 1.0 -. rowHeight *. float_of_int(rowIdx)
       |]);
   }, [||], blinkRows.rows);
-  Scene.SVertexObject.updateQuads(state.blinkVO, vertices);
+  Scene.SVertexObject.updateQuads(scene, state.blinkVO, vertices);
   blinkRows.elapsed = 0.0;
   blinkRows.state = Blinking;
   /* Show tileBlink node */
@@ -449,8 +445,8 @@ let draw = (state, scene, canvas) => {
     | None => ()
     | Some(dropNode) =>
       /* Copy beam before updating it to use in animation */
-      updateBeams(state.gameState.dropBeams, state.dropBeamVO, true);
-      Scene.UVec3f.set(state.dropColor, Color.toVec3(state.gameState.dropColor));
+      updateBeams(scene, state.gameState.dropBeams, state.dropBeamVO, true);
+      Scene.UVec3f.set(scene, state.dropColor, Color.toVec3(state.gameState.dropColor));
       let dropAnim = Animate.uniform(
         dropNode,
         "sinceDrop",
@@ -465,17 +461,17 @@ let draw = (state, scene, canvas) => {
   if (elChanged) {
     /* Redraw next elements */
     let _ = Queue.fold((i, nextEl) => {
-      updateElTiles(nextEl, state.nextEls[i], 3, 4, None);
+      updateElTiles(scene, nextEl, state.nextEls[i], 3, 4, None);
       i + 1
     }, 0, state.gameState.elQueue);
     /* Handle holding element */
     switch (state.gameState.holdingEl) {
-    | Some(holdingEl) => updateElTiles(holdingEl, state.holdingEl, 3, 4, None);
-    | None => resetElState(state.holdingEl);
+    | Some(holdingEl) => updateElTiles(scene, holdingEl, state.holdingEl, 3, 4, None);
+    | None => resetElState(scene, state.holdingEl);
     };
   };
   if (elMoved) {
-    updateElTiles(state.gameState.curEl, state.elState, tileRows, tileCols, Some(state.elCenterRadius));
+    updateElTiles(scene, state.gameState.curEl, state.elState, tileRows, tileCols, Some(state.elCenterRadius));
     /* We want elState.pos transformed by layout as light pos for element */
     let elPos = switch (Scene.UVec2f.get(state.elState.pos)) {
     | Some(elPos) => elPos
@@ -487,24 +483,22 @@ let draw = (state, scene, canvas) => {
       | Some(Gpu.UniformMat3f(layout)) =>
         let pointPos = Data.Mat3.vecmul(layout^, Data.Vec3.fromVec2(elPos, 1.0));
         Data.Vec3.setZ(pointPos, 0.25);
-        Scene.UVec3f.set(state.elLightPos, pointPos);
+        Scene.UVec3f.set(scene, state.elLightPos, pointPos);
       | _ => ()
       };
     }
     | None => ()
     };
-    updateBeams(state.gameState.beams, state.beamVO, false);
+    updateBeams(scene, state.gameState.beams, state.beamVO, false);
   };
-  let flags = (elMoved) ? [UpdateFlags.ElPosChanged] : [];
-  let flags = (elChanged) ? [UpdateFlags.ElChanged, ...flags] : flags;
-  let flags = if (state.gameState.updateTiles) {
+  if (state.gameState.updateTiles) {
     switch (state.tilesTex.texture.inited) {
-    | Some(inited) => inited.update = true;
+    | Some(inited) =>
+      inited.update = true;
+      /* Data is updated on the array in place */
+      Scene.queueUpdates(scene, state.tilesTex.nodes);
     | None => ()
     };
-    [UpdateFlags.TilesChanged, ...flags]
-  } else {
-    flags
   };
   /* Reset state used by scene */
   state.gameState = {
@@ -516,23 +510,19 @@ let draw = (state, scene, canvas) => {
     updateTiles: false
   };
   /* Blink rows */
-  let flags = switch (state.gameState.blinkRows.state) {
+  switch (state.gameState.blinkRows.state) {
   | BlinkInit =>
     blinkInit(scene, state);
-    [UpdateFlags.TileBlink, ...flags]
   | Blinking =>
     let blinkRows = state.gameState.blinkRows;
     blinkRows.elapsed = blinkRows.elapsed +. scene.canvas.deltaTime;
     if (blinkRows.elapsed >= Config.blinkTime) {
       /* End blinking */
       blinkEnd(scene, state);
-      flags
-    } else {
-      [UpdateFlags.TileBlink, ...flags]
     }
-  | _ => flags
+  | _ => ()
   };
-  Scene.update(scene, [UpdateFlags.Frame, ...flags]);
+  Scene.update(scene, []);
   state
 };
 

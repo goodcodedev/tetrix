@@ -68,12 +68,10 @@ type fbufferConfig = {
 /* user defined state and update flags */
 type t('state, 'flags) = {
     state: 'state,
+    mutable queuedUpdates: list(int),
     canvas: Gpu.Canvas.t,
     root: node('state, 'flags),
     mutable inited: bool,
-    initFlag: 'flags,
-    frameFlag: 'flags,
-    resizeFlag: 'flags,
     updateLists: Hashtbl.t(updateState('flags), list(node('state, 'flags))),
     drawLists: Hashtbl.t(updateState('flags), list(drawListItem('state, 'flags))),
     drawListsDebug: option(drawListDebug('state, 'flags)),
@@ -121,7 +119,7 @@ and node('state, 'flags) = {
     vertShader: option(Gpu.Shader.t),
     fragShader: option(Gpu.Shader.t),
     textureList: list(string),
-    textures: Hashtbl.t(string, nodeTex('state, 'flags)),
+    textures: Hashtbl.t(string, sceneTexture),
     vo: sceneVertexObject,
     uniformList: list(string),
     uniforms: Hashtbl.t(string, sceneUniform),
@@ -430,9 +428,7 @@ let makeNode = (
         tbl
     };
     let textureList = List.map(((key, _texture)) => key, textures);
-    let textures = listToTbl(List.map(((name, tex)) => {
-        (name, NodeTex.tex(tex.texture))
-    }, textures));
+    let textures = listToTbl(textures);
     /* Provided uniform list */
     let uniformList = List.map(((key, _uniform)) => key, uniforms);
     let uniforms = listToTbl(uniforms);
@@ -555,9 +551,6 @@ let makeNode = (
 let make = (
     canvas,
     state,
-    initFlag,
-    frameFlag,
-    resizeFlag,
     root,
     ~drawListDebug=false,
     ()
@@ -572,11 +565,9 @@ let make = (
 {
     state,
     canvas,
+    queuedUpdates: [],
     root,
     inited: false,
-    initFlag,
-    frameFlag,
-    resizeFlag,
     updateLists: Hashtbl.create(5),
     drawLists: Hashtbl.create(5),
     drawListsDebug,
@@ -599,6 +590,12 @@ let hideNode = (scene, node) => {
 let showNode = (scene, node) => {
     node.hidden = false;
     scene.hiddenNodes = List.filter((n) => n != node.id, scene.hiddenNodes);
+};
+
+let queueUpdates = (scene, nodes) => {
+    scene.queuedUpdates = List.fold_left((updates, id) => {
+        [id, ...updates]
+    }, scene.queuedUpdates, nodes);
 };
 
 let makeAnim = (node, onFrame, duration, ~next=?, ()) => {
@@ -695,8 +692,13 @@ findInParents(node, key)
    Consider making one version for root without
    parent, and children (loopChild),
    .. just handle root in body of function */
-let createUpdateTree = (scene, root) => {
+let buildUpdateTree = (scene, root) => {
+    /* Also adds nodes to uniforms, vertexobjects and textures objects */
     let rec loop = (node, parent, isDep, isDepRoot, prevStacked) => {
+        /* Feels maybe better to keep lists on scene instead of on these objects */
+        Hashtbl.iter((_key, uniform) => uniform.nodes = [node.id, ...uniform.nodes], node.uniforms);
+        node.vo.nodes = [node.id, ...node.vo.nodes];
+        Hashtbl.iter((_key, tex : sceneTexture) => tex.nodes = [node.id, ...tex.nodes], node.textures);
         /* Check for hidden */
         if (node.hidden) {
             scene.hiddenNodes = [node.id, ...scene.hiddenNodes];
@@ -1977,7 +1979,7 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
             calcNodeLayout(child);
         }, node.children);
         /* After deps and children have been processed, set texture matrices */
-        Hashtbl.iter((_name, nodeTex : nodeTex('state, 'flags)) => {
+        Hashtbl.iter((_name, nodeTex : sceneTexture) => {
             /* Textures should be scaled for right pixel ratio,
                need not be translated (could be packed maybe),
                but should start from beginning or pack position */
@@ -1986,6 +1988,10 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
                render to texture */
             switch (nodeTex.texNode, nodeTex.uniformMat) {
             | (Some(texNode), Some(uniform)) =>
+                let texNode = switch (self.updateNodes.data[texNode]) {
+                | Some(texNode) => texNode.updNode
+                | None => failwith("Could not find texNode");
+                };
                 let scaleX = texNode.calcLayout.pWidth /. vpWidth /. 2.0;
                 let scaleY = texNode.calcLayout.pHeight /. vpHeight /. 2.0;
                 let scale = Data.Mat3.scale(
@@ -2069,6 +2075,27 @@ let update2 = (self, updateFlags) => {
     }, Hashtbl.find(self.updateLists, updateState));
 };
 
+/* Returns list of node ids with dep node ids added */
+let collectDeps = (scene, nodeIds) => {
+    let rec loop = (node, list) => {
+        /* Add deps and loop them */
+        let list = List.fold_left((list, dep) => {
+            loop(dep, [dep.id, ...list])
+        }, list, node.deps);
+        /* Traverse children */
+        List.fold_left((list, child) => {
+            loop(child, list)
+        }, list, node.children)
+    };
+    List.fold_left((list, nodeId) => {
+        let node = switch (scene.updateNodes.data[nodeId]) {
+        | Some(updNode) => updNode.updNode
+        | None => failwith("Could not find node");
+        };
+        loop(node, [nodeId, ...list])
+    }, [], nodeIds)
+};
+
 /* Creates a drawList that shows which
    areas are updating */
 let update = (self, updateFlags) => {
@@ -2088,16 +2115,26 @@ let update = (self, updateFlags) => {
         }
     };
     self.anims = doAnims(self.anims);
+    /* Queued nodes, these are queued because of
+       updates in uniforms, vertices or textures */
+    let updates = List.sort_uniq((a, b) => (a < b) ? -1 : (a > b) ? 1 : 0, List.append(animIds, self.queuedUpdates));
+    /* todo: Consider filtering hidden node ids.
+       Those hidden may be hidden below another hidden node,
+       requiring some traversal. Maybe a cache could be used,
+       maybe it's not so bad as the list should be similar
+       when things update anyway, and drawlist is cached */
+    self.queuedUpdates = [];
     /* todo: is this ok to sort variant types?
        use some hashset type? */
     let sortedFlags = List.sort((a, b) => (a < b) ? -1 : 1, updateFlags);
+    let sortedFlags = [];
     let updateState = {
         flags: sortedFlags,
-        anims: animIds,
+        anims: updates,
         hiddenNodes: self.hiddenNodes
     };
     if (!Hashtbl.mem(self.drawLists, updateState)) {
-        let drawList = createDrawList(self, sortedFlags, animIds, self.root);
+        let drawList = createDrawList(self, sortedFlags, updates, self.root);
         Hashtbl.add(self.drawLists, updateState, drawList);
         switch (self.drawListsDebug) {
         | None => ()
@@ -2180,7 +2217,10 @@ let doResize = (scene) => {
     Hashtbl.clear(scene.drawLists);
     calcLayout(scene);
     /* Todo: Draw whole scene instead of the flags(?) */
-    update(scene, [scene.initFlag,scene.resizeFlag]);
+    queueUpdates(scene, collectDeps(scene, [scene.root.id]));
+    /* Not sure how well it fits to do update, but it
+       might make cleaner draw lists */
+    update(scene, []);
 };
 
 let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()) => {
@@ -2188,11 +2228,12 @@ let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()
     let userState = ref(setup(canvas));
     let scene = createScene(canvas, userState^);
     setNodeParentsAndScene(scene);
+    scene.updateRoot = Some(buildUpdateTree(scene, scene.root));
     calcLayout(scene);
     createDrawStates(scene);
     /* Time for resize requested, this is throttled */
     let resizeRequested = ref(None);
-    let resizeThrottle = 0.5;
+    let resizeThrottle = 0.7;
     /* Start render loop */
     Gl.render(
         ~window = canvas.window,
@@ -2201,8 +2242,8 @@ let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()
             canvas.elapsed = canvas.elapsed +. canvas.deltaTime;
             if (!scene.inited) {
                 /* Create updateNodes */
-                scene.updateRoot = Some(createUpdateTree(scene, scene.root));
-                update(scene, [scene.initFlag]);
+                queueUpdates(scene, collectDeps(scene, [scene.root.id]));
+                update(scene, []);
                 scene.inited = true;
             };
             userState := draw(userState^, scene, canvas);
@@ -2211,16 +2252,16 @@ let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()
             | Some(resizeTime) =>
                 if (resizeTime > canvas.elapsed -. resizeThrottle) {
                     resizeRequested := None;
+                    switch (resize) {
+                    | Some(resize) => resize(userState^)
+                    | None => ()
+                    };
                     doResize(scene);
                 };
             };
         },
         ~windowResize = () => {
             resizeRequested := Some(canvas.elapsed);
-            switch (resize) {
-            | Some(resize) => resize(userState^)
-            | None => ()
-            };
         },
         ~keyDown = (~keycode, ~repeat) => {
             canvas.keyboard.keyCode = keycode;
@@ -2261,7 +2302,7 @@ module SVertexObject = {
         make(vBuffer, iBuffer)
     };
 
-    let updateQuads = (self, vertices) => {
+    let updateQuads = (scene, self, vertices) => {
         Gpu.VertexBuffer.setDataT(self.vertexBuffer, vertices);
         let perElement = self.vertexBuffer.perElement * 4;
         switch (self.indexBuffer) {
@@ -2272,6 +2313,7 @@ module SVertexObject = {
             );
         | None => ()
         };
+        queueUpdates(scene, self.nodes);
     };
 };
 
@@ -2284,8 +2326,9 @@ module UFloat {
     let make = (value) => makeSceneUniform(Gpu.UniformFloat(ref(value)));
     let zero = () => makeSceneUniform(Gpu.UniformFloat(ref(0.0)));
     let one = () => makeSceneUniform(Gpu.UniformFloat(ref(1.0)));
-    let set = (self, v) => {
+    let set = (scene, self, v) => {
         Gpu.Uniform.setFloat(self.uniform, v);
+        queueUpdates(scene, self.nodes);
     };
 };
 
@@ -2293,11 +2336,13 @@ module UVec2f {
     let zeros = () => makeSceneUniform(Gpu.UniformVec2f(ref(Data.Vec2.zeros())));
     let vals = (a, b) => makeSceneUniform(Gpu.UniformVec2f(ref(Data.Vec2.make(a, b))));
     let fromArray = (arr) => makeSceneUniform(Gpu.UniformVec2f(ref(Data.Vec2.fromArray(arr))));
-    let set = (self, v) => {
+    let set = (scene, self, v) => {
         Gpu.Uniform.setVec2f(self.uniform, v);
+        queueUpdates(scene, self.nodes);
     };
-    let setArr = (self, arr) => {
+    let setArr = (scene, self, arr) => {
         Gpu.Uniform.setVec2f(self.uniform, Data.Vec2.fromArray(arr));
+        queueUpdates(scene, self.nodes);
     };
     let get = (self) => {
         switch (self.uniform) {
@@ -2312,11 +2357,16 @@ module UVec3f {
     let vals = (a, b, c) => makeSceneUniform(Gpu.UniformVec3f(ref(Data.Vec3.make(a, b, c))));
     let fromArray = (arr) => makeSceneUniform(Gpu.UniformVec3f(ref(Data.Vec3.fromArray(arr))));
     let vec = (v) => makeSceneUniform(Gpu.UniformVec3f(ref(v)));
-    let set = (self, v) => {
+    let set = (scene, self, v) => {
         Gpu.Uniform.setVec3f(self.uniform, v);
+        queueUpdates(scene, self.nodes);
     };
-    let setArr = (self, arr) => {
+    let setArr = (scene, self, arr) => {
         Gpu.Uniform.setVec3f(self.uniform, Data.Vec3.fromArray(arr));
+        queueUpdates(scene, self.nodes);
+    };
+    let setQuiet = (self, v) => {
+        Gpu.Uniform.setVec3f(self.uniform, v);
     };
 };
 
@@ -2324,18 +2374,21 @@ module UVec4f {
     let zeros = () => makeSceneUniform(Gpu.UniformVec4f(ref(Data.Vec4.zeros())));
     let vals = (a, b, c, d) => makeSceneUniform(Gpu.UniformVec4f(ref(Data.Vec4.make(a, b, c, d))));
     let fromArray = (arr) => makeSceneUniform(Gpu.UniformVec4f(ref(Data.Vec4.fromArray(arr))));
-    let set = (self, v) => {
+    let set = (scene, self, v) => {
         Gpu.Uniform.setVec4f(self.uniform, v);
+        queueUpdates(scene, self.nodes);
     };
-    let setArr = (self, arr) => {
+    let setArr = (scene, self, arr) => {
         Gpu.Uniform.setVec4f(self.uniform, Data.Vec4.fromArray(arr));
+        queueUpdates(scene, self.nodes);
     };
 };
 
 module UMat3f {
     let id = () => makeSceneUniform(Gpu.UniformMat3f(ref(Data.Mat3.id())));
     let mat = (mat) => makeSceneUniform(Gpu.UniformMat3f(ref(mat)));
-    let set = (self, v) => {
+    let set = (scene, self, v) => {
         Gpu.Uniform.setMat3f(self.uniform, v);
+        queueUpdates(scene, self.nodes);
     };
 };

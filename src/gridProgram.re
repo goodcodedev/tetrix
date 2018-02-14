@@ -133,12 +133,10 @@ let makeNode = (
     elState : SceneState.elState,
     centerRadius
 ) => {
-    open UpdateFlags;
     open Scene;
     /*let bg = UVec3f.vals(0.08, 0.12, 0.22);*/
     makeNode(
         "grid",
-        ~updateOn=[Init,ElPosChanged,ElChanged],
         /*
         ~margin=Scene.MarginRBLT(
             Scale(0.01),

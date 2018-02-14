@@ -31,7 +31,6 @@ open Gpu;
 let makeNode = (elState : SceneState.elState) => {
     Scene.makeNode(
         "element",
-        ~updateOn=[UpdateFlags.ElChanged],
         ~size=Aspect(4.0 /. 3.0),
         ~partialDraw=true,
         ~margin=MarginXY(Scale(0.25), Scale(0.022)),

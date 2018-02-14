@@ -228,6 +228,7 @@ let makeNode = (
     ~align=SdfFont.TextLayout.AlignLeft,
     ~color=Color.fromFloats(1.0, 1.0, 1.0),
     ~opacity=1.0,
+    ~hidden=false,
     ()
 ) => {
     let fontTexture = Texture.make(Texture.EmptyTexture, Texture.RGBA, Texture.LinearFilter);
@@ -247,7 +248,6 @@ let makeNode = (
         "fontDraw",
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
-        ~updateOn=[UpdateFlags.Init],
         ~textures=[("map", Scene.SceneTex.tex(fontTexture))],
         ~vo,
         ~uniforms=[
@@ -259,6 +259,7 @@ let makeNode = (
         ~transparent=true,
         ~loading=true,
         ~size=Scene.Aspect(aspect),
+        ~hidden,
         ()
     );
     

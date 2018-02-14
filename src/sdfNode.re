@@ -268,7 +268,6 @@ let makeNode = (
     };
     Scene.makeNode(
         key,
-        ~updateOn=[UpdateFlags.Init],
         ~vertShader=Shader.make(makeVertexSource(self)),
         ~fragShader=Shader.make(makeFragmentSource(self)),
         ~size,

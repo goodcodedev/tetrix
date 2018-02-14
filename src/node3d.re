@@ -39,7 +39,7 @@ let fragSource = (light) => {
 
 let make = (
     vo,
-    ~updateOn,
+    ~updateOn=[],
     ~size=Scene.Dimensions(Scene.Scale(1.0), Scene.Scale(1.0)),
     ~light,
     ()
