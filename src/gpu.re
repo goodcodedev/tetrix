@@ -1027,6 +1027,7 @@ module Canvas = {
 
     let resize = (self, width, height) => {
         Gl.Window.setWindowSize(~window=self.window, ~width, ~height);
+        Gl.viewport(~context=self.context, ~x=0, ~y=0, ~width, ~height);
         self.width = width;
         self.height = height;
     };
@@ -1140,7 +1141,7 @@ module Canvas = {
         }
         };
         /* Set uniforms */
-        Array.iteri((i, uniform) => {
+        Array.iter((uniform) => {
             Uniform.valueToGpu(uniform, context);
         }, program.uniforms);
         /* Vertex buffer */

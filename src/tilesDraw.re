@@ -38,10 +38,13 @@ let fragmentSource = {|
             : (colorIdx == 7) ? vec3(0.9, 0.4, 0.35)
             : vec3(0.8, 0.8, 0.9);
         vec3 sdfColor = texture2D(sdfTiles, sdfPos).xyz;
+        //color = color * 0.5 + ((colorIdx == 0) ? vec3(0.0, 0.0, 0.0) : (sdfColor * 0.5));
+        /*
         float sdfCoef = abs(0.5 - sdfColor.x);
         float tileCoef = 1.0 - sdfCoef;
-        //color = color * 0.5 + ((colorIdx == 0) ? vec3(0.0, 0.0, 0.0) : (sdfColor * 0.5));
         gl_FragColor = (colorIdx == 0) ? vec4(0.0, 0.0, 0.0, 0.0) : vec4(color * tileCoef + sdfColor * sdfCoef, 1.0);
+        */
+        gl_FragColor = (colorIdx == 0) ? vec4(0.0, 0.0, 0.0, 0.0) : vec4(mix(color, sdfColor, 0.4), 1.0);
     }
 |};
 

@@ -43,6 +43,8 @@ let stacked = (
     ~key="stackedLayout",
     ~size=Scene.Aspect(1.0),
     ~hidden=false,
+    ~hAlign=Scene.AlignCenter,
+    ~vAlign=Scene.AlignTop,
     children
 ) => {
     Scene.makeNode(
@@ -51,6 +53,8 @@ let stacked = (
         ~childLayout=Scene.Stacked,
         ~selfDraw=false,
         ~hidden,
+        ~hAlign,
+        ~vAlign,
         ~children,
         ()
     )

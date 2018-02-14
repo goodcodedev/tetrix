@@ -271,6 +271,7 @@ let createRootNode = (state) => {
     state.bgColor,
     [
       Layout.stacked(
+        ~vAlign=Scene.AlignMiddle,
         [
           Layout.horizontal(
             ~size=mainSize,
@@ -282,12 +283,12 @@ let createRootNode = (state) => {
             ]
           ),
           FontDraw.makeNode(
-            "3",
+            "3210000123",
             "digitalt",
             ~key="countdown",
             ~height=0.27,
             ~align=SdfFont.TextLayout.AlignCenter,
-            ~hidden=true,
+            ~hidden=false,
             ()
           )
         ]
@@ -454,7 +455,7 @@ let draw = (state, scene, canvas) => {
         "sinceDrop",
         ~from=0.0,
         ~last=1.0,
-        ~duration=0.2,
+        ~duration=1.2,
         ()
       );
       Scene.doAnim(scene, dropAnim);

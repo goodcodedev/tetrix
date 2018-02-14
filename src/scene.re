@@ -853,15 +853,17 @@ let rec setDepParentToUpdate = (updNode) => {
     };
 }
 and setToUpdate = (updNode) => {
-    if (!updNode.updNode.hidden) {
+    if (!updNode.updNode.hidden && !updNode.update) {
         updNode.update = true;
         /* If this is stacked layout, set
-        previous children to update */
+        previous children to update
+        todo: Could possibly be rect/stencil */
         List.iter((prevStacked) => {
             if (!prevStacked.update) {
                 setToUpdate(prevStacked);
             };
         }, updNode.prevStacked);
+        /* Set children to update */
         List.iter((updChild) => {
             if (!updChild.update) {
                 setChildToUpdate(updChild);
@@ -874,6 +876,7 @@ and setToUpdate = (updNode) => {
                 setToUpdate(nextStacked);
             };
         }, updNode.nextStacked);
+        /* If this is a dep, set dependant parent also to update */
         if (updNode.isDep) {
             switch (updNode.parent) {
             | Some(parent) =>
@@ -1042,6 +1045,27 @@ let actRectUntilCovered = (updNode) => {
     loopRects(updNode.parentRects);
 };
 
+let rec setAdjecentStackedInParents = (parent : option(updateListNode('s, 'f))) => {
+    switch (parent) {
+    | Some(parent) =>
+        setAdjecentStackedInParents(parent.parent);
+        List.iter((prevStacked) => {
+            if (!prevStacked.update) {
+                setToUpdate(prevStacked);
+            };
+            /* todo:(!) improve handling of adjecent stacked with stencil/rects */
+            actRectUntilCovered(prevStacked);
+        }, parent.prevStacked);
+        List.iter((nextStacked) => {
+            if (!nextStacked.update) {
+                setToUpdate(nextStacked);
+            };
+            actRectUntilCovered(nextStacked);
+        }, parent.nextStacked);
+    | None => ()
+    };
+};
+
 /* UpdateNodes should be check for visibility up front */
 let createDrawList = (scene, flags, updateNodes, updRoot) => {
     /* Set nodes to update */
@@ -1064,11 +1088,20 @@ let createDrawList = (scene, flags, updateNodes, updRoot) => {
         | None => failwith("Could not find update node with id: " ++ string_of_int(nodeId));
         };
     }, [], updateNodes), ...updNodes];
+    List.iter((nodes) => {
+        List.iter((updNode : updateListNode('state, 'flags)) => {
+            /* Nodes could be part of a stacked layout
+            further up in the scene. Traverse parents
+            and for now, simply flag update if finding
+            stacked nodes. (could be stencil/rect) */
+            setAdjecentStackedInParents(updNode.parent);
+        }, nodes);
+    }, updNodes);
     /* Do second pass on nodes to update
        to check for transparent nodes and
        ensure they are covered by a parent */
     List.iter((nodes) => {
-        List.iter((updNode) => {
+        List.iter((updNode : updateListNode('state, 'flags)) => {
             if (updNode.updNode.transparent || updNode.updNode.partialDraw) {
                 actRectUntilCovered(updNode);
             };
@@ -1112,6 +1145,10 @@ let createDrawList = (scene, flags, updateNodes, updRoot) => {
            Possibly we might also have some logic
            to cancel hidden status in children */
         let hidden = hidden || updNode.updNode.hidden;
+        /* Clean up childUpdate flag */
+        if (updNode.childUpdate) {
+            updNode.childUpdate = false;
+        };
         /* First collect from dependencies */
         let drawList = List.fold_left((drawList, dep) => drawListLoop(dep, drawList, hidden), drawList, updNode.updDeps);
         /* Check for selfDraw.
@@ -1127,7 +1164,6 @@ let createDrawList = (scene, flags, updateNodes, updRoot) => {
                 if (updChild.update) {
                     drawListLoop(updChild, drawList, hidden)
                 } else if (updChild.childUpdate) {
-                    updChild.childUpdate = false;
                     drawListLoop(updChild, drawList, hidden)
                 } else {
                     drawList
@@ -1142,7 +1178,6 @@ let createDrawList = (scene, flags, updateNodes, updRoot) => {
                have update or childUpdate flagged */
             let drawList = List.fold_left((drawList, updChild) => {
                 if (updChild.childUpdate) {
-                    updChild.childUpdate = false;
                     drawListLoop(updChild, drawList, hidden)
                 } else if (updChild.update) {
                     drawListLoop(updChild, drawList, hidden)
@@ -1232,6 +1267,8 @@ let createDrawList = (scene, flags, updateNodes, updRoot) => {
                 }, drawList, updNode.updChildren);
                 /* Clean up active stencils */
                 List.iter((stencil) => stencil.active = false, stencils);
+                /* Clean up active rects */
+                List.iter((rect : updateRect('state, 'flags)) => rect.active = false, updNode.childRects);
                 drawList
             } else {
                 /* Check for active rects */
@@ -1282,7 +1319,6 @@ let createDrawList = (scene, flags, updateNodes, updRoot) => {
                     if (updChild.update) {
                         drawListLoop(updChild, drawList, hidden)
                     } else if (updChild.childUpdate) {
-                        updChild.childUpdate = false;
                         drawListLoop(updChild, drawList, hidden)
                     } else {
                         drawList
@@ -1295,6 +1331,7 @@ let createDrawList = (scene, flags, updateNodes, updRoot) => {
     };
     /* Not sure if we need to useProgram for stencil buffers */
     Reasongl.Gl.useProgram(~context=scene.canvas.context, scene.stencilDraw.program.programRef);
+    scene.canvas.currProgram = Some(scene.stencilDraw.program);
     switch (scene.updateNodes.data[updRoot.id]) {
     | Some(updRoot) =>
         let drawList = drawListLoop(updRoot, [], false);
@@ -2233,6 +2270,12 @@ let update = (self, updateFlags) => {
     } else {
         None
     };
+    Js.log2("== Drawing", List.fold_left((str, id) => {
+        switch (self.updateNodes.data[id]) {
+        | Some(node) => str ++ ", " ++ node.updNode.key
+        | None => str
+        }
+    }, "", updateState.updateNodes));
     if (!Hashtbl.mem(self.drawLists, updateState)) {
         let visibleNodes = switch (visibleNodes) {
         | None => List.filter((nodeId) => !isNodeHidden(self, nodeId), updateNodes)
@@ -2270,9 +2313,31 @@ let update = (self, updateFlags) => {
     /* todo: possibly optimize with a second transformed data structure
        so the drawstate etc is readily available */
     processDrawList(self, Hashtbl.find(self.drawLists, updateState), sortedFlags, false);
+    /* Debug function to ensure state is reset after processing of tree */
+    let rec checkForCleanState = (updNode) => {
+        if (updNode.update || updNode.childUpdate) {
+            [%debugger];
+        };
+        List.iter((stencil) => {
+            if (stencil.active) {
+                [%debugger];
+            };
+        }, updNode.stencils);
+        List.iter((rect : updateRect('s, 'f)) => {
+            if (rect.active) {
+                [%debugger];
+            };
+        }, updNode.childRects);
+        List.iter((dep) => checkForCleanState(dep), updNode.updDeps);
+        List.iter((child) => checkForCleanState(child), updNode.updChildren);
+    };
     switch (self.drawListsDebug) {
     | None => ()
     | Some(_) =>
+        switch (self.updateNodes.data[self.root.id]) {
+        | None => ()
+        | Some(updRoot) => checkForCleanState(updRoot);
+        };
         /* When debugging, we could go through list of previous
            draws and repaint with each debugNode knowing how long
            since last paint, and maybe setting alpha
@@ -2319,8 +2384,11 @@ let doResize = (scene) => {
         cleanUpDrawList(scene, drawList);
     }, scene.drawLists);
     Hashtbl.clear(scene.drawLists);
+    Hashtbl.clear(scene.initedLists);
+    Hashtbl.clear(scene.initedDeps);
+    /* Doing full layout, it would be nice to optimize
+       as time goes by */
     calcLayout(scene);
-    /* Todo: Draw whole scene instead of the flags(?) */
     queueUpdates(scene, [scene.root.id]);
     /* Not sure how well it fits to do update, but it
        might make cleaner draw lists */
