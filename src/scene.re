@@ -1097,9 +1097,17 @@ let createDrawList = (scene, flags, animIds, root) => {
     };
     /* Generate draw list
        The returned list will be reversed */
-    let rec drawListLoop = (updNode, drawList) => {
+    let rec drawListLoop = (updNode, drawList, hidden) => {
+        /* Propagating hidden variable. It is not ideal
+           to do all else, but for now atleast.
+           Need also to make sure whole tree is reset,
+           So otherwise should ensure there are no hidden
+           parents when setting a node to update.
+           Possibly we might also have some logic
+           to cancel hidden status in children */
+        let hidden = hidden || updNode.updNode.hidden;
         /* First collect from dependencies */
-        let drawList = List.fold_left((drawList, dep) => drawListLoop(dep, drawList), drawList, updNode.updDeps);
+        let drawList = List.fold_left((drawList, dep) => drawListLoop(dep, drawList, hidden), drawList, updNode.updDeps);
         /* Check for selfDraw.
            Not sure where to branch on this,
            doing after deps now,
@@ -1111,14 +1119,33 @@ let createDrawList = (scene, flags, animIds, root) => {
             /* Recurse to children if they have update or childUpdate flagged */
             let drawList = List.fold_left((drawList, updChild) => {
                 if (updChild.update) {
-                    drawListLoop(updChild, drawList)
+                    drawListLoop(updChild, drawList, hidden)
                 } else if (updChild.childUpdate) {
                     updChild.childUpdate = false;
-                    drawListLoop(updChild, drawList)
+                    drawListLoop(updChild, drawList, hidden)
                 } else {
                     drawList
                 }
             }, drawList, updNode.updChildren);
+            drawList
+        } else if (hidden) {
+            updNode.update = false;
+            /* Clean up active flag on rects */
+            List.iter((updRect : updateRect('state, 'flags)) => updRect.active = false, updNode.childRects);
+            /* Recurse children to clean up if they
+               have update or childUpdate flagged */
+            let drawList = List.fold_left((drawList, updChild) => {
+                if (updChild.childUpdate) {
+                    updChild.childUpdate = false;
+                    drawListLoop(updChild, drawList, hidden)
+                } else if (updChild.update) {
+                    drawListLoop(updChild, drawList, hidden)
+                } else {
+                    drawList
+                }
+            }, drawList, updNode.updChildren);
+            /* Clean up active stencils */
+            List.iter((stencil) => stencil.active = false, updNode.stencils);
             drawList
         } else {
             /* todo: possibly some microoptimizations if either lists are empty */
@@ -1195,7 +1222,7 @@ let createDrawList = (scene, flags, animIds, root) => {
                 /* Since this node is flagged for update, assume all children
                 will also be updated */
                 let drawList = List.fold_left((drawList, updChild) => {
-                    drawListLoop(updChild, drawList)
+                    drawListLoop(updChild, drawList, hidden)
                 }, drawList, updNode.updChildren);
                 /* Clean up active stencils */
                 List.iter((stencil) => stencil.active = false, stencils);
@@ -1247,10 +1274,10 @@ let createDrawList = (scene, flags, animIds, root) => {
                 /* Recurse to children if they have update or childUpdate flagged */
                 let drawList = List.fold_left((drawList, updChild) => {
                     if (updChild.update) {
-                        drawListLoop(updChild, drawList)
+                        drawListLoop(updChild, drawList, hidden)
                     } else if (updChild.childUpdate) {
                         updChild.childUpdate = false;
-                        drawListLoop(updChild, drawList)
+                        drawListLoop(updChild, drawList, hidden)
                     } else {
                         drawList
                     }
@@ -1264,7 +1291,7 @@ let createDrawList = (scene, flags, animIds, root) => {
     Reasongl.Gl.useProgram(~context=scene.canvas.context, scene.stencilDraw.program.programRef);
     switch (scene.updateNodes.data[root.id]) {
     | Some(updRoot) =>
-        let drawList = drawListLoop(updRoot, []);
+        let drawList = drawListLoop(updRoot, [], false);
         /* Clear active rect if any */
         let drawList = if (activeRect^ != None) {
             [ClearRect, ...drawList]

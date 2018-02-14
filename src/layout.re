@@ -4,6 +4,7 @@ let vertical = (
     ~size=Scene.Aspect(1.0),
     ~spacing=?,
     ~margin=?,
+    ~hidden=false,
     children
 ) => {
     Scene.makeNode(
@@ -14,6 +15,7 @@ let vertical = (
         ~childLayout=Scene.Vertical,
         ~selfDraw=false,
         ~children,
+        ~hidden,
         ()
     )
 };
@@ -22,6 +24,7 @@ let horizontal = (
     ~key="horizontalLayout",
     ~size=Scene.Aspect(1.0),
     ~spacing=?,
+    ~hidden=false,
     children
 ) => {
     Scene.makeNode(
@@ -30,6 +33,7 @@ let horizontal = (
         ~spacing=?spacing,
         ~childLayout=Scene.Horizontal,
         ~selfDraw=false,
+        ~hidden,
         ~children,
         ()
     )
@@ -38,6 +42,7 @@ let horizontal = (
 let stacked = (
     ~key="stackedLayout",
     ~size=Scene.Aspect(1.0),
+    ~hidden=false,
     children
 ) => {
     Scene.makeNode(
@@ -45,6 +50,7 @@ let stacked = (
         ~size,
         ~childLayout=Scene.Stacked,
         ~selfDraw=false,
+        ~hidden,
         ~children,
         ()
     )
