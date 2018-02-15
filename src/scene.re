@@ -1033,7 +1033,6 @@ let actRectUntilCovered = (updNode) => {
             updNode.parentRects = loopNewRects(updNode);
         };
     };
-    [%debugger];
     List.iter((r:updateRect('s,'f)) => {
         if (r.active) {
             Js.log2("Already active", r);
@@ -1048,36 +1047,28 @@ let actRectUntilCovered = (updNode) => {
     r
 };
 
-let rec setAdjecentStackedInParents = (parent : option(updateListNode('s, 'f))) => {
-    switch (parent) {
-    | Some(parent) =>
-        setAdjecentStackedInParents(parent.parent);
+let rec setAdjecentStackedToUpdate = (updNode : option(updateListNode('s, 'f))) => {
+    switch (updNode) {
+    | Some(updNode) =>
+        setAdjecentStackedToUpdate(updNode.parent);
 
         /* todo:(!) improve handling of adjecent stacked with stencil/rects */
         let numAdded = List.fold_left((num, stacked) => {
             if (!stacked.updNode.hidden) {
-                Js.log2("Added stacked", stacked.updNode.key);
                 if (!stacked.update) {
                     setToUpdate(stacked);
-                    if (stacked.updNode.transparent || stacked.updNode.partialDraw) {
-                        actRectUntilCovered(stacked);
-                    };
                 };
                 num + 1
             } else {
                 num
             }
-        }, 0, List.append(parent.prevStacked, parent.nextStacked));
+        }, 0, List.append(updNode.prevStacked, updNode.nextStacked));
         /* We also need to update parent if adjecent
            stack is updated (see todo) */
         if (numAdded > 0) {
-            if (!parent.updNode.hidden) {
-                Js.log2("Added stacked parent", parent.updNode.key);
-                if (!parent.update) {
-                    setToUpdate(parent);
-                    if (parent.updNode.transparent || parent.updNode.partialDraw) {
-                        actRectUntilCovered(parent);
-                    };
+            if (!updNode.updNode.hidden) {
+                if (!updNode.update) {
+                    setToUpdate(updNode);
                 };
             };
         };
@@ -1085,8 +1076,12 @@ let rec setAdjecentStackedInParents = (parent : option(updateListNode('s, 'f))) 
     };
 };
 
-/* UpdateNodes should be check for visibility up front */
+/* UpdateNodes should be checked for visibility up front */
 let createDrawList = (scene, flags, updateNodes, updRoot) => {
+    let updRoot = switch (scene.updateNodes.data[updRoot.id]) {
+    | Some(updRoot) => updRoot
+    | None => failwith("Root update node not found");
+    };
     /* Set nodes to update */
     let updNodes = List.fold_left((updNodes, flag) => {
         if (Hashtbl.mem(scene.onFlags, flag)) {
@@ -1110,22 +1105,27 @@ let createDrawList = (scene, flags, updateNodes, updRoot) => {
     List.iter((nodes) => {
         List.iter((updNode : updateListNode('state, 'flags)) => {
             /* Nodes could be part of a stacked layout
-            further up in the scene. Traverse parents
-            and for now, simply flag update if finding
-            stacked nodes. (could be stencil/rect) */
-            setAdjecentStackedInParents(updNode.parent);
+            here or further up in the scene. Traverse
+            node and parents and for now, simply flag
+            update if finding stacked nodes. (could be stencil/rect) */
+            setAdjecentStackedToUpdate(Some(updNode));
         }, nodes);
     }, updNodes);
-    /* Do second pass on nodes to update
+    /* Assuming nodes that need update are flagged,
+       do second pass on nodes to update
        to check for transparent nodes and
        ensure they are covered by a parent */
-    List.iter((nodes) => {
-        List.iter((updNode : updateListNode('state, 'flags)) => {
+    let rec actRecLoop = (updNode: updateListNode('state, 'flags)) => {
+        if (updNode.update) {
             if (updNode.updNode.transparent || updNode.updNode.partialDraw) {
                 actRectUntilCovered(updNode);
             };
-        }, nodes);
-    }, updNodes);
+            List.iter((child) => actRecLoop(child), updNode.updChildren);
+        } else if (updNode.childUpdate) {
+            List.iter((child) => actRecLoop(child), updNode.updChildren);
+        };
+    };
+    actRecLoop(updRoot);
     /* State of stencils and rect to determine
        when to clear them */
     let activeStencils = ref(None);
@@ -1154,6 +1154,9 @@ let createDrawList = (scene, flags, updateNodes, updRoot) => {
         }
     };
     /* Generate draw list
+       Here we look at activated stencils and
+       rects, and create a drawlist with instructions
+       on how to draw those and the nodes themselves.
        The returned list will be reversed */
     let rec drawListLoop = (updNode, drawList, hidden) => {
         /* Propagating hidden variable. It is not ideal
@@ -1351,24 +1354,20 @@ let createDrawList = (scene, flags, updateNodes, updRoot) => {
     /* Not sure if we need to useProgram for stencil buffers */
     Reasongl.Gl.useProgram(~context=scene.canvas.context, scene.stencilDraw.program.programRef);
     scene.canvas.currProgram = Some(scene.stencilDraw.program);
-    switch (scene.updateNodes.data[updRoot.id]) {
-    | Some(updRoot) =>
-        let drawList = drawListLoop(updRoot, [], false);
-        /* Clear active rect if any */
-        let drawList = if (activeRect^ != None) {
-            [ClearRect, ...drawList]
-        } else {
-            drawList
-        };
-        /* Clear active stencils if any */
-        let drawList = if (activeStencils^ != None) {
-            [ClearStencil, ...drawList]
-        } else {
-            drawList
-        };
-        List.rev(drawList)
-    | None => failwith("Root update node not found");
-    }
+    let drawList = drawListLoop(updRoot, [], false);
+    /* Clear active rect if any */
+    let drawList = if (activeRect^ != None) {
+        [ClearRect, ...drawList]
+    } else {
+        drawList
+    };
+    /* Clear active stencils if any */
+    let drawList = if (activeStencils^ != None) {
+        [ClearStencil, ...drawList]
+    } else {
+        drawList
+    };
+    List.rev(drawList)
 };
 
 let getFBuffer = (self, config : fbufferConfig) => {
@@ -2352,14 +2351,6 @@ let update = (self, updateFlags) => {
         let visibleNodes = switch (visibleNodes) {
         | None => List.filter((nodeId) => !isNodeHidden(self, nodeId), updateNodes)
         | Some(visibleNodes) => visibleNodes
-        };
-        switch (visibleNodes) {
-        | [node] =>
-            switch (self.updateNodes.data[node]) {
-            | Some(n) when (n.updNode.key == "dropBeams") => [%debugger];
-            | _ => ()
-            };
-        | _ => ()
         };
         let drawList = createDrawList(self, sortedFlags, visibleNodes, self.root);
         Hashtbl.add(self.drawLists, updateState, drawList);

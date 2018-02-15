@@ -303,14 +303,14 @@ let createPauseScreen = (state) => {
         "Paused",
         "digitalt",
         ~key="paused",
-        ~height=0.25,
+        ~height=0.23,
         ~align=SdfFont.TextLayout.AlignCenter,
         ()
       ),
       FontDraw.makeNode(
         "Press Space to continue",
         "digitalt",
-        ~height=0.08,
+        ~height=0.07,
         ~align=SdfFont.TextLayout.AlignCenter,
         ()
       )
@@ -412,7 +412,7 @@ let createRootNode = (state) => {
           Layout.horizontal(
             ~key="gameHorizontal",
             ~size=mainSize,
-            ~hidden=false,
+            ~hidden=true,
             [
               createLeftRow(state),
               createBoardNode(state),
@@ -584,7 +584,7 @@ let drawGame = (state, scene) => {
         "sinceDrop",
         ~from=0.0,
         ~last=1.0,
-        ~duration=1.2,
+        ~duration=0.7,
         ()
       );
       Scene.doAnim(scene, dropAnim);
@@ -673,6 +673,7 @@ let draw = (state, scene, canvas : Gpu.Canvas.t) => {
     | GameScreen => state
     | StartScreen =>
       Scene.hideNodeByKey(scene, "startScreen");
+      Scene.showNodeByKey(scene, "gameHorizontal");
       setScreenState(state, GameScreen)
     | PauseScreen =>
       Scene.hideNodeByKey(scene, "pauseScreen");
