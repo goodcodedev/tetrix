@@ -29,8 +29,20 @@ type element =
   | RightL
   ;
 
-type inputAction =
-  | None
+type gameState =
+  | StartScreen
+  | HelpScreen
+  | Running
+  | Paused
+  | NextLevel
+  | GameOver;
+
+
+type startScreenAction =
+  | StartGame
+  | NoAction;
+
+type gameAction =
   | MoveLeft
   | MoveRight
   | MoveDown
@@ -45,7 +57,32 @@ type inputAction =
   | MoveBeginning
   | MoveEnd
   | Pause
+  | NoAction
   ;
+
+type nextLevelAction =
+  | NextLevel
+  | NoAction;
+
+type gameOverAction =
+  | NewGame
+  | NoAction;
+
+type pauseAction =
+  | Resume
+  | NoAction;
+
+type helpScreenAction =
+  | Resume
+  | NoAction;
+
+type inputAction =
+  | GameAction(gameAction)
+  | NextLevelAction(nextLevelAction)
+  | GameOverAction(gameOverAction)
+  | PauseAction(pauseAction)
+  | StartScreenAction(startScreenAction)
+  | HelpScreenAction(helpScreenAction);
 
 let getTetronimo = (element) => {
   switch element {
@@ -140,7 +177,6 @@ let addCenterRadius = (el, rot) => {
   let radiusY = float_of_int(height) *. -1.0;
   let centerY = float_of_int(top^ * -1) -. radiusY /. 2.0;
   let offsetX = left^;
-  let sf = string_of_int;
   Hashtbl.add(centerRadius, (el, rot), {
     centerX,
     centerY,
@@ -174,10 +210,6 @@ type elData = {
   color: int,
   rotation: int
 };
-
-type gameState =
-  | Running
-  | GameOver;
 
 let beamNone = -2;
 
@@ -322,7 +354,8 @@ type stateT = {
   paused: bool,
   lastCompletedRows: array(int),
   blinkRows: BlinkRows.t,
-  elQueue: ElQueue.t
+  elQueue: ElQueue.t,
+  deltaTime: float
 };
 
 let nextEl = (state) => {
@@ -380,7 +413,7 @@ let updateBeams = (state) => {
 };
 
 
-let setup = (canvas, tiles) : stateT => {
+let setup = (tiles) : stateT => {
   Document.addEventListener(
     Document.window,
     "keydown",
@@ -394,7 +427,7 @@ let setup = (canvas, tiles) : stateT => {
   /*let sdf = SdfTiles.createCanvas();
   SdfTiles.draw(sdf);*/
   let state = {
-    action: None,
+    action: StartScreenAction(NoAction),
     curEl: ElQueue.setBoardInitPos(ElQueue.pop(elQueue)),
     holdingEl: None,
     elChanged: true,
@@ -409,11 +442,12 @@ let setup = (canvas, tiles) : stateT => {
     beams: Array.make(tileCols, (beamNone, 0)),
     dropBeams: Array.make(tileCols, (beamNone, 0)),
     dropColor: Color.white(),
-    gameState: Running,
+    gameState: StartScreen,
     paused: false,
     lastCompletedRows: [||],
     blinkRows: BlinkRows.make(),
-    elQueue
+    elQueue,
+    deltaTime: 0.0
   };
   state
 };
@@ -428,7 +462,7 @@ let newGame = (state) => {
   ElQueue.initQueue(state.elQueue);
   {
     ...state,
-    action: None,
+    action: GameAction(NoAction),
     curEl: ElQueue.pop(state.elQueue),
     holdingEl: None,
     elChanged: true,
@@ -579,15 +613,15 @@ let elToTiles = (state) => {
   }, elTiles(state.curEl.el, state.curEl.rotation));
 };
 
-let processAction = (state) => {
-  switch state.action {
+let processGameInput = (state, gameAction) => {
+  switch (gameAction) {
   | MoveLeft  => {
     ...attemptMove(state, (-1, 0)),
-    action: None
+    action: GameAction(NoAction)
   }
   | MoveRight => {
     ...attemptMove(state, (1, 0)),
-    action: None
+    action: GameAction(NoAction)
   }
   | BlockLeft => {
     let data = Hashtbl.find(centerRadius, (state.curEl.el, state.curEl.rotation));
@@ -601,7 +635,7 @@ let processAction = (state) => {
     };
     {
       ...List.fold_left((state, _) => attemptMove(state, (-1, 0)), state, listRange(toMove)),
-      action: None
+      action: GameAction(NoAction)
     }
   }
   | BlockRight => {
@@ -616,7 +650,7 @@ let processAction = (state) => {
     }) - leftPos;
     {
       ...List.fold_left((state, _) => attemptMove(state, (1, 0)), state, listRange(toMove)),
-      action: None
+      action: GameAction(NoAction)
     }
   }
   | BlockEnd => {
@@ -631,20 +665,20 @@ let processAction = (state) => {
     }) - rightPos;
     {
       ...List.fold_left((state, _) => attemptMove(state, (1, 0)), state, listRange(toMove)),
-      action: None
+      action: GameAction(NoAction)
     }
   }
   | MoveBeginning => {
     ...List.fold_left((state, _) => attemptMove(state, (-1, 0)), state, listRange(state.curEl.posX)),
-    action: None
+    action: GameAction(NoAction)
   }
   | MoveEnd => {
     ...List.fold_left((state, _) => attemptMove(state, (1, 0)), state, listRange(tileCols - state.curEl.posX)),
-    action: None
+    action: GameAction(NoAction)
   }
   | MoveDown => {
     ...attemptMove(state, (0, 1)),
-    action: None
+    action: GameAction(NoAction)
   }
   | CancelDown => state
   | DropDown => {
@@ -667,7 +701,7 @@ let processAction = (state) => {
       dropColor,
       hasDroppedDown: true,
       posChanged: true,
-      action: None
+      action: GameAction(NoAction)
     });
     /* Set new "last" from current position */
     List.iter(((x, y)) => {
@@ -684,11 +718,11 @@ let processAction = (state) => {
     switch (attemptRotateCW(state)) {
     | (true, state) => {
       ...state,
-      action: None
+      action: GameAction(NoAction)
     }
     | (false, state) => {
       ...state,
-      action: None
+      action: GameAction(NoAction)
     }
     }
   }
@@ -696,11 +730,11 @@ let processAction = (state) => {
     switch (attemptRotateCCW(state)) {
     | (true, state) => {
       ...state,
-      action: None
+      action: GameAction(NoAction)
     }
     | (false, state) => {
       ...state,
-      action: None
+      action: GameAction(NoAction)
     }
     }
   }
@@ -709,22 +743,21 @@ let processAction = (state) => {
     let state = nextEl(state);
     {
       ...state,
-      action: None,
+      action: GameAction(NoAction),
       holdingEl
     }
   }
   | Pause => {
     ...state,
-    action: None,
+    action: GameAction(NoAction),
     paused: !state.paused
   }
-  | None => state
+  | NoAction => state
   }
 };
 
-
-let afterTouchdown = (state, canvas : Gpu.Canvas.t) => {
-  let curTime = state.curTime +. canvas.deltaTime;
+let afterTouchdown = (state) => {
+  let curTime = state.curTime +. state.deltaTime;
   let state = if (Array.length(state.lastCompletedRows) > 0) {
     /* Move rows above completed down */
     Array.iter((currentRow) => {
@@ -747,6 +780,7 @@ let afterTouchdown = (state, canvas : Gpu.Canvas.t) => {
   if (isCollision(state)) {
     {
       ...state,
+      action: GameOverAction(NoAction),
       gameState: GameOver
     }
   } else {
@@ -758,13 +792,13 @@ let afterTouchdown = (state, canvas : Gpu.Canvas.t) => {
   }
 };
 
-let drawGame = (state, canvas : Gpu.Canvas.t) => {
-  let timeStep = canvas.deltaTime;
+let doGame = (state) => {
+  let timeStep = state.deltaTime;
   let curTime = state.curTime +. timeStep;
   let isNewTick = curTime > state.lastTick +. tickDuration;
   let (state, isTouchdown) = if (isNewTick) {
     switch (state.action) {
-    | CancelDown => (state, false)
+    | GameAction(CancelDown) => (state, false)
     | _ => {
       switch (attemptMoveTest(state, (0, 1))) {
       | (true, state) => (state, false)
@@ -816,7 +850,7 @@ let drawGame = (state, canvas : Gpu.Canvas.t) => {
       state.blinkRows.state = BlinkRows.BlinkInit;
       state
     } else {
-      afterTouchdown(state, canvas)
+      afterTouchdown(state)
     }
   }
 };
@@ -856,100 +890,135 @@ let drawInfo = (state, env) => {
 };
 */
 
-let draw = (state, canvas) => {
-  /* todo: Process by state, pause (etc)? */
-  let state = processAction(state);
+let rec processGameAction = (state, action : gameAction) => {
   let mainProcess = (state) => {
-    let state = drawGame(state, canvas);
-    switch (state.gameState) {
-    | Running => state
-    | GameOver => newGame(state)
-    }
+    let state = processGameInput(state, action);
+    doGame(state)
   };
-  if (state.paused) {
+  switch (state.blinkRows.state) {
+  | BlinkRows.NotBlinking =>
+    mainProcess(state);
+  | BlinkRows.Blinking | BlinkRows.BlinkInit =>
+    /* Blink animation */
     state
-  } else {
-    switch (state.blinkRows.state) {
-    | BlinkRows.NotBlinking =>
-      mainProcess(state);
-    | BlinkRows.Blinking | BlinkRows.BlinkInit =>
-      /* Blink animation */
-      state
-    | BlinkRows.JustBlinked =>
-      state.blinkRows.state = BlinkRows.NotBlinking;
-      /* Run after touchdown now that animation is done */
-      let state = afterTouchdown(state, canvas);
-      mainProcess(state);
+  | BlinkRows.JustBlinked =>
+    state.blinkRows.state = BlinkRows.NotBlinking;
+    /* Run after touchdown now that animation is done */
+    let state = afterTouchdown(state);
+    mainProcess(state);
+  }
+}
+and processStartScreenAction = (state, action : startScreenAction) => {
+    switch (action) {
+    | NoAction => state
+    | StartGame =>
+      processAction({
+        ...state,
+        gameState: Running,
+        action: GameAction(NoAction)
+      })
     }
+}
+and processHelpScreenAction = (state, action : helpScreenAction) => {
+    switch (action) {
+    | NoAction => state
+    | Resume =>
+      processAction({
+        ...state,
+        gameState: Running,
+        action: GameAction(NoAction)
+      })
+    }
+}
+and processPauseAction = (state, action : pauseAction) => {
+  switch (action) {
+  | NoAction => state
+  | Resume =>
+    processAction({
+      ...state,
+      gameState: Running,
+      action: GameAction(NoAction)
+    })
+  }
+}
+and processNextLevelAction = (state, action : nextLevelAction) => {
+  switch (action) {
+  | NoAction => state
+  | NextLevel =>
+    processAction({
+      ...state,
+      gameState: Running,
+      action: GameAction(NoAction)
+    })
+  }
+}
+and processGameOverAction = (state, action : gameOverAction) => {
+  switch (action) {
+  | NoAction => state
+  | NewGame =>
+    newGame(state)
+  }
+}
+and processAction = (state) => {
+  switch (state.gameState, state.action) {
+  | (Running, GameAction(action)) => processGameAction(state, action)
+  | (StartScreen, StartScreenAction(action)) => processStartScreenAction(state, action)
+  | (HelpScreen, HelpScreenAction(action)) => processHelpScreenAction(state, action)
+  | (Paused, PauseAction(action)) => processPauseAction(state, action)
+  | (NextLevel, NextLevelAction(action)) => processNextLevelAction(state, action)
+  | (GameOver, GameOverAction(action)) => processGameOverAction(state, action)
+  | _ => failwith("Invalid gamestate and action")
   }
 };
 
 let keyPressed = (state, canvas : Gpu.Canvas.t) => {
-  Reasongl.Gl.Events.(
-    switch (canvas.keyboard.keyCode) {
-    | H => {
-      ...state,
-      action: MoveLeft
-    }
-    | L => {
-      ...state,
-      action: MoveRight
-    }
-    | W => {
-      ...state,
-      action: BlockRight
-    }
-    | E => {
-      ...state,
-      action: BlockEnd
-    }
-    | B => {
-      ...state,
-      action: BlockLeft
-    }
-    | J => {
-      ...state,
-      action: MoveDown
-    }
-    | K => {
-      ...state,
-      action: CancelDown
-    }
-    | S | R => {
-      ...state,
-      action: RotateCCW
-    }
-    | C => {
-      ...state,
-      action: RotateCW
-    }
-    | D | X => {
-      ...state,
-      action: HoldElement
-    }
-    | Period => {
-      ...state,
-      action: DropDown
-    }
-    | Space => {
-      ...state,
-      action: Pause
-    }
-    | _ => {
-      /* Js.log(lastKeyCode(Document.window)); */
-      /* Todo: check shift press */
+  let keyCode = canvas.keyboard.keyCode;
+  switch (state.gameState) {
+  | StartScreen =>
+    StartScreenAction(switch (keyCode) {
+    | N => StartGame
+    | _ => NoAction
+    })
+  | Running =>
+    GameAction(switch (keyCode) {
+    | H => MoveLeft
+    | L => MoveRight
+    | W => BlockRight
+    | E => BlockEnd
+    | B => BlockLeft
+    | J => MoveDown
+    | K => CancelDown
+    | S | R => RotateCCW
+    | C => RotateCW
+    | D | X => HoldElement
+    | Period => DropDown
+    | Space => Pause
+    | _ =>
       switch (lastKeyCode(Document.window)) {
-      | 48 | 173 => {
-          ...state,
-          action: MoveBeginning
-        }
-      | 52 => {
-          ...state,
-          action: MoveEnd
-        }
-      | _ => state
+      | 48 | 173 => MoveBeginning
+      | 52 => MoveEnd
+      | _ => NoAction
       }
-    }
-    }
-  );
+    })
+  | Paused =>
+    PauseAction(switch (keyCode) {
+    | Space => Resume
+    | _ => NoAction
+    })
+  | HelpScreen =>
+    HelpScreenAction(switch (keyCode) {
+    | Space => Resume
+    | _ => NoAction
+    })
+  | NextLevel =>
+    NextLevelAction(switch (keyCode) {
+    | N => NextLevel
+    | _ => NoAction
+    })
+  | GameOver =>
+    GameOverAction(switch (keyCode) {
+    | N => NewGame
+    | _ => NoAction
+    })
+  }
 };

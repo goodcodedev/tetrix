@@ -74,7 +74,7 @@ let setup = (canvas) => {
   ));
   let elState = makeElState();
   let dropColor = Scene.UVec3f.zeros();
-  let gameState = Game.setup(canvas, tiles);
+  let gameState = Game.setup(tiles);
   let camera = Camera.make(Data.Vec3.make(0.0, 0.4, 4.0));
   let sceneLight = makeSceneLight(camera);
   let elCenterRadius = Scene.UVec4f.zeros();
@@ -265,6 +265,130 @@ let createRightRow = (state) => {
   )
 };
 
+let createStartScreen = (state) => {
+  Layout.vertical(
+    [
+      FontDraw.makeNode(
+        "Vimtris",
+        "digitalt",
+        ~key="countdown",
+        ~height=0.25,
+        ~align=SdfFont.TextLayout.AlignCenter,
+        ()
+      ),
+      FontDraw.makeNode(
+        "Press N to play",
+        "digitalt",
+        ~key="countdown",
+        ~height=0.08,
+        ~align=SdfFont.TextLayout.AlignCenter,
+        ()
+      )
+    ]
+  )
+};
+
+let createPauseScreen = (state) => {
+  Layout.vertical(
+    [
+      FontDraw.makeNode(
+        "Paused",
+        "digitalt",
+        ~key="paused",
+        ~height=0.25,
+        ~align=SdfFont.TextLayout.AlignCenter,
+        ()
+      ),
+      FontDraw.makeNode(
+        "Press Space to continue",
+        "digitalt",
+        ~height=0.08,
+        ~align=SdfFont.TextLayout.AlignCenter,
+        ()
+      )
+    ]
+  )
+};
+
+let createGameOverScreen = (state) => {
+  Layout.vertical(
+    [
+      FontDraw.makeNode(
+        "Game over",
+        "digitalt",
+        ~key="gameOver",
+        ~height=0.25,
+        ~align=SdfFont.TextLayout.AlignCenter,
+        ()
+      ),
+      FontDraw.makeNode(
+        "Press N to start new game",
+        "digitalt",
+        ~height=0.08,
+        ~align=SdfFont.TextLayout.AlignCenter,
+        ()
+      )
+    ]
+  )
+};
+
+let createHelpScreen = (state) => {
+  Layout.vertical(
+    [
+      FontDraw.makeNode(
+        "Help",
+        "digitalt",
+        ~key="gameOver",
+        ~height=0.25,
+        ~align=SdfFont.TextLayout.AlignCenter,
+        ()
+      ),
+      FontDraw.makeNode(
+        String.concat("\n", [
+          "Space - pause",
+          "H - move left",
+          "L - move right",
+          "J - move down",
+          "K - cancel down",
+          "W - move 3 tiles right",
+          "B - move 3 tiles left",
+          "0 - move leftmost",
+          "$ - move rightmost",
+          "S - rotate counter clockwise",
+          "C - rotate clockwise",
+          ". - drop",
+        ]),
+        "digitalt",
+        ~height=0.04,
+        ~align=SdfFont.TextLayout.AlignCenter,
+        ()
+      )
+    ]
+  )
+};
+
+let createNextLevelScreen = (state) => {
+  Layout.vertical(
+    [
+      FontDraw.makeNode(
+        "Level complete",
+        "digitalt",
+        ~key="gameOver",
+        ~height=0.25,
+        ~align=SdfFont.TextLayout.AlignCenter,
+        ()
+      ),
+      FontDraw.makeNode(
+        "Press N to start new level",
+        "digitalt",
+        ~height=0.08,
+        ~align=SdfFont.TextLayout.AlignCenter,
+        ()
+      )
+    ]
+  )
+};
+
 let createRootNode = (state) => {
   let mainSize = Scene.Aspect((14.0 +. 10.0) /. 26.0);
   Background.makeNode(
@@ -282,28 +406,7 @@ let createRootNode = (state) => {
               createRightRow(state)
             ]
           ),
-          Layout.vertical(
-            [
-              FontDraw.makeNode(
-                "Vimtris",
-                "digitalt",
-                ~key="countdown",
-                ~height=0.25,
-                ~align=SdfFont.TextLayout.AlignCenter,
-                ~hidden=false,
-                ()
-              ),
-              FontDraw.makeNode(
-                "Press N to play",
-                "digitalt",
-                ~key="countdown",
-                ~height=0.08,
-                ~align=SdfFont.TextLayout.AlignCenter,
-                ~hidden=false,
-                ()
-              )
-            ]
-          )
+          createStartScreen(state)
         ]
       )
     ]
@@ -445,8 +548,11 @@ let blinkEnd = (scene, state) => {
   };
 };
 
-let draw = (state, scene, canvas) => {
-  state.gameState = Game.draw(state.gameState, canvas);
+let draw = (state, scene, canvas : Gpu.Canvas.t) => {
+  state.gameState = Game.processAction({
+    ...state.gameState,
+    deltaTime: canvas.deltaTime
+  });
   let (hasDroppedDown, elMoved, elChanged) = {
     let gs = state.gameState;
     (
@@ -543,8 +649,13 @@ let draw = (state, scene, canvas) => {
 };
 
 let keyPressed = (state, canvas) => {
-  state.gameState = Game.keyPressed(state.gameState, canvas);
-  state
+  {
+    ...state,
+    gameState: {
+      ...state.gameState,
+      action: Game.keyPressed(state.gameState, canvas)
+    }
+  }
 };
 
 
