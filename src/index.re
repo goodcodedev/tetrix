@@ -94,6 +94,7 @@ let setup = (canvas) => {
   let lineColor = Scene.UVec3f.zeros();
   let state = {
     tiles,
+    sceneLayout: StartScreen,
     tilesTex,
     elState,
     elCenterRadius,
@@ -181,6 +182,7 @@ let createLeftRow = (state) => {
   );
   Layout.stacked(
     ~size=Scene.Dimensions(Scale(0.22), Scale(1.0)),
+    ~vAlign=Scene.AlignTop,
     [
       Node3d.make(
         AreaBetweenQuads.makeVertexObject(bgShape, ()),
@@ -198,6 +200,7 @@ let createLeftRow = (state) => {
           )
         ),
         ~spacing=Scene.Scale(0.04),
+        ~vAlign=Scene.AlignTop,
         [
           FontDraw.makeNode(
             "HOLD",
@@ -231,6 +234,7 @@ let createRightRow = (state) => {
   );
   Layout.stacked(
     ~size=Scene.Dimensions(Scale(0.22), Scale(1.0)),
+    ~vAlign=Scene.AlignTop,
     [
       Node3d.make(
         AreaBetweenQuads.makeVertexObject(bgShape, ()),
@@ -248,6 +252,7 @@ let createRightRow = (state) => {
           )
         ),
         ~spacing=Scene.Scale(0.04),
+        ~vAlign=Scene.AlignTop,
         [
           FontDraw.makeNode(
             "NEXT",
@@ -267,6 +272,7 @@ let createRightRow = (state) => {
 
 let createStartScreen = (state) => {
   Layout.vertical(
+    ~key="startScreen",
     [
       FontDraw.makeNode(
         "Vimtris",
@@ -290,6 +296,8 @@ let createStartScreen = (state) => {
 
 let createPauseScreen = (state) => {
   Layout.vertical(
+    ~key="pauseScreen",
+    ~hidden=true,
     [
       FontDraw.makeNode(
         "Paused",
@@ -398,18 +406,21 @@ let createRootNode = (state) => {
     state.bgColor,
     [
       Layout.stacked(
+        ~key="pageStacked",
         ~vAlign=Scene.AlignMiddle,
         [
           Layout.horizontal(
+            ~key="gameHorizontal",
             ~size=mainSize,
-            ~hidden=true,
+            ~hidden=false,
             [
               createLeftRow(state),
               createBoardNode(state),
               createRightRow(state)
             ]
           ),
-          createHelpScreen(state)
+          createStartScreen(state),
+          createPauseScreen(state)
         ]
       )
     ]
@@ -551,11 +562,7 @@ let blinkEnd = (scene, state) => {
   };
 };
 
-let draw = (state, scene, canvas : Gpu.Canvas.t) => {
-  state.gameState = Game.processAction({
-    ...state.gameState,
-    deltaTime: canvas.deltaTime
-  });
+let drawGame = (state, scene) => {
   let (hasDroppedDown, elMoved, elChanged) = {
     let gs = state.gameState;
     (
@@ -646,6 +653,45 @@ let draw = (state, scene, canvas : Gpu.Canvas.t) => {
       blinkEnd(scene, state);
     }
   | _ => ()
+  };
+  state
+};
+
+let setScreenState = (state, screen) => {
+  ...state,
+  sceneLayout: screen
+};
+
+let draw = (state, scene, canvas : Gpu.Canvas.t) => {
+  state.gameState = Game.processAction({
+    ...state.gameState,
+    deltaTime: canvas.deltaTime
+  });
+  let state = switch (state.gameState.gameState) {
+  | Running =>
+    let state = switch (state.sceneLayout) {
+    | GameScreen => state
+    | StartScreen =>
+      Scene.hideNodeByKey(scene, "startScreen");
+      setScreenState(state, GameScreen)
+    | PauseScreen =>
+      Scene.hideNodeByKey(scene, "pauseScreen");
+      setScreenState(state, GameScreen)
+    };
+    drawGame(state, scene)
+  | StartScreen =>
+    state
+  | HelpScreen => state
+  | Paused =>
+    switch (state.sceneLayout) {
+    | PauseScreen => state
+    | GameScreen =>
+      Scene.showNodeByKey(scene, "pauseScreen");
+      setScreenState(state, PauseScreen)
+    | _ => failwith("Paused from other than game screen")
+    }
+  | NextLevel => state
+  | GameOver => state
   };
   Scene.update(scene, []);
   state

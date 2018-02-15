@@ -4,8 +4,14 @@ type elState = {
   color: Scene.sceneUniform
 };
 
+type sceneLayout =
+  | StartScreen
+  | GameScreen
+  | PauseScreen;
+
 type sceneState = {
   tiles: array(int),
+  sceneLayout: sceneLayout,
   tilesTex: Scene.sceneTexture,
   elState: elState,
   elCenterRadius: Scene.sceneUniform,

@@ -288,7 +288,7 @@ let makeNode = (
         | SdfFont.TextLayout.AlignRight => (1.0 -. (float_of_int(maxLineWidth) *. scale))
         };
         let modelMat = Data.Mat3.matmul(
-            Data.Mat3.trans(xTrans, 1.0 -. height),
+            Data.Mat3.trans(xTrans, 0.0),
             Data.Mat3.scale(scale, scale *. aspect)
         );
         Uniform.setMat3f(uModel.uniform, modelMat);

@@ -587,16 +587,6 @@ let make = (
 }
 };
 
-let hideNode = (scene, node) => {
-    node.hidden = true;
-    scene.hiddenNodes = List.sort((a, b) => (a > b) ? 1 : -1, [node.id, ...scene.hiddenNodes]);
-};
-
-let showNode = (scene, node) => {
-    node.hidden = false;
-    scene.hiddenNodes = List.filter((n) => n != node.id, scene.hiddenNodes);
-};
-
 let queueUpdates = (scene, nodes) => {
     scene.queuedUpdates = List.fold_left((updates, id) => {
         [id, ...updates]
@@ -910,6 +900,7 @@ and setToUpdate = (updNode) => {
    are set to update, and are transparent
    or partialDraw, are covered by a parent */
 let actRectUntilCovered = (updNode) => {
+    Js.log2("Act rect for", updNode.updNode.key);
     /* Repeating some checks a few places here
        percievely in the interest of a little
        performance as well as slightly
@@ -937,10 +928,10 @@ let actRectUntilCovered = (updNode) => {
        parents, sets their active status and return
        a list of newly created updateRects until
        a covering node is found */
-    let rec loopNewRects = (updNode : updateListNode('state, 'flags)) => {
+    let rec loopNewRects = (parNode : updateListNode('state, 'flags)) => {
         /* First process any prevStacked */
-        let next = switch (updNode.prevStacked) {
-        | [] => updNode.parent
+        let next = switch (parNode.prevStacked) {
+        | [] => parNode.parent
         | [prev, ..._rest] => Some(prev)
         };
         switch (next) {
@@ -1042,26 +1033,54 @@ let actRectUntilCovered = (updNode) => {
             updNode.parentRects = loopNewRects(updNode);
         };
     };
-    loopRects(updNode.parentRects);
+    [%debugger];
+    List.iter((r:updateRect('s,'f)) => {
+        if (r.active) {
+            Js.log2("Already active", r);
+        };
+    }, updNode.parentRects);
+    let r = loopRects(updNode.parentRects);
+    List.iter((r:updateRect('s,'f)) => {
+        if (r.active) {
+            Js.log2("Activated", r);
+        };
+    }, updNode.parentRects);
+    r
 };
 
 let rec setAdjecentStackedInParents = (parent : option(updateListNode('s, 'f))) => {
     switch (parent) {
     | Some(parent) =>
         setAdjecentStackedInParents(parent.parent);
-        List.iter((prevStacked) => {
-            if (!prevStacked.update) {
-                setToUpdate(prevStacked);
+
+        /* todo:(!) improve handling of adjecent stacked with stencil/rects */
+        let numAdded = List.fold_left((num, stacked) => {
+            if (!stacked.updNode.hidden) {
+                Js.log2("Added stacked", stacked.updNode.key);
+                if (!stacked.update) {
+                    setToUpdate(stacked);
+                    if (stacked.updNode.transparent || stacked.updNode.partialDraw) {
+                        actRectUntilCovered(stacked);
+                    };
+                };
+                num + 1
+            } else {
+                num
+            }
+        }, 0, List.append(parent.prevStacked, parent.nextStacked));
+        /* We also need to update parent if adjecent
+           stack is updated (see todo) */
+        if (numAdded > 0) {
+            if (!parent.updNode.hidden) {
+                Js.log2("Added stacked parent", parent.updNode.key);
+                if (!parent.update) {
+                    setToUpdate(parent);
+                    if (parent.updNode.transparent || parent.updNode.partialDraw) {
+                        actRectUntilCovered(parent);
+                    };
+                };
             };
-            /* todo:(!) improve handling of adjecent stacked with stencil/rects */
-            actRectUntilCovered(prevStacked);
-        }, parent.prevStacked);
-        List.iter((nextStacked) => {
-            if (!nextStacked.update) {
-                setToUpdate(nextStacked);
-            };
-            actRectUntilCovered(nextStacked);
-        }, parent.nextStacked);
+        };
     | None => ()
     };
 };
@@ -1669,6 +1688,35 @@ if (self.root.key == key) {
 } else {
     traverse(self.root)
 }
+};
+
+let hideNode = (scene, node) => {
+    node.hidden = true;
+    scene.hiddenNodes = List.sort((a, b) => (a > b) ? 1 : -1, [node.id, ...scene.hiddenNodes]);
+    /* todo: Queuing root for now to cover updated area,
+       but this could be more precise. Optimally find covering
+       area and redraw */
+    queueUpdates(scene, [scene.root.id]);
+};
+
+let hideNodeByKey = (scene, nodeKey) => {
+    switch (getNode(scene, nodeKey)) {
+    | Some(node) => hideNode(scene, node)
+    | None => failwith("Could not find node: " ++ nodeKey)
+    };
+};
+
+let showNode = (scene, node) => {
+    node.hidden = false;
+    scene.hiddenNodes = List.filter((n) => n != node.id, scene.hiddenNodes);
+    queueUpdates(scene, [node.id]);
+};
+
+let showNodeByKey = (scene, nodeKey) => {
+    switch (getNode(scene, nodeKey)) {
+    | Some(node) => showNode(scene, node)
+    | None => failwith("Could not find node: " ++ nodeKey)
+    };
 };
 
 let setUniformFloat = (node, key, value) => {
@@ -2293,16 +2341,25 @@ let update = (self, updateFlags) => {
     } else {
         None
     };
+    /*
     Js.log2("== Drawing", List.fold_left((str, id) => {
         switch (self.updateNodes.data[id]) {
         | Some(node) => str ++ ", " ++ node.updNode.key
         | None => str
         }
-    }, "", updateState.updateNodes));
+    }, "", updateState.updateNodes));*/
     if (!Hashtbl.mem(self.drawLists, updateState)) {
         let visibleNodes = switch (visibleNodes) {
         | None => List.filter((nodeId) => !isNodeHidden(self, nodeId), updateNodes)
         | Some(visibleNodes) => visibleNodes
+        };
+        switch (visibleNodes) {
+        | [node] =>
+            switch (self.updateNodes.data[node]) {
+            | Some(n) when (n.updNode.key == "dropBeams") => [%debugger];
+            | _ => ()
+            };
+        | _ => ()
         };
         let drawList = createDrawList(self, sortedFlags, visibleNodes, self.root);
         Hashtbl.add(self.drawLists, updateState, drawList);

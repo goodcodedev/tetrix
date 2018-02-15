@@ -750,7 +750,7 @@ let processGameInput = (state, gameAction) => {
   | Pause => {
     ...state,
     action: GameAction(NoAction),
-    paused: !state.paused
+    paused: true
   }
   | NoAction => state
   }
@@ -893,7 +893,15 @@ let drawInfo = (state, env) => {
 let rec processGameAction = (state, action : gameAction) => {
   let mainProcess = (state) => {
     let state = processGameInput(state, action);
-    gameLogic(state)
+    if (state.paused) {
+      {
+        ...state,
+        gameState: Paused,
+        action: PauseAction(NoAction)
+      }
+    } else {
+      gameLogic(state)
+    }
   };
   switch (state.blinkRows.state) {
   | BlinkRows.NotBlinking =>
@@ -937,6 +945,7 @@ and processPauseAction = (state, action : pauseAction) => {
     processAction({
       ...state,
       gameState: Running,
+      paused: false,
       action: GameAction(NoAction)
     })
   }
@@ -960,6 +969,8 @@ and processGameOverAction = (state, action : gameOverAction) => {
   }
 }
 and processAction = (state) => {
+  /* Possibly merge what is now
+     gamestate and action? */
   switch (state.gameState, state.action) {
   | (Running, GameAction(action)) => processGameAction(state, action)
   | (StartScreen, StartScreenAction(action)) => processStartScreenAction(state, action)
