@@ -31,9 +31,28 @@ type textLayout = {
 
 let make = (text, font, width, ~align=AlignLeft,
           ~letterSpacing=0, ~tabSize=4, ~above=false, ~flipY=false, ()) => {
+  let textLen = String.length(text);
+  /* Mistaken code to strip char */
+  /*
+  let chr10 = Char.chr(10);
+  let (textLen, text) = if (String.contains(text, chr10)) {
+    let rec stripped = (index) => {
+      if (String.contains_from(text, index, chr10)) {
+        let nextPos = String.index_from(text, index, chr10);
+        String.sub(text, index, nextPos - index) ++ stripped(nextPos + 1)
+      } else {
+        String.sub(text, index, textLen - index);
+      }
+    };
+    let str = stripped(0);
+    (String.length(str), str)
+  } else {
+    (textLen, text)
+  };
+  */
   {
     text,
-    textLen: String.length(text),
+    textLen,
     font,
     width,
     align,
@@ -57,6 +76,7 @@ type measureState = {
   mutable lastGlyph: option(BMFont.bmChar)
 };
 
+/* Get chars fitting on a line */
 let measureFittingChars = (self, start, last, width) => {
   let d = {
     curPen: 0,
@@ -67,24 +87,26 @@ let measureFittingChars = (self, start, last, width) => {
   let calcEnd = (self.textLen < last) ? self.textLen : last;
   let rec untilLimit = (i) => {
     let id = Char.code(String.get(self.text, i));
-    let glyph = switch (self.font.charsById[id]) {
-    | Some(bmChar) => bmChar
-    | None => failwith("Char not found");
-    };
-    let kerning = switch (d.lastGlyph) {
-    | Some(lastGlyph) => BMFont.getKerning(self.font, lastGlyph.id, glyph.id)
-    | None => 0
-    };
-    d.curPen = d.curPen + kerning;
-    let nextPen = d.curPen + glyph.xAdvance + self.letterSpacing;
-    let nextWidth = d.curPen + glyph.width;
-    if (nextWidth < width && nextPen < width) {
-      d.curPen = nextPen;
-      d.curWidth = nextWidth;
-      d.lastGlyph = Some(glyph);
-      d.count = d.count + 1;
-      if (i + 1 < calcEnd) {
-        untilLimit(i + 1);
+    if (id != 10) {
+      let glyph = switch (self.font.charsById[id]) {
+      | Some(bmChar) => bmChar
+      | None => failwith("Char not found");
+      };
+      let kerning = switch (d.lastGlyph) {
+      | Some(lastGlyph) => BMFont.getKerning(self.font, lastGlyph.id, glyph.id)
+      | None => 0
+      };
+      d.curPen = d.curPen + kerning;
+      let nextPen = d.curPen + glyph.xAdvance + self.letterSpacing;
+      let nextWidth = d.curPen + glyph.width;
+      if (nextWidth < width && nextPen < width) {
+        d.curPen = nextPen;
+        d.curWidth = nextWidth;
+        d.lastGlyph = Some(glyph);
+        d.count = d.count + 1;
+        if (i + 1 < calcEnd) {
+          untilLimit(i + 1);
+        };
       };
     };
   };
@@ -238,7 +260,7 @@ let vertexData = (self, glyphs) => {
   List.iteri((i, glyph) => {
     /* Bottom left position */
     let x = float_of_int(glyph.position.x + glyph.data.xOffset);
-    let y = float_of_int(glyph.position.y + glyph.data.yOffset);
+    let y = float_of_int(glyph.position.y - glyph.data.yOffset);
     /* Quad size */
     let w = float_of_int(glyph.data.width);
     let h = float_of_int(glyph.data.height);
@@ -249,30 +271,28 @@ let vertexData = (self, glyphs) => {
     /* Top left positions */
     let u0 = float_of_int(bitmap.x) /. texWidth;
     let u1 = bw /. texWidth;
-    /* Todo: I switched these to make it work with regular coord system, v0 = v1, v1 = v0
-       Consider removing flipY and use this simply */
-    let v0 = (self.flipY) ? (texHeight -. float_of_int(bitmap.y)) /. texHeight : float_of_int(bitmap.y) /. texHeight;
-    let v1 = (self.flipY) ? (texHeight -. bh) /. texHeight : bh /. texHeight;
+    let v0 = float_of_int(bitmap.y) /. texHeight;
+    let v1 = bh /. texHeight;
     /* Register positions x, y, and uvs */
     /* Bottom left */
     let idx = i * 16;
     data[idx] = x;
-    data[idx + 1] = y;
+    data[idx + 1] = y -. h;
     data[idx + 2] = u0;
     data[idx + 3] = v1;
     /* Bottom right */
     data[idx + 4] = x +. w;
-    data[idx + 5] = y;
+    data[idx + 5] = y -. h;
     data[idx + 6] = u1;
     data[idx + 7] = v1;
     /* Top right */
     data[idx + 8] = x +. w;
-    data[idx + 9] = y +. h;
+    data[idx + 9] = y;
     data[idx + 10] = u1;
     data[idx + 11] = v0;
     /* Top left */
     data[idx + 12] = x;
-    data[idx + 13] = y +. h;
+    data[idx + 13] = y;
     data[idx + 14] = u0;
     data[idx + 15] = v0;
   }, glyphs);

@@ -333,34 +333,37 @@ let createGameOverScreen = (state) => {
 };
 
 let createHelpScreen = (state) => {
+  let helpLines = [
+    "Space - pause",
+    "H - move left",
+    "L - move right",
+    "J - move down",
+    "K - cancel down",
+    "C - rotate clockwise",
+    "S - rotate counter clockwise",
+    ". - drop",
+    "W - move block right",
+    "B - move block left",
+    "0 - move leftmost",
+    "$ - move rightmost"
+  ];
   Layout.vertical(
+    ~margin=Scene.MarginXY(Scene.Scale(0.12), Scene.Scale(0.0)),
     [
       FontDraw.makeNode(
         "Help",
         "digitalt",
         ~key="gameOver",
-        ~height=0.25,
-        ~align=SdfFont.TextLayout.AlignCenter,
+        ~height=0.12,
+        ~align=SdfFont.TextLayout.AlignLeft,
         ()
       ),
       FontDraw.makeNode(
-        String.concat("\n", [
-          "Space - pause",
-          "H - move left",
-          "L - move right",
-          "J - move down",
-          "K - cancel down",
-          "W - move 3 tiles right",
-          "B - move 3 tiles left",
-          "0 - move leftmost",
-          "$ - move rightmost",
-          "S - rotate counter clockwise",
-          "C - rotate clockwise",
-          ". - drop",
-        ]),
+        String.concat("\n", helpLines),
         "digitalt",
-        ~height=0.04,
-        ~align=SdfFont.TextLayout.AlignCenter,
+        ~height=0.07,
+        ~numLines=List.length(helpLines),
+        ~align=SdfFont.TextLayout.AlignLeft,
         ()
       )
     ]
@@ -406,7 +409,7 @@ let createRootNode = (state) => {
               createRightRow(state)
             ]
           ),
-          createStartScreen(state)
+          createHelpScreen(state)
         ]
       )
     ]

@@ -243,7 +243,7 @@ let makeNode = (
     );
     let indexBuffer = IndexBuffer.make([||], StaticDraw);
     let uModel = Scene.UMat3f.id();
-    let aspect = 1.0 /. height *. float_of_int(numLines);
+    let aspect = 1.0 /. (height *. float_of_int(numLines));
     let vo = Scene.SceneVO.make(vertexBuffer, Some(indexBuffer));
     let node = Scene.makeNode(
         key,

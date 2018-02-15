@@ -792,7 +792,7 @@ let afterTouchdown = (state) => {
   }
 };
 
-let doGame = (state) => {
+let gameLogic = (state) => {
   let timeStep = state.deltaTime;
   let curTime = state.curTime +. timeStep;
   let isNewTick = curTime > state.lastTick +. tickDuration;
@@ -893,7 +893,7 @@ let drawInfo = (state, env) => {
 let rec processGameAction = (state, action : gameAction) => {
   let mainProcess = (state) => {
     let state = processGameInput(state, action);
-    doGame(state)
+    gameLogic(state)
   };
   switch (state.blinkRows.state) {
   | BlinkRows.NotBlinking =>
