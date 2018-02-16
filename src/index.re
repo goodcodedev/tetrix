@@ -587,6 +587,13 @@ let drawGame = (state, scene) => {
       inited.update = true;
       /* Data is updated on the array in place */
       Scene.queueUpdates(scene, state.tilesTex.nodes);
+      Js.log("Texture upd");
+      List.iter((id) => {
+        switch (scene.updateNodes.data[id]) {
+        | Some(node) => Js.log(node.updNode.key)
+        | None => ()
+        }
+      }, state.tilesTex.nodes);
     | None => ()
     };
   };

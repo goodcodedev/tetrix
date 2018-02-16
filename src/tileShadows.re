@@ -23,7 +23,7 @@ let fragmentSource = {|
         // Perspective coord
         vec2 aspect = vec2(numCols / numRows, 1.0);
         vec2 persp = vPosition + vec2(
-            vPosition.x * 0.1,
+            vPosition.x * 0.08,
             0.0
         );
         vec2 tilePos = vec2((persp.x + 1.0) * 0.5, (persp.y - 1.0) * -0.5);
@@ -240,13 +240,16 @@ let makeNode = (tilesTex) => {
         ~vertShader=Shader.make(blurVertex),
         ~fragShader=Shader.make(blurFragment),
         ~uniforms=[
-            ("pDistance", Scene.UFloat.make(10.0))
+            ("pDistance", Scene.UFloat.make(4.0))
         ],
         ~pixelSizeUniform=true,
         ~textures=[
             ("unblurred", Scene.SceneTex.node(unblurred))
         ],
         ~drawTo=Scene.TextureRGBA,
+        ~deps=[
+            unblurred
+        ],
         ()
     );
     /* Second blur */
@@ -263,7 +266,6 @@ let makeNode = (tilesTex) => {
         ],
         ~drawTo=Scene.TextureRGB,
         ~deps=[
-            unblurred,
             blur1
         ],
         ()

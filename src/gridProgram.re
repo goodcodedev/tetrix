@@ -72,7 +72,7 @@ let fragmentSource = {|
 
         // Shadow
         float shadow = texture2D(tileShadows, tileShadowsPos).x;
-        vec3 color = mix(bg, vec3(0.0, 0.0, 0.0), shadow * 0.6);
+        vec3 color = mix(bg, vec3(0.0, 0.0, 0.0), shadow * 0.15);
 
         // Line
         color = mix(color, lineColor, lineCoef);
