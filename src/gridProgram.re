@@ -80,6 +80,8 @@ let fragmentSource = {|
         // Beam
         vec3 beam = texture2D(beams, beamsPos).xyz;
         color = mix(color, beam, (beam.x == 0.0) ? 0.0 : 0.05);
+
+        // Dropbeam
         float dropBeam = texture2D(drop, dropPos).x;
         color = mix(color, dropColor, dropBeam * 0.2);
         color = color + elColor * auraLight;

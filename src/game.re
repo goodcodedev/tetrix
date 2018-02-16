@@ -213,34 +213,31 @@ type elData = {
 
 let beamNone = -2;
 
-/* Todo: see if this can be refactored */
-module BlinkRows {
-    type blinkState =
-      | NotBlinking
-      | BlinkInit
+module TouchDown {
+    type touchDownState =
+      | TouchDownInit
+      | DropOnly
       | Blinking
-      | JustBlinked;
+      | Done;
 
     type t = {
-        mutable state: blinkState,
-        mutable drawn: bool,
-        mutable rows: array(int),
-        mutable elapsed: float
+        state: touchDownState,
+        drawn: bool,
+        rows: array(int),
+        completedRows: bool,
+        elapsed: float,
+        isDropDown: bool
     };
 
     let make = () => {
         {
-            state: NotBlinking,
+            state: TouchDownInit,
             drawn: false,
             rows: [||],
-            elapsed: 0.0
+            completedRows: false,
+            elapsed: 0.0,
+            isDropDown: false
         }
-    };
-
-    let endBlink = (self) => {
-        self.state = JustBlinked;
-        self.drawn = false;
-        self.elapsed = 0.0;
     };
 };
 
@@ -338,8 +335,7 @@ type stateT = {
   action: inputAction,
   curEl: elData,
   holdingEl: option(elData),
-  posChanged: bool,
-  rotateChanged: bool,
+  elMoved: bool,
   elChanged: bool,
   hasDroppedDown: bool,
   lastTick: float,
@@ -352,8 +348,7 @@ type stateT = {
   dropColor: Color.t,
   gameState: gameState,
   paused: bool,
-  lastCompletedRows: array(int),
-  blinkRows: BlinkRows.t,
+  touchDown: option(TouchDown.t),
   elQueue: ElQueue.t,
   deltaTime: float
 };
@@ -367,8 +362,7 @@ let nextEl = (state) => {
     ...state,
     holdingEl: None,
     elChanged: true,
-    posChanged: true,
-    rotateChanged: true,
+    elMoved: true,
     curEl: ElQueue.setBoardInitPos(next)
   }
 };
@@ -431,8 +425,7 @@ let setup = (tiles) : stateT => {
     curEl: ElQueue.setBoardInitPos(ElQueue.pop(elQueue)),
     holdingEl: None,
     elChanged: true,
-    posChanged: true,
-    rotateChanged: true,
+    elMoved: true,
     hasDroppedDown: false,
     lastTick: 0.,
     curTime: 0.,
@@ -444,8 +437,7 @@ let setup = (tiles) : stateT => {
     dropColor: Color.white(),
     gameState: StartScreen,
     paused: false,
-    lastCompletedRows: [||],
-    blinkRows: BlinkRows.make(),
+    touchDown: None,
     elQueue,
     deltaTime: 0.0
   };
@@ -466,8 +458,7 @@ let newGame = (state) => {
     curEl: ElQueue.pop(state.elQueue),
     holdingEl: None,
     elChanged: true,
-    posChanged: true,
-    rotateChanged: true,
+    elMoved: true,
     updateTiles: true,
     lastTick: 0.,
     curTime: 0.,
@@ -486,7 +477,7 @@ let isCollision = (state) => {
 let attemptMove = (state, (x, y)) => {
   let moved = {
     ...state,
-    posChanged: true,
+    elMoved: true,
     curEl: {
       ...state.curEl,
       posX: state.curEl.posX + x,
@@ -498,7 +489,7 @@ let attemptMove = (state, (x, y)) => {
 let attemptMoveTest = (state, (x, y)) => {
   let moved = {
     ...state,
-    posChanged: true,
+    elMoved: true,
     curEl: {
       ...state.curEl,
       posX: state.curEl.posX + x,
@@ -516,7 +507,7 @@ let wallTests = (state, newRotation, positions) => {
     | [(x, y), ...rest] => {
       let rotated = {
         ...state,
-        rotateChanged: true,
+        elMoved: true,
         curEl: {
           ...state.curEl,
           rotation: newRotation,
@@ -539,7 +530,7 @@ let attemptRotateCW = (state) => {
   /* First test for successful default rotation */
   let rotated = {
     ...state,
-    rotateChanged: true,
+    elMoved: true,
     curEl: {
       ...state.curEl,
       rotation: newRotation
@@ -574,7 +565,7 @@ let attemptRotateCCW = (state) => {
   /* First test for successful default rotation */
   let rotated = {
     ...state,
-    rotateChanged: true,
+    elMoved: true,
     curEl: {
       ...state.curEl,
       rotation: newRotation
@@ -689,30 +680,12 @@ let processGameInput = (state, gameAction) => {
       | (true, state) => dropDown(state)
       }
     };
-    let elColor = tileColors2[state.curEl.color];
-    let dropColor = Color.fromFloats(elColor[0], elColor[1], elColor[2]);
-    /* Set dropbeams,
-       copy drop beams "from", "last" from position after drop */
-    Array.iteri((i, (from, _last)) => {
-      state.dropBeams[i] = (from, beamNone);
-    }, state.beams);
-    let state = dropDown({
+    dropDown({
       ...state,
-      dropColor,
       hasDroppedDown: true,
-      posChanged: true,
+      elMoved: true,
       action: GameAction(NoAction)
-    });
-    /* Set new "last" from current position */
-    List.iter(((x, y)) => {
-      let pointX = state.curEl.posX + x;
-      let pointY = state.curEl.posY + y;
-      let (beamFrom, beamTo) = state.dropBeams[pointX];
-      if (beamTo < pointY) {
-        state.dropBeams[pointX] = (beamFrom, pointY);
-      };
-    }, elTiles(state.curEl.el, state.curEl.rotation));
-    state
+    })
   }
   | RotateCW => {
     switch (attemptRotateCW(state)) {
@@ -758,22 +731,30 @@ let processGameInput = (state, gameAction) => {
 
 let afterTouchdown = (state) => {
   let curTime = state.curTime +. state.deltaTime;
-  let state = if (Array.length(state.lastCompletedRows) > 0) {
-    /* Move rows above completed down */
-    Array.iter((currentRow) => {
-      for (y in currentRow downto 1) {
-        state.tiles[y] = Array.copy(state.tiles[y - 1]);
-        for (tileIdx in (y * tileCols) to (y * tileCols + tileCols) - 1) {
-          state.sceneTiles[tileIdx] = state.sceneTiles[tileIdx - tileCols];
+  let state = switch (state.touchDown) {
+  | None => state
+  | Some(touchDown) =>
+    if (touchDown.completedRows) {
+      /* Move rows above completed down */
+      Array.iter((currentRow) => {
+        for (y in currentRow downto 1) {
+          state.tiles[y] = Array.copy(state.tiles[y - 1]);
+          for (tileIdx in (y * tileCols) to (y * tileCols + tileCols) - 1) {
+            state.sceneTiles[tileIdx] = state.sceneTiles[tileIdx - tileCols];
+          };
         };
-      };
-    }, state.lastCompletedRows);
-    {
-      ...state,
-      updateTiles: true
+      }, touchDown.rows);
+      {
+        ...state,
+        touchDown: None,
+        updateTiles: true
+      }
+    } else {
+      {
+        ...state,
+        touchDown: None
+      }
     }
-  } else {
-    state
   };
   let state = nextEl(state);
   updateBeams(state);
@@ -792,10 +773,48 @@ let afterTouchdown = (state) => {
   }
 };
 
-let gameLogic = (state) => {
-  let timeStep = state.deltaTime;
-  let curTime = state.curTime +. timeStep;
-  let isNewTick = curTime > state.lastTick +. tickDuration;
+let elementHasTouchedDown = (state, isDropDown) => {
+  /* Put element into tiles */
+  elToTiles(state);
+  /* Check for completed rows */
+  let completedRows = Array.map(
+    tileRow => {
+      !Array.fold_left((hasEmpty, tileState) => hasEmpty || tileState == 0, false, tileRow);
+    },
+    state.tiles
+  );
+  /* Get array with indexes of completed rows */
+  let (_, completedRowIndexes) = Array.fold_left(((i, rows), completed) => {
+    switch (completed) {
+    | true => (i + 1, Array.append(rows, [|i|]))
+    | false => (i + 1, rows)
+    }
+  }, (0, [||]), completedRows);
+  let completedRows = (Array.length(completedRowIndexes) > 0);
+  if (!completedRows && !isDropDown) {
+    /* No dropdown and no completed rows, run afterTouchdown directly */
+    afterTouchdown({
+      ...state,
+      updateTiles: true
+    })
+  } else {
+    /* Initiate process of touchdown involving animations */
+    {
+      ...state,
+      updateTiles: true,
+      touchDown: Some({
+        rows: completedRowIndexes,
+        completedRows,
+        state: TouchDown.TouchDownInit,
+        isDropDown,
+        elapsed: 0.0,
+        drawn: false
+      })
+    }
+  }
+};
+
+let regularGameLogic = (state, isNewTick, curTime) => {
   let (state, isTouchdown) = if (isNewTick) {
     switch (state.action) {
     | GameAction(CancelDown) => (state, false)
@@ -809,86 +828,55 @@ let gameLogic = (state) => {
   } else {
     (state, false)
   };
-  /* Handle element has touched down */
+  if (state.elMoved) {
+    updateBeams(state);
+  };
   switch (isTouchdown) {
   | false =>
-    if (state.posChanged || state.rotateChanged) {
-      updateBeams(state);
-    };
     {
       ...state,
       curTime: curTime,
       lastTick: (isNewTick) ? curTime : state.lastTick
     }
   | true =>
-    /* Put element into tiles */
-    elToTiles(state);
-    let state = {
-      ...state,
-      updateTiles: true
-    };
-    /* Check for completed rows */
-    let completedRows = Array.map(
-      tileRow => {
-        !Array.fold_left((hasEmpty, tileState) => hasEmpty || tileState == 0, false, tileRow);
-      },
-      state.tiles
-    );
-    /* Get array with indexes of completed rows */
-    let (_, completedRowIndexes) = Array.fold_left(((i, rows), completed) => {
-      switch (completed) {
-      | true => (i + 1, Array.append(rows, [|i|]))
-      | false => (i + 1, rows)
-      }
-    }, (0, [||]), completedRows);
-    let state = {
-      ...state,
-      lastCompletedRows: completedRowIndexes
-    };
-    if (Array.length(completedRowIndexes) > 0) {
-      state.blinkRows.rows = completedRowIndexes;
-      state.blinkRows.state = BlinkRows.BlinkInit;
-      state
-    } else {
-      afterTouchdown(state)
-    }
+    elementHasTouchedDown(state, false)
   }
 };
 
-
-/*
-let drawInfo = (state, env) => {
-  let infoOffsetX = boardOffsetX * 2 + boardWidth;
-  let infoOffsetY = boardOffsetY;
-  Draw.text(
-    ~font=state.headingFont,
-    ~body="Vimtris",
-    ~pos=(infoOffsetX, infoOffsetY),
-    env
-  );
-  List.iteri((i, text) => {
-    Draw.text(
-      ~font=state.infoFont,
-      ~body=text,
-      ~pos=(infoOffsetX + 4, infoOffsetY + 40 + (18 * i)),
-      env
-    );
-  }, [
-    "Space - pause",
-    "H - move left",
-    "L - move right",
-    "J - move down",
-    "K - cancel down",
-    "W - move 3 tiles right",
-    "B - move 3 tiles left",
-    "0 - move leftmost",
-    "$ - move rightmost",
-    "S - rotate counter clockwise",
-    "C - rotate clockwise",
-    ". - drop",
-  ]);
+/* Called after input action is processed */
+let gameLogic = (state) => {
+  let timeStep = state.deltaTime;
+  let curTime = state.curTime +. timeStep;
+  if (!state.hasDroppedDown) {
+    let isNewTick = curTime > state.lastTick +. tickDuration;
+    regularGameLogic(state, isNewTick, curTime)
+  } else {
+    /* Element has dropped down */
+    let elColor = tileColors2[state.curEl.color];
+    let dropColor = Color.fromFloats(elColor[0], elColor[1], elColor[2]);
+    /* Set dropbeams,
+       copy drop beams "from", "last" from position after drop */
+    Array.iteri((i, (from, _last)) => {
+      state.dropBeams[i] = (from, beamNone);
+    }, state.beams);
+    let state = {
+      ...state,
+      dropColor
+    };
+    /* Set new "last" from current position */
+    List.iter(((x, y)) => {
+      let pointX = state.curEl.posX + x;
+      let pointY = state.curEl.posY + y;
+      let (beamFrom, beamTo) = state.dropBeams[pointX];
+      if (beamTo < pointY) {
+        state.dropBeams[pointX] = (beamFrom, pointY);
+      };
+    }, elTiles(state.curEl.el, state.curEl.rotation));
+    /* Update regular beams */
+    updateBeams(state);
+    elementHasTouchedDown(state, true)
+  }
 };
-*/
 
 let rec processGameAction = (state, action : gameAction) => {
   let mainProcess = (state) => {
@@ -903,17 +891,15 @@ let rec processGameAction = (state, action : gameAction) => {
       gameLogic(state)
     }
   };
-  switch (state.blinkRows.state) {
-  | BlinkRows.NotBlinking =>
-    mainProcess(state);
-  | BlinkRows.Blinking | BlinkRows.BlinkInit =>
-    /* Blink animation */
-    state
-  | BlinkRows.JustBlinked =>
-    state.blinkRows.state = BlinkRows.NotBlinking;
-    /* Run after touchdown now that animation is done */
-    let state = afterTouchdown(state);
-    mainProcess(state);
+  /* Check for touchdown in progress */
+  switch (state.touchDown) {
+  | None =>
+    mainProcess(state)
+  | Some(touchDown) =>
+    switch (touchDown.state) {
+    | Done => mainProcess(afterTouchdown(state))
+    | _ => state
+    }
   }
 }
 and processStartScreenAction = (state, action : startScreenAction) => {

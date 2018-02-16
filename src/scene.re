@@ -186,6 +186,7 @@ and calcLayout = {
 }
 and anim('state, 'flags) = {
     animNode: node('state, 'flags),
+    animKey: option(string),
     onFrame: (t('state, 'flags), node('state, 'flags), anim('state, 'flags)) => unit,
     duration: float,
     mutable elapsed: float,
@@ -595,14 +596,25 @@ let queueUpdates = (scene, nodes) => {
     }, scene.queuedUpdates, nodes);
 };
 
-let makeAnim = (node, onFrame, duration, ~next=?, ()) => {
+let makeAnim = (node, onFrame, duration, ~key=?, ~next=?, ()) => {
 {
     animNode: node,
+    animKey: key,
     onFrame,
     duration,
     elapsed: 0.0,
     next
 }
+};
+
+/* Removes any active anims with given key from anim list */
+let clearAnim = (scene, animKey) => {
+    scene.anims = List.filter((a) => {
+        switch (a.animKey) {
+        | Some(key) => key != animKey
+        | None => true
+        }
+    }, scene.anims);
 };
 
 let setNodeParentsAndScene = (self) => {

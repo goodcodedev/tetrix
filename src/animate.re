@@ -3,6 +3,7 @@ let halfPi = pi /. 2.0;
 let uniform = (
     node,
     uniform,
+    ~key=?,
     ~from,
     ~last,
     ~duration=2.0,
@@ -25,6 +26,7 @@ let uniform = (
             Scene.setUniformFloat(node, uniform, newVal);
         },
         duration,
+        ~key=?key,
         ~next=?next,
         ()
     )

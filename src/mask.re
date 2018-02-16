@@ -10,7 +10,7 @@ let fragmentSource = {|
     uniform float anim;
 
     void main() {
-        gl_FragColor = vec4(0.0, 0.0, 0.0, 0.25 * anim);
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 0.3 * anim);
     }
 |};
 

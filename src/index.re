@@ -205,6 +205,7 @@ let createLeftRow = (state) => {
           FontDraw.makeNode(
             "HOLD",
             "digitalt",
+            ~opacity=0.7,
             ~height=0.27,
             ~align=SdfFont.TextLayout.AlignCenter,
             ()
@@ -257,6 +258,7 @@ let createRightRow = (state) => {
           FontDraw.makeNode(
             "NEXT",
             "digitalt",
+            ~opacity=0.7,
             ~height=0.27,
             ~align=SdfFont.TextLayout.AlignCenter,
             ()
@@ -312,7 +314,7 @@ let createPauseScreen = (state) => {
           FontDraw.makeNode(
             "Press Space to continue",
             "digitalt",
-            ~height=0.07,
+            ~height=0.06,
             ~align=SdfFont.TextLayout.AlignCenter,
             ()
           )
@@ -532,8 +534,7 @@ let updateBeams = (scene, beams, beamsVO, withFromDrop) => {
   Scene.SVertexObject.updateQuads(scene, beamsVO, vertices);
 };
 
-let blinkInit = (scene, state) => {
-  let blinkRows = state.gameState.blinkRows;
+let blinkInit = (scene, state, blinkRows) => {
   /* Update VO */
   let rowHeight = 2.0 /. float_of_int(Config.tileRows);
   let vertices = Array.fold_left((vertices, rowIdx) => {
@@ -543,10 +544,8 @@ let blinkInit = (scene, state) => {
           1.0, 1.0 -. rowHeight *. float_of_int(rowIdx),
           -1.0, 1.0 -. rowHeight *. float_of_int(rowIdx)
       |]);
-  }, [||], blinkRows.rows);
+  }, [||], blinkRows);
   Scene.SVertexObject.updateQuads(scene, state.blinkVO, vertices);
-  blinkRows.elapsed = 0.0;
-  blinkRows.state = Blinking;
   /* Show tileBlink node */
   switch (Scene.getNode(scene, "tileBlink")) {
   | Some(tileBlink) => Scene.showNode(scene, tileBlink);
@@ -554,9 +553,7 @@ let blinkInit = (scene, state) => {
   };
 };
 
-let blinkEnd = (scene, state) => {
-  let blinkRows = state.gameState.blinkRows;
-  blinkRows.state = JustBlinked;
+let blinkEnd = (scene) => {
   /* Hide tileBlink node */
   switch (Scene.getNode(scene, "tileBlink")) {
   | Some(tileBlink) => Scene.hideNode(scene, tileBlink);
@@ -565,66 +562,25 @@ let blinkEnd = (scene, state) => {
 };
 
 let drawGame = (state, scene) => {
-  let (hasDroppedDown, elMoved, elChanged) = {
-    let gs = state.gameState;
-    (
-      gs.hasDroppedDown,
-      gs.posChanged || gs.rotateChanged,
-      gs.elChanged
-    )
-  };
-  if (hasDroppedDown) {
-    let dropNode = Scene.getNode(scene, "dropBeams");
-    switch (dropNode) {
-    | None => ()
-    | Some(dropNode) =>
-      /* Copy beam before updating it to use in animation */
-      updateBeams(scene, state.gameState.dropBeams, state.dropBeamVO, true);
-      Scene.UVec3f.set(scene, state.dropColor, Color.toVec3(state.gameState.dropColor));
-      let dropAnim = Animate.uniform(
-        dropNode,
-        "sinceDrop",
-        ~from=0.0,
-        ~last=1.0,
-        ~duration=0.7,
-        ()
-      );
-      Scene.doAnim(scene, dropAnim);
-    };
-  };
-  if (elChanged) {
-    /* Redraw next elements */
-    let _ = Queue.fold((i, nextEl) => {
-      updateElTiles(scene, nextEl, state.nextEls[i], 3, 4, None);
-      i + 1
-    }, 0, state.gameState.elQueue);
-    /* Handle holding element */
-    switch (state.gameState.holdingEl) {
-    | Some(holdingEl) => updateElTiles(scene, holdingEl, state.holdingEl, 3, 4, None);
-    | None => resetElState(scene, state.holdingEl);
-    };
-  };
-  if (elMoved) {
+  /* Handle element moved (changed position or rotated) */
+  if (state.gameState.elMoved) {
     updateElTiles(scene, state.gameState.curEl, state.elState, tileRows, tileCols, Some(state.elCenterRadius));
     /* We want elState.pos transformed by layout as light pos for element */
     let elPos = switch (Scene.UVec2f.get(state.elState.pos)) {
     | Some(elPos) => elPos
     | _ => Data.Vec2.zeros()
     };
-    switch (Scene.getNode(scene, "grid")) {
-    | Some(gridNode) => {
-      switch (gridNode.layoutUniform) {
-      | Some(Gpu.UniformMat3f(layout)) =>
-        let pointPos = Data.Mat3.vecmul(layout^, Data.Vec3.fromVec2(elPos, 1.0));
-        Data.Vec3.setZ(pointPos, 0.25);
-        Scene.UVec3f.set(scene, state.elLightPos, pointPos);
-      | _ => ()
-      };
-    }
-    | None => ()
+    let gridNode = Scene.getNodeUnsafe(scene, "grid");
+    switch (gridNode.layoutUniform) {
+    | Some(Gpu.UniformMat3f(layout)) =>
+      let pointPos = Data.Mat3.vecmul(layout^, Data.Vec3.fromVec2(elPos, 1.0));
+      Data.Vec3.setZ(pointPos, 0.25);
+      Scene.UVec3f.set(scene, state.elLightPos, pointPos);
+    | _ => ()
     };
     updateBeams(scene, state.gameState.beams, state.beamVO, false);
   };
+  /* Handle update tiles */
   if (state.gameState.updateTiles) {
     switch (state.tilesTex.texture.inited) {
     | Some(inited) =>
@@ -634,27 +590,137 @@ let drawGame = (state, scene) => {
     | None => ()
     };
   };
+  switch (state.gameState.touchDown) {
+  | None =>
+    /* Handle new element */
+    if (state.gameState.elChanged) {
+      /* Redraw next elements */
+      let _ = Queue.fold((i, nextEl) => {
+        updateElTiles(scene, nextEl, state.nextEls[i], 3, 4, None);
+        i + 1
+      }, 0, state.gameState.elQueue);
+      /* Handle holding element */
+      switch (state.gameState.holdingEl) {
+      | Some(holdingEl) => updateElTiles(scene, holdingEl, state.holdingEl, 3, 4, None);
+      | None => resetElState(scene, state.holdingEl);
+      };
+    };
+  | Some(touchDown) =>
+    switch (touchDown.state) {
+    | Game.TouchDown.Blinking =>
+      let elapsed = touchDown.elapsed +. scene.canvas.deltaTime;
+      let untilElapsed = (touchDown.isDropDown) ? Config.dropDownBeforeTouchDown +. Config.blinkTime : Config.blinkTime;
+      if (elapsed >= untilElapsed) {
+        /* End blinking */
+        blinkEnd(scene);
+        /* Signal done to game logic by setting Done state */
+        state.gameState = {
+          ...state.gameState,
+          touchDown: Some({
+            ...touchDown,
+            state: Game.TouchDown.Done
+          })
+        };
+      } else {
+        /* Update elapsed time */
+        state.gameState = {
+          ...state.gameState,
+          touchDown: Some({
+            ...touchDown,
+            elapsed
+          })
+        };
+      };
+    | Game.TouchDown.DropOnly =>
+      let elapsed = touchDown.elapsed +. scene.canvas.deltaTime;
+      if (touchDown.completedRows) {
+        if (elapsed >= Config.dropDownBeforeTouchDown) {
+          /* Start blink */
+          blinkInit(scene, state, touchDown.rows);
+          state.gameState = {
+            ...state.gameState,
+            touchDown: Some({
+              ...touchDown,
+              state: Game.TouchDown.Blinking,
+              elapsed
+            })
+          };
+        } else {
+          /* Update elapsed time */
+          state.gameState = {
+            ...state.gameState,
+            touchDown: Some({
+              ...touchDown,
+              elapsed
+            })
+          };
+        };
+      } else {
+        if (elapsed >= Config.dropDownBeforeTick) {
+          /* Signal done to start next tick */
+          state.gameState = {
+            ...state.gameState,
+            touchDown: Some({
+              ...touchDown,
+              state: Game.TouchDown.Done
+            })
+          };
+        } else {
+          /* Update elapsed time */
+          state.gameState = {
+            ...state.gameState,
+            touchDown: Some({
+              ...touchDown,
+              elapsed
+            })
+          };
+        };
+      };
+    | Game.TouchDown.TouchDownInit =>
+      if (touchDown.isDropDown) {
+        let dropNode = Scene.getNodeUnsafe(scene, "dropBeams");
+        /* Update dropbeams */
+        updateBeams(scene, state.gameState.dropBeams, state.dropBeamVO, true);
+        Scene.UVec3f.set(scene, state.dropColor, Color.toVec3(state.gameState.dropColor));
+        let dropAnim = Animate.uniform(
+          dropNode,
+          "sinceDrop",
+          ~from=0.0,
+          ~last=1.0,
+          ~duration=Config.dropAnimDuration,
+          ()
+        );
+        Scene.doAnim(scene, dropAnim);
+        /* When this is dropdown, don't blink immediately */
+        state.gameState = {
+          ...state.gameState,
+          touchDown: Some({
+            ...touchDown,
+            state: Game.TouchDown.DropOnly
+          })
+        };
+      } else {
+        /* Touchdown init without dropdown, so there should be completed rows
+           and blink right away */
+        blinkInit(scene, state, touchDown.rows);
+        state.gameState = {
+          ...state.gameState,
+          touchDown: Some({
+            ...touchDown,
+            state: Game.TouchDown.Blinking
+          })
+        };
+      };
+    | Game.TouchDown.Done => ()
+    };
+  };
   /* Reset state used by scene */
   state.gameState = {
     ...state.gameState,
     hasDroppedDown: false,
     elChanged: false,
-    posChanged: false,
-    rotateChanged: false,
+    elMoved: false,
     updateTiles: false
-  };
-  /* Blink rows */
-  switch (state.gameState.blinkRows.state) {
-  | BlinkInit =>
-    blinkInit(scene, state);
-  | Blinking =>
-    let blinkRows = state.gameState.blinkRows;
-    blinkRows.elapsed = blinkRows.elapsed +. scene.canvas.deltaTime;
-    if (blinkRows.elapsed >= Config.blinkTime) {
-      /* End blinking */
-      blinkEnd(scene, state);
-    }
-  | _ => ()
   };
   state
 };
@@ -666,15 +732,18 @@ let setScreenState = (state, screen) => {
 
 let showMask = (scene) => {
   let maskNode = Scene.getNodeUnsafe(scene, "mask");
+  let animKey = "maskAnim";
   let anim = Animate.uniform(
     maskNode,
     "anim",
+    ~key=animKey,
     ~from=0.0,
     ~last=1.0,
-    ~duration=2.0,
+    ~duration=3.0,
     ~easing=Scene.SineOut,
     ()
   );
+  Scene.clearAnim(scene, animKey);
   Scene.showNode(scene, maskNode);
   Scene.doAnim(scene, anim);
 };
