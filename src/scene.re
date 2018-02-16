@@ -49,7 +49,9 @@ type blockSize =
 | Aspect(float);
 
 type easing =
-  | Linear;
+  | Linear
+  | SineOut
+  | SineInOut;
 
 let currNodeId = ref(0);
 
@@ -900,7 +902,6 @@ and setToUpdate = (updNode) => {
    are set to update, and are transparent
    or partialDraw, are covered by a parent */
 let actRectUntilCovered = (updNode) => {
-    Js.log2("Act rect for", updNode.updNode.key);
     /* Repeating some checks a few places here
        percievely in the interest of a little
        performance as well as slightly
@@ -1033,18 +1034,7 @@ let actRectUntilCovered = (updNode) => {
             updNode.parentRects = loopNewRects(updNode);
         };
     };
-    List.iter((r:updateRect('s,'f)) => {
-        if (r.active) {
-            Js.log2("Already active", r);
-        };
-    }, updNode.parentRects);
-    let r = loopRects(updNode.parentRects);
-    List.iter((r:updateRect('s,'f)) => {
-        if (r.active) {
-            Js.log2("Activated", r);
-        };
-    }, updNode.parentRects);
-    r
+    loopRects(updNode.parentRects);
 };
 
 let rec setAdjecentStackedToUpdate = (updNode : option(updateListNode('s, 'f))) => {
@@ -1687,6 +1677,13 @@ if (self.root.key == key) {
 } else {
     traverse(self.root)
 }
+};
+
+let getNodeUnsafe = (scene, nodeKey) => {
+    switch (getNode(scene, nodeKey)) {
+    | Some(node) => node
+    | None => failwith("Could not find node: " ++ nodeKey)
+    }
 };
 
 let hideNode = (scene, node) => {

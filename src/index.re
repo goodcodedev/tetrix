@@ -295,24 +295,28 @@ let createStartScreen = (state) => {
 };
 
 let createPauseScreen = (state) => {
-  Layout.vertical(
+  Layout.stacked(
     ~key="pauseScreen",
     ~hidden=true,
     [
-      FontDraw.makeNode(
-        "Paused",
-        "digitalt",
-        ~key="paused",
-        ~height=0.23,
-        ~align=SdfFont.TextLayout.AlignCenter,
-        ()
-      ),
-      FontDraw.makeNode(
-        "Press Space to continue",
-        "digitalt",
-        ~height=0.07,
-        ~align=SdfFont.TextLayout.AlignCenter,
-        ()
+      Layout.vertical(
+        [
+          FontDraw.makeNode(
+            "Pause",
+            "digitalt",
+            ~key="paused",
+            ~height=0.26,
+            ~align=SdfFont.TextLayout.AlignCenter,
+            ()
+          ),
+          FontDraw.makeNode(
+            "Press Space to continue",
+            "digitalt",
+            ~height=0.07,
+            ~align=SdfFont.TextLayout.AlignCenter,
+            ()
+          )
+        ]
       )
     ]
   )
@@ -402,12 +406,12 @@ let createNextLevelScreen = (state) => {
 
 let createRootNode = (state) => {
   let mainSize = Scene.Aspect((14.0 +. 10.0) /. 26.0);
-  Background.makeNode(
-    state.bgColor,
+  Layout.stacked(
+    ~size=Scene.Dimensions(Scale(1.0), Scale(1.0)),
+    ~vAlign=Scene.AlignMiddle,
     [
-      Layout.stacked(
-        ~key="pageStacked",
-        ~vAlign=Scene.AlignMiddle,
+      Background.makeNode(
+        state.bgColor,
         [
           Layout.horizontal(
             ~key="gameHorizontal",
@@ -418,11 +422,12 @@ let createRootNode = (state) => {
               createBoardNode(state),
               createRightRow(state)
             ]
-          ),
-          createStartScreen(state),
-          createPauseScreen(state)
+          )
         ]
-      )
+      ),
+      Mask.makeNode(),
+      createStartScreen(state),
+      createPauseScreen(state)
     ]
   )
 };
@@ -435,19 +440,16 @@ let createScene = (canvas, state) => {
     ~drawListDebug=false,
     ()
   );
-  switch (Scene.getNode(scene, "background")) {
-  | Some(bg) =>
-    let anim = Animate.uniform(
-      bg,
-      "anim",
-      ~from=0.0,
-      ~last=1.0,
-      ~duration=1.0,
-      ()
-    );
-    Scene.doAnim(scene, anim);
-  | None => ()
-  };
+  let anim = Animate.uniform(
+    Scene.getNodeUnsafe(scene, "background"),
+    "anim",
+    ~from=0.0,
+    ~last=1.0,
+    ~duration=1.5,
+    ~easing=Scene.SineOut,
+    ()
+  );
+  Scene.doAnim(scene, anim);
   scene
 };
 
@@ -662,6 +664,25 @@ let setScreenState = (state, screen) => {
   sceneLayout: screen
 };
 
+let showMask = (scene) => {
+  let maskNode = Scene.getNodeUnsafe(scene, "mask");
+  let anim = Animate.uniform(
+    maskNode,
+    "anim",
+    ~from=0.0,
+    ~last=1.0,
+    ~duration=2.0,
+    ~easing=Scene.SineOut,
+    ()
+  );
+  Scene.showNode(scene, maskNode);
+  Scene.doAnim(scene, anim);
+};
+
+let hideMask = (scene) => {
+  Scene.hideNodeByKey(scene, "mask");
+};
+
 let draw = (state, scene, canvas : Gpu.Canvas.t) => {
   state.gameState = Game.processAction({
     ...state.gameState,
@@ -677,6 +698,7 @@ let draw = (state, scene, canvas : Gpu.Canvas.t) => {
       setScreenState(state, GameScreen)
     | PauseScreen =>
       Scene.hideNodeByKey(scene, "pauseScreen");
+      hideMask(scene);
       setScreenState(state, GameScreen)
     };
     drawGame(state, scene)
@@ -687,6 +709,7 @@ let draw = (state, scene, canvas : Gpu.Canvas.t) => {
     switch (state.sceneLayout) {
     | PauseScreen => state
     | GameScreen =>
+      showMask(scene);
       Scene.showNodeByKey(scene, "pauseScreen");
       setScreenState(state, PauseScreen)
     | _ => failwith("Paused from other than game screen")

@@ -21,7 +21,7 @@ let currElFragment = {|
     uniform vec3 elColor;
 
     void main() {
-        vec3 color = elColor * 0.7 + vec3(0.0, 0.0, 0.0) * 0.3;
+        vec3 color = elColor * 0.8 + vec3(0.0, 0.0, 0.0) * 0.2;
         gl_FragColor = vec4(color, 1.0);
     }
 |};

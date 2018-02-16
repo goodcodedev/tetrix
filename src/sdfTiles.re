@@ -12,7 +12,7 @@ let sdfDist = (cols, rows) => {
         point.y = mod(point.y, 1.0 / rows) - 1.0 / rows2;
         float boxWidth = 1.0 / cols2;
         float boxHeight = 1.0 / rows2;
-        float boxDepth = 0.1;
+        float boxDepth = 0.005;
         float box = length(max(abs(point) - vec3(boxWidth, boxHeight, boxDepth), vec3(0.0, 0.0, 0.0)));
         // Octahedron towards z
         /*

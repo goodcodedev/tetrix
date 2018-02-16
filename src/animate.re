@@ -1,3 +1,5 @@
+let pi = 4.0 *. atan(1.0);
+let halfPi = pi /. 2.0;
 let uniform = (
     node,
     uniform,
@@ -8,10 +10,18 @@ let uniform = (
     ~next=?,
     ()
 ) => {
+    let nextVal = switch (easing) {
+    | Scene.Linear =>
+        ((anim : Scene.anim('a, 'b)) => from +. (last *. anim.elapsed /. duration))
+    | Scene.SineOut =>
+        ((anim : Scene.anim('a, 'b)) => from +. (last *. sin(anim.elapsed /. duration *. halfPi)))
+    | Scene.SineInOut =>
+        ((anim : Scene.anim('a, 'b)) => from +. (last *. (sin(anim.elapsed /. duration *. pi -. halfPi) *. 0.5 +. 0.5)))
+    };
     Scene.makeAnim(
         node,
-        (scene, node, anim) => {
-            let newVal = from +. (last *. anim.elapsed /. duration);
+        (_scene, node, anim) => {
+            let newVal = nextVal(anim);
             Scene.setUniformFloat(node, uniform, newVal);
         },
         duration,
