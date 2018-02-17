@@ -9,12 +9,13 @@ let resize = (state) => {
 };
 
 let makeElState = () => {
-  let pos = Scene.UVec2f.zeros();
+  let pos = Scene.UMat3f.id();
   let color = Scene.UVec3f.zeros();
   let vo = Scene.SVertexObject.makeQuad(~usage=DynamicDraw, ());
   {
     vo,
     pos,
+    elPos: Data.Vec2.zeros(),
     color
   }
 };
@@ -123,7 +124,14 @@ let setup = (canvas) => {
 let createBoardNode = (state) => {
   /* Todo: Greyscale textures, and implicit setup via pool by some param */
   /* Sdf tiles give 3d texture to tiles */
-  let sdfTiles = SdfTiles.makeNode(tileCols, tileRows, state.sceneLight);
+  let sdfTiles = SdfTiles.makeNode(
+    float_of_int(tileCols),
+    float_of_int(tileRows),
+    state.sceneLight,
+    ~key="sdfTiles",
+    ~drawTo=Scene.TextureRGB,
+    ()
+  );
   /* Beam from current element downwards */
   let beamNode = TileBeam.makeNode(state.elState.color, state.beamVO);
   /* Drop down animation */
@@ -211,7 +219,7 @@ let createLeftRow = (state) => {
             ~align=SdfFont.TextLayout.AlignCenter,
             ()
           ),
-          DrawElement.makeNode(state.holdingEl)
+          DrawElement.makeNode(state.holdingEl, state.sceneLight)
         ]
       )
     ]
@@ -264,9 +272,9 @@ let createRightRow = (state) => {
             ~align=SdfFont.TextLayout.AlignCenter,
             ()
           ),
-          DrawElement.makeNode(state.nextEls[0]),
-          DrawElement.makeNode(state.nextEls[1]),
-          DrawElement.makeNode(state.nextEls[2])
+          DrawElement.makeNode(state.nextEls[0], state.sceneLight),
+          DrawElement.makeNode(state.nextEls[1], state.sceneLight),
+          DrawElement.makeNode(state.nextEls[2], state.sceneLight)
         ]
       )
     ]
@@ -458,7 +466,7 @@ let resetElState = (scene, elState) => {
   Scene.SVertexObject.updateQuads(scene, elState.vo, [||]);
 };
 
-let updateElTiles = (scene, el : Game.elData, elState, rows, cols, uCenterRadius) => {
+let updateElTiles = (scene, el : Game.elData, elState, rows, cols, uCenterRadius, isSideEl) => {
   /* todo: Consider caching some of this */
   let tiles = Game.elTiles(el.el, el.rotation);
   let color = Game.tileColors2[el.color];
@@ -469,18 +477,25 @@ let updateElTiles = (scene, el : Game.elData, elState, rows, cols, uCenterRadius
   let tileHeight = 2.0 /. float_of_int(rows);
   let tileWidth = 2.0 /. float_of_int(cols);
   /* Translation */
-  let elPos = [|
-    -1. +. float_of_int(x) *. tileWidth,
-    1. +. float_of_int(y) *. -.tileHeight
-  |];
-  Scene.UVec2f.set(scene, elState.pos, elPos);
+  let xPos = -1. +. float_of_int(x) *. tileWidth;
+  let yPos = 1. +. float_of_int(y) *. -.tileHeight;
+  Data.Vec2.set(elState.elPos, xPos, yPos);
+  let elPos = if (isSideEl) {
+    Data.Mat3.scaleTrans(
+      0.75, 0.75,
+      xPos *. 0.375, yPos *. 0.375
+    )
+  } else {
+    Data.Mat3.trans(xPos, yPos)
+  };
+  Scene.UMat3f.set(scene, elState.pos, elPos);
   /* If we got center radius uniform (gridProgram currently uses this) */
   switch (uCenterRadius) {
   | None => ()
   | Some(uCenterRadius) =>
     let data = Hashtbl.find(Game.centerRadius, (el.el, el.rotation));
-    let cx = elPos[0] +. data.centerX *. tileWidth;
-    let cy = elPos[1] +. data.centerY *. tileHeight;
+    let cx = xPos +. data.centerX *. tileWidth;
+    let cy = yPos +. data.centerY *. tileHeight;
     let rx = data.radiusX *. tileWidth;
     let ry = data.radiusY *. tileHeight;
     Scene.UVec4f.set(scene, uCenterRadius, Data.Vec4.make(cx, cy, rx, ry));
@@ -563,10 +578,10 @@ let blinkEnd = (scene) => {
 let drawGame = (state, scene) => {
   /* Handle element moved (changed position or rotated) */
   if (state.gameState.elMoved) {
-    updateElTiles(scene, state.gameState.curEl, state.elState, tileRows, tileCols, Some(state.elCenterRadius));
+    updateElTiles(scene, state.gameState.curEl, state.elState, tileRows, tileCols, Some(state.elCenterRadius), false);
     updateBeams(scene, state.gameState.beams, state.beamVO, false);
     /* We want elState.pos transformed by layout as light pos for element */
-    let elPos = Scene.UVec2f.get(state.elState.pos);
+    let elPos = state.elState.elPos;
     let gridNode = Scene.getNodeUnsafe(scene, "grid");
     switch (gridNode.layoutUniform) {
     | Some(Gpu.UniformMat3f(layout)) =>
@@ -576,6 +591,7 @@ let drawGame = (state, scene) => {
       let lightAnim = "elLightAnim";
       Scene.clearAnim(scene, lightAnim);
       if (state.gameState.elChanged) {
+        /* Set pos without animation */
         Scene.UVec3f.set(scene, state.elLightPos, pointPos);
       } else {
         let from = Scene.UVec3f.get(state.elLightPos);
@@ -638,12 +654,12 @@ let drawGame = (state, scene) => {
     if (state.gameState.elChanged) {
       /* Redraw next elements */
       let _ = Queue.fold((i, nextEl) => {
-        updateElTiles(scene, nextEl, state.nextEls[i], 3, 4, None);
+        updateElTiles(scene, nextEl, state.nextEls[i], 3, 4, None, true);
         i + 1
       }, 0, state.gameState.elQueue);
       /* Handle holding element */
       switch (state.gameState.holdingEl) {
-      | Some(holdingEl) => updateElTiles(scene, holdingEl, state.holdingEl, 3, 4, None);
+      | Some(holdingEl) => updateElTiles(scene, holdingEl, state.holdingEl, 3, 4, None, true);
       | None => resetElState(scene, state.holdingEl);
       };
     };

@@ -1,6 +1,7 @@
 type elState = {
   vo: Scene.sceneVertexObject,
   pos: Scene.sceneUniform,
+  elPos: Data.Vec2.t,
   color: Scene.sceneUniform
 };
 

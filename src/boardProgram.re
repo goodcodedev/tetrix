@@ -202,7 +202,7 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
     let boxScale = M3.scale(0.13, 0.2);
     let boxModel = M3.matmul(boxTrans, boxScale);
     /*let uiBox = UiBox.make(canvas, boxModel);*/
-    let uiBox = UiBox.makeSdfProgram(canvas, boxModel, Light.ProgramLight.default(), ~color=Color.fromFloats(0.5, 0.6, 0.9), ());
+    let uiBox = UiBox.makeSdfProgram(canvas, boxModel, Light.ProgramLight.default(), ~color=SdfNode.SdfStaticColor(Color.fromFloats(0.5, 0.6, 0.9)), ());
     let self = {
         tiles,
         currElTiles: [||],

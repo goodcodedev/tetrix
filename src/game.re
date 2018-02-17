@@ -122,17 +122,6 @@ let tileColors2 = Array.map((color) => {
   [|240, 130, 120, 255|], /* Red left shift */
 |]);
 
-let listRange = (countDown) => {
-  let rec addToList = (list, countDown) => {
-    if (countDown <= 0) {
-      list
-    } else {
-      addToList([countDown, ...list], countDown - 1)
-    }
-  };
-  addToList([], countDown)
-};
-
 /* Center position and radius
    for each tetronimo in each rotation
    Can add other aggregate element data */
@@ -624,7 +613,7 @@ let processGameInput = (state, gameAction) => {
       0
     };
     {
-      ...List.fold_left((state, _) => attemptMove(state, (-1, 0)), state, listRange(toMove)),
+      ...List.fold_left((state, _) => attemptMove(state, (-1, 0)), state, Util.listRange(toMove)),
       action: GameAction(NoAction)
     }
   }
@@ -639,7 +628,7 @@ let processGameInput = (state, gameAction) => {
       14
     }) - leftPos;
     {
-      ...List.fold_left((state, _) => attemptMove(state, (1, 0)), state, listRange(toMove)),
+      ...List.fold_left((state, _) => attemptMove(state, (1, 0)), state, Util.listRange(toMove)),
       action: GameAction(NoAction)
     }
   }
@@ -654,16 +643,16 @@ let processGameInput = (state, gameAction) => {
       12
     }) - rightPos;
     {
-      ...List.fold_left((state, _) => attemptMove(state, (1, 0)), state, listRange(toMove)),
+      ...List.fold_left((state, _) => attemptMove(state, (1, 0)), state, Util.listRange(toMove)),
       action: GameAction(NoAction)
     }
   }
   | MoveBeginning => {
-    ...List.fold_left((state, _) => attemptMove(state, (-1, 0)), state, listRange(state.curEl.posX)),
+    ...List.fold_left((state, _) => attemptMove(state, (-1, 0)), state, Util.listRange(state.curEl.posX)),
     action: GameAction(NoAction)
   }
   | MoveEnd => {
-    ...List.fold_left((state, _) => attemptMove(state, (1, 0)), state, listRange(tileCols - state.curEl.posX)),
+    ...List.fold_left((state, _) => attemptMove(state, (1, 0)), state, Util.listRange(tileCols - state.curEl.posX)),
     action: GameAction(NoAction)
   }
   | MoveDown => {

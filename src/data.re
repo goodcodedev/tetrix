@@ -13,6 +13,11 @@ module Vec2 {
     let getX = (v : t) => v[0];
     let getY = (v : t) => v[1];
 
+    let set = (v, x, y) => {
+        v[0] = x;
+        v[1] = y;
+    };
+
     let make = (a, b) => [|a, b|];
 
     let zeros = () : t => [|0.0, 0.0|];

@@ -9,11 +9,21 @@ let vertexSource = {|
     varying vec2 tileShadowsPos;
     varying vec2 beamsPos;
     varying vec2 dropPos;
+
+    uniform vec2 pixelSize;
+    // Coords to take off lines on sides
+    varying vec2 lineCoords;
+    varying vec2 singlePixel;
     
     varying vec2 coord;
     void main() {
         vPosition = position;
         coord = (position + 1.0) * 0.5;
+        singlePixel = 2.0/pixelSize;
+        lineCoords = vec2(
+            position.x + singlePixel.x,
+            position.y
+        );
         vec2 transformed = (vec3(position, 1.0) * layout).xy;
         tileShadowsPos = (vec3(position, 1.0) * tileShadowsMat).xy;
         beamsPos = (vec3(position, 1.0) * beamsMat).xy;
@@ -37,6 +47,8 @@ let fragmentSource = {|
     uniform vec4 centerRadius;
 
     varying vec2 vPosition;
+    varying vec2 lineCoords;
+    varying vec2 singlePixel;
     varying vec2 tileShadowsPos;
     varying vec2 beamsPos;
     varying vec2 dropPos;
@@ -49,18 +61,18 @@ let fragmentSource = {|
     const vec2 aspect = vec2(numCols / numRows, 1.0);
     const float colSize = 2.0 / numCols;
     const float rowSize = 2.0 / numRows;
-    float xsize = 2.0 / pixelSize.x;
-    float ysize = 2.0 / pixelSize.y;
+    const float wordSize = 1.0;
+    const float wordStart = 0.5;
     const float tileWidth = 1.0 / numCols;
     const float tileHeight = 1.0 / numRows;
 
     void main() {
-        float xblank = (mod(vPosition.x, colSize) > xsize) ? 1.0 : 0.0;
-        float x3blank = (mod(vPosition.x - colSize*3.0, colSize * 6.0) > xsize * 2.0) ? 1.0 : 0.0;
-        float yblank = (mod(vPosition.y + ysize, rowSize) > ysize) ? 1.0 : 0.0;
+        float xblank = (mod(lineCoords.x, colSize) > singlePixel.x) ? 1.0 : 0.0;
+        float x3blank = (mod(lineCoords.x - wordStart, wordSize) > singlePixel.x * 2.0) ? 1.0 : 0.0;
+        float yblank = (mod(lineCoords.y, rowSize) > singlePixel.y) ? 1.0 : 0.0;
         float lineCoef = (1.0 - xblank * yblank * x3blank) * 0.9 + (1.0 - x3blank) * 0.1;
 
-        // todo: Calculate in vertex shader
+        // todo: Calculate in vertex shader?
         vec2 elVec = vPosition - centerRadius.xy;
         vec2 elVecNorm = normalize(elVec);
         float elVecLength = length(elVec);
@@ -90,6 +102,7 @@ let fragmentSource = {|
         // Dropbeam
         float dropBeam = texture2D(drop, dropPos).x;
         color = mix(color, dropColor, dropBeam * 0.2);
+
         color = color + elColor * auraLight;
         gl_FragColor = vec4(color + triangleLight, 1.0);
     }

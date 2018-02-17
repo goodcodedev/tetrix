@@ -28,7 +28,18 @@ let currElFragment = {|
 
 open Gpu;
 
-let makeNode = (elState : SceneState.elState) => {
+let makeNode = (elState : SceneState.elState, lighting) => {
+    SdfTiles.makeNode(
+        2.0,
+        1.5,
+        lighting,
+        ~vo=elState.vo,
+        ~color=SdfNode.SdfDynColor(elState.color),
+        ~model=elState.pos,
+        ~margin=MarginXY(Scale(0.25), Scale(0.05)),
+        ()
+    )
+    /*
     Scene.makeNode(
         ~cls="element",
         ~size=Aspect(4.0 /. 3.0),
@@ -42,5 +53,5 @@ let makeNode = (elState : SceneState.elState) => {
             ("translation", elState.pos)
         ],
         ()
-    )
+    )*/
 };

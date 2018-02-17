@@ -1,8 +1,6 @@
 let sdfDist = (cols, rows) => {
-    let colsF = float_of_int(cols);
-    let rowsF = float_of_int(rows);
-    let colsGl = string_of_float(colsF);
-    let rowsGl = string_of_float(rowsF);
+    let colsGl = string_of_float(cols);
+    let rowsGl = string_of_float(rows);
     {|
         float cols = |} ++ colsGl ++ {|;
         float rows = |} ++ rowsGl ++ {|;
@@ -50,7 +48,7 @@ type t = {
 };
 
 let make = (canvas: Canvas.t, lighting) => {
-    let sdfProgram = SdfNode.init(SdfNode.make(sdfDist(12, 26), SdfNode.ZeroToOne, None, lighting, ()), canvas);
+    let sdfProgram = SdfNode.init(SdfNode.make(sdfDist(12.0, 26.0), SdfNode.ZeroToOne, None, lighting, ()), canvas);
     let texture = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA, Texture.LinearFilter);
     let fbuffer = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
     {
@@ -74,14 +72,39 @@ let createCanvas = (lighting) => {
     SdfNode.draw(p.sdfProgram);
 };
 
-let makeNode = (cols, rows, lighting) => {
-    let aspect = (float_of_int(cols) /. float_of_int(rows));
-    let sdfNode = SdfNode.make(sdfDist(cols, rows), SdfNode.ZeroToOne, None, lighting, ());
+let makeNode = (
+    cols,
+    rows,
+    lighting,
+    ~drawTo=?,
+    ~vo=?,
+    ~color=?,
+    ~key=?,
+    ~model=?,
+    ~margin=?,
+    ()
+) => {
+    let aspect = (cols /. rows);
+    let fragCoords = switch (model) {
+    | Some(_) => SdfNode.ByModel
+    | None => SdfNode.ZeroToOne
+    };
+    let sdfNode = SdfNode.make(
+        sdfDist(cols, rows),
+        fragCoords,
+        model,
+        lighting,
+        ~vo=?vo,
+        ~color=?color,
+        ()
+    );
     SdfNode.makeNode(
         sdfNode,
-        ~key="sdfTiles",
+        ~key=?key,
+        ~cls="sdfTiles",
         ~aspect,
-        ~drawTo=Scene.TextureRGB,
+        ~drawTo=?drawTo,
+        ~margin=?margin,
         ()
     )
 };

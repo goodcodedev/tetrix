@@ -4,13 +4,20 @@ type fragCoords =
   | ByModel
   | ZeroToOne;
 
+type sdfColor =
+  | NoColor
+  | SdfStaticColor(Color.t)
+  | SdfDynColor(Scene.sceneUniform);
+
 type t = {
     sdfDist: string,
     fragCoords: fragCoords,
     width: float,
     height: float,
-    model: option(Data.Mat3.t),
-    color: Color.t,
+    model: option(Scene.sceneUniform),
+    color: sdfColor,
+    colorMix: float,
+    vo: option(Scene.sceneVertexObject),
     opacity: option(float),
     alphaLimit: option(float),
     lighting: Light.ProgramLight.t
@@ -37,10 +44,13 @@ let makeVertexSource = (self) => {
         varying vec3 vScreenPos;
         void main() {
             vec3 toModel = vec3(position, 1.0) * model;
-            vec2 pos = (vec3(position, 1.0) * layout).xy;
-            vPosition = toModel.xy;
-            vScreenPos = vec3(vPosition, 0.0);
-            gl_Position = vec4(vScreenPos, 1.0);
+            vPosition = position;
+            // Not sure what makes sense here, it's a bit
+            // of a mess. This is what is needed for the
+            // side elements though
+            vec2 pos = (vec3(toModel.xy, 1.0) * layout).xy;
+            vScreenPos = vec3((vec3(position, 1.0) * layout).xy, 0.0);
+            gl_Position = vec4(pos, 0.0, 1.0);
         }
     |}
     | (Some(_model), ZeroToOne) => {|
@@ -102,7 +112,11 @@ let makeFragmentSource = (self) => {
     | (None, ByModel) => failwith("ByModel fragCoords requested, but no model provided")
     };
     let sf = string_of_float;
-    let glColor = Color.toGlsl(self.color);
+    let (uniformDecls, glColor) = switch (self.color) {
+    | NoColor => ("", "color")
+    | SdfStaticColor(color) => ("", "mix(color, " ++ Color.toGlsl(color) ++ ", " ++ string_of_float(self.colorMix) ++ ")")
+    | SdfDynColor(_) => ("uniform vec3 uColor;\n", "mix(color, uColor, " ++ string_of_float(self.colorMix) ++ ")")
+    };
     let glAlpha = switch(self.alphaLimit, self.opacity) {
     | (Some(alphaLimit), Some(opacity)) => "(pixelEye.z - dist < " ++ sf(alphaLimit) ++ ") ? 0.0 : " ++ sf(opacity)
     | (Some(alphaLimit), None) => "(pixelEye.z - dist < " ++ sf(alphaLimit) ++ ") ? 0.0 : 1.0"
@@ -115,6 +129,8 @@ let makeFragmentSource = (self) => {
         precision mediump float;
         varying vec2 vPosition;
         varying vec3 vScreenPos;
+
+        |} ++ uniformDecls ++ {|
         
         float epsilon = 0.00005;
         float minDist = 1.0;
@@ -162,14 +178,14 @@ let makeFragmentSource = (self) => {
             float dist = shortestDistance(pixelEye, vec3(0.0, 0.0, -1.0));
             // All points should hit a shape in this shader
             vec3 p = pixelEye + dist * vec3(0.0, 0.0, -1.0);
-            vec3 color = |} ++ glColor  ++ {|;
+            vec3 color = vec3(0.6, 0.6, 0.6);
             vec3 N = estimateNormal(p);
             // todo: Adjust estimateNormal?
             N.y = N.y * -1.0;
             float light = (lighting(p, vec3(vScreenPos.xy, p.z), N)).x;
             color = mix(mix(color, vec3(1.0, 1.0, 1.0), max(light - 0.5, 0.0)) * 0.9, vec3(0.0, 0.0, 0.0), max(0.5 + light * -1.0, 0.0) * 1.5);
             float alpha = |} ++ glAlpha  ++ {|;
-            gl_FragColor = vec4(color, alpha);
+            gl_FragColor = vec4(|} ++ glColor  ++ {|, alpha);
         }
     |};
     source
@@ -177,7 +193,7 @@ let makeFragmentSource = (self) => {
 
 let makeProgram = (self) => {
     let uniforms = switch(self.model) {
-    | Some(model) => [|Uniform.make("model", UniformMat3f(ref(Data.Mat3.fromArray(model))))|]
+    | Some(model) => [|Uniform.make("model", model.uniform)|]
     | None => [||]
     };
     Program.make(
@@ -216,7 +232,9 @@ let make = (
     lighting,
     ~width=1.0,
     ~height=1.0,
-    ~color=Color.fromFloats(0.6, 0.6, 0.6),
+    ~color=NoColor,
+    ~colorMix=0.4,
+    ~vo=?,
     ~opacity=?,
     ~alphaLimit=?,
     ()
@@ -228,6 +246,8 @@ let make = (
         height,
         model,
         color,
+        colorMix,
+        vo,
         opacity,
         alphaLimit,
         lighting
@@ -248,6 +268,7 @@ let makeNode = (
     ~cls="sdfNode",
     ~aspect=?,
     ~drawTo=?,
+    ~margin=?,
     ~children=[],
     ()
 ) => {
@@ -257,15 +278,20 @@ let makeNode = (
     | _ => false
     };
     let uniforms = switch(self.model) {
-    | Some(model) => 
-        [
-            ("model", Scene.UMat3f.mat(model)),
-        ]
+    | Some(model) => [("model", model)]
     | None => []
+    };
+    let uniforms = switch (self.color) {
+    | SdfDynColor(color) => [("uColor", color), ...uniforms]
+    | _ => uniforms
     };
     let size = switch (aspect) {
     | Some(aspect) => Scene.Aspect(aspect)
     | None => Dimensions(Scale(self.width), Scale(self.height))
+    };
+    let partialDraw = switch (self.vo) {
+    | Some(_) => true
+    | None => false
     };
     Scene.makeNode(
         ~key=?key,
@@ -273,9 +299,12 @@ let makeNode = (
         ~vertShader=Shader.make(makeVertexSource(self)),
         ~fragShader=Shader.make(makeFragmentSource(self)),
         ~size,
+        ~margin=?margin,
         ~transparent,
         ~uniforms,
         ~children,
+        ~vo=?self.vo,
+        ~partialDraw,
         ~drawTo=?drawTo,
         ~texTransUniform=true,
         ()

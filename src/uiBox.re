@@ -10,6 +10,7 @@ let sdfDist = (width, height, rounding) => {|
 open Gpu;
 
 let makeSdfProgram = (canvas: Canvas.t, model, lighting, ~color=?, ()) => {
+    let model = Scene.UMat3f.mat(model);
     let sdfNode = SdfNode.make(
         sdfDist(1.0, 1.0, 0.06),
         SdfNode.ByModel,
@@ -29,7 +30,7 @@ let makeNode = (~width=1.0, ~height=1.0, ~color=?, ~lighting, children) => {
     let sdfNode = SdfNode.make(
         sdfDist(1.0, 1.0 /. aspect, 0.08),
         SdfNode.ByModel,
-        Some(model),
+        Some(Scene.UMat3f.mat(model)),
         lighting,
         ~width,
         ~height,
