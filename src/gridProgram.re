@@ -9,8 +9,11 @@ let vertexSource = {|
     varying vec2 tileShadowsPos;
     varying vec2 beamsPos;
     varying vec2 dropPos;
+    
+    varying vec2 coord;
     void main() {
         vPosition = position;
+        coord = (position + 1.0) * 0.5;
         vec2 transformed = (vec3(position, 1.0) * layout).xy;
         tileShadowsPos = (vec3(position, 1.0) * tileShadowsMat).xy;
         beamsPos = (vec3(position, 1.0) * beamsMat).xy;
@@ -38,23 +41,26 @@ let fragmentSource = {|
     varying vec2 beamsPos;
     varying vec2 dropPos;
 
+    // Normalized to 0.0 - 1.0
+    varying vec2 coord;
+
     const float numCols = 12.0;
     const float numRows = 26.0;
-    float xsize = 1.0 / pixelSize.x;
-    float ysize = 1.0 / pixelSize.y;
+    const vec2 aspect = vec2(numCols / numRows, 1.0);
+    const float colSize = 2.0 / numCols;
+    const float rowSize = 2.0 / numRows;
+    float xsize = 2.0 / pixelSize.x;
+    float ysize = 2.0 / pixelSize.y;
     const float tileWidth = 1.0 / numCols;
     const float tileHeight = 1.0 / numRows;
 
     void main() {
-        vec2 aspect = vec2(numCols / numRows, 1.0);
-        // Normalized coord to 0.0 - 1.0
-        vec2 coord = (vPosition + 1.0) * 0.5;
-        float colSize = 1.0 / numCols;
-        float rowSize = 1.0 / numRows;
-        float xblank = (mod(coord.x + xsize, colSize) > xsize) ? 1.0 : 0.0;
-        float x3blank = (mod(coord.x + xsize + colSize*3.0, colSize * 6.0) > xsize * 2.0) ? 1.0 : 0.0;
-        float yblank = (mod(coord.y + ysize, rowSize) > ysize) ? 1.0 : 0.0;
+        float xblank = (mod(vPosition.x, colSize) > xsize) ? 1.0 : 0.0;
+        float x3blank = (mod(vPosition.x - colSize*3.0, colSize * 6.0) > xsize * 2.0) ? 1.0 : 0.0;
+        float yblank = (mod(vPosition.y + ysize, rowSize) > ysize) ? 1.0 : 0.0;
         float lineCoef = (1.0 - xblank * yblank * x3blank) * 0.9 + (1.0 - x3blank) * 0.1;
+
+        // todo: Calculate in vertex shader
         vec2 elVec = vPosition - centerRadius.xy;
         vec2 elVecNorm = normalize(elVec);
         float elVecLength = length(elVec);

@@ -83,6 +83,7 @@ let setup = (canvas) => {
     ~pos=Light.DynamicPos(elLightPos),
     ~color=Light.DynamicColor(elState.color),
     ~specular=0,
+    ~factor=0.4,
     ()
   );
   let sceneAndElLight = {

@@ -1720,6 +1720,7 @@ let showNodeByKey = (scene, nodeKey) => {
 
 let calcLayout = (self) => {
 let debug = false;
+/* These are assumed "ints"/rounded */
 let vpWidth = float_of_int(self.canvas.width);
 let vpHeight = float_of_int(self.canvas.height);
 let vpWidthCenter = vpWidth /. 2.0;
@@ -2004,24 +2005,31 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
                 }, node.children, y +. paddedHeight);
             };
         };
-        node.rect.x = calcLayout.pXOffset;
-        node.rect.y = calcLayout.pYOffset;
-        node.rect.w = calcLayout.inWidth;
-        node.rect.h = calcLayout.inHeight;
-        node.scissorRect.x = floor(calcLayout.pXOffset);
-        node.scissorRect.y = floor(vpHeight -. calcLayout.pYOffset -. calcLayout.inHeight);
-        node.scissorRect.w = ceil(calcLayout.inWidth +. (calcLayout.pXOffset -. floor(calcLayout.pXOffset))); /* Couldnt get modf to work */
-        node.scissorRect.h = ceil(calcLayout.inHeight +. (calcLayout.pYOffset -. floor(calcLayout.pYOffset)));
+        /* Round numbers to make them work as pixel values
+           since they are used with rects etc and nodes
+           are drawn independently */
+        let pXOff = floor(calcLayout.pXOffset +. 0.5);
+        let pYOff = floor(calcLayout.pYOffset +. 0.5);
+        let inW = floor(calcLayout.inWidth +. (calcLayout.pXOffset -. pXOff) +. 0.5);
+        let inH = floor(calcLayout.inHeight +. (calcLayout.pYOffset -. pYOff) +. 0.5);
+        node.rect.x = pXOff;
+        node.rect.y = pYOff;
+        node.rect.w = inW;
+        node.rect.h = inH;
+        node.scissorRect.x = pXOff;
+        node.scissorRect.y = vpHeight -. pYOff -. inH;
+        node.scissorRect.w = inW;
+        node.scissorRect.h = inH;
         /* Bit torn on whether to do this for all nodes,
            currently used for stencils, possibly there
            are other uses, but generally layout matrix is also available.
            We have vpWidth available, if calculations
            are moved, vpWidth etc might beneficially
            be stored. */
-        node.screenRect.x = (calcLayout.pXOffset /. vpWidth *. 2.0) -. 1.0;
-        node.screenRect.y = 1.0 -. (calcLayout.pYOffset /. vpHeight *. 2.0);
-        node.screenRect.w = calcLayout.inWidth /. vpWidth *. 2.0;
-        node.screenRect.h = calcLayout.inHeight /. vpHeight *. 2.0;
+        node.screenRect.x = (pXOff /. vpWidth *. 2.0) -. 1.0;
+        node.screenRect.y = 1.0 -. (pYOff /. vpHeight *. 2.0);
+        node.screenRect.w = inW /. vpWidth *. 2.0;
+        node.screenRect.h = inH /. vpHeight *. 2.0;
         if (debug) {
             Js.log("Layout for " ++ nodeIdString(node));
             Js.log2("pWidth: ", calcLayout.pWidth);
@@ -2032,8 +2040,8 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
         switch (node.layoutUniform) {
         | None => ();
         | Some(layoutUniform) =>
-            let scaleX = calcLayout.inWidth /. vpWidth;
-            let scaleY = calcLayout.inHeight /. vpHeight;
+            let scaleX = inW /. vpWidth;
+            let scaleY = inH /. vpHeight;
             let scale = Data.Mat3.scale(scaleX, scaleY);
             switch (node.drawToTexture, node.texTransUniform) {
             | (Some(texture), None) =>
@@ -2055,22 +2063,20 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
                     Js.log2("Layout: ", layoutMat);
                 };
             | (None, _) =>
-                /* Can this be simplified? */
-                let translate = Data.Mat3.trans(
-                    ((calcLayout.pXOffset +. (calcLayout.inWidth /. 2.0) -. vpWidthCenter) /. vpWidth *. 2.0),
-                    ((calcLayout.pYOffset +. (calcLayout.inHeight /. 2.0) -. vpHeightMiddle) /. vpHeight *. -2.0)
+                let layoutMat = Data.Mat3.scaleTrans(
+                    scaleX,
+                    scaleY,
+                    (((pXOff *. 2.0 +. inW) /. vpWidth) -. 1.0),
+                    (((pYOff *. -2.0 -. inH) /. vpHeight) +. 1.0)
                 );
-                let layoutMat = Data.Mat3.matmul(translate, scale);
                 Gpu.Uniform.setMat3f(layoutUniform, layoutMat);
                 if (debug) {
-                    Js.log2("Scale: ", scale);
-                    Js.log2("Translate: ", translate);
                     Js.log2("Layout: ", layoutMat);
                 };
             | (Some(texture), Some(texTransUniform)) =>
                 /* First regular layout uniform */
-                let transX = ((calcLayout.pXOffset +. (calcLayout.inWidth /. 2.0) -. vpWidthCenter) /. vpWidth *. 2.0);
-                let transY = ((calcLayout.pYOffset +. (calcLayout.inHeight /. 2.0) -. vpHeightMiddle) /. vpHeight *. -2.0);
+                let transX = ((pXOff +. (inW /. 2.0) -. vpWidthCenter) /. vpWidth *. 2.0);
+                let transY = ((pYOff +. (inH /. 2.0) -. vpHeightMiddle) /. vpHeight *. -2.0);
                 let translate = Data.Mat3.trans(
                     transX,
                     transY
@@ -2093,8 +2099,8 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
         | None => ();
         | Some(pixelSizeUniform) =>
             Gpu.Uniform.setVec2f(pixelSizeUniform, Data.Vec2.make(
-                node.calcLayout.inWidth,
-                node.calcLayout.inHeight
+                inW,
+                inH
             ));
         };
         List.iter((dep) => {

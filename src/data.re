@@ -153,6 +153,14 @@ module Mat3 {
         |]
     };
 
+    let scaleTrans = (scaleX, scaleY, transX, transY) => {
+        [|
+            scaleX, 0., transX,
+            0., scaleY, transY,
+            0., 0., 1.
+        |]
+    };
+
     let id = () : t => {
         [|
             1., 0., 0.,
