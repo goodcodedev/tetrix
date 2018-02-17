@@ -223,7 +223,8 @@ let loadFont = (font, canvas, bgDraw) => {
 let makeNode = (
     text,
     font,
-    ~key="fontDraw",
+    ~key=?,
+    ~cls="fontDraw",
     ~height=0.2,
     ~numLines=1,
     ~align=SdfFont.TextLayout.AlignLeft,
@@ -246,7 +247,8 @@ let makeNode = (
     let aspect = 1.0 /. (height *. float_of_int(numLines));
     let vo = Scene.SceneVO.make(vertexBuffer, Some(indexBuffer));
     let node = Scene.makeNode(
-        key,
+        ~key=?key,
+        ~cls,
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~textures=[("map", Scene.SceneTex.tex(fontTexture))],

@@ -244,7 +244,8 @@ let init = (self, canvas : Canvas.t) => {
 
 let makeNode = (
     self,
-    ~key="sdfNode",
+    ~key=?,
+    ~cls="sdfNode",
     ~aspect=?,
     ~drawTo=?,
     ~children=[],
@@ -267,7 +268,8 @@ let makeNode = (
     | None => Dimensions(Scale(self.width), Scale(self.height))
     };
     Scene.makeNode(
-        key,
+        ~key=?key,
+        ~cls,
         ~vertShader=Shader.make(makeVertexSource(self)),
         ~fragShader=Shader.make(makeFragmentSource(self)),
         ~size,

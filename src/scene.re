@@ -71,6 +71,8 @@ type fbufferConfig = {
 type t('state, 'flags) = {
     state: 'state,
     mutable queuedUpdates: list(int),
+    nodesByKey: Hashtbl.t(string, node('state, 'flags)),
+    nodesByCls: Hashtbl.t(string, list(node('state, 'flags))),
     canvas: Gpu.Canvas.t,
     root: node('state, 'flags),
     mutable inited: bool,
@@ -101,7 +103,8 @@ and updateState('flags) = {
     hiddenNodes: list(int)
 }
 and node('state, 'flags) = {
-    key: string,
+    key: option(string),
+    cls: option(string),
     id: int,
     updateOn: list('flags),
     mutable drawState: option(Gpu.DrawState.t),
@@ -396,7 +399,8 @@ module NodeTex {
 };
 
 let makeNode = (
-    key,
+    ~key=?,
+    ~cls=?,
     ~vertShader=?,
     ~fragShader=?,
     ~updateOn=[],
@@ -508,6 +512,7 @@ let makeNode = (
     };
     {
         key,
+        cls,
         id: nextNodeId(),
         onUpdate: update,
         updateOn,
@@ -554,6 +559,35 @@ let makeNode = (
     }
 };
 
+let setNodeParentsSceneKeyCls = (self) => {
+let rec loop = (node, parent) => {
+    node.parent = parent;
+    node.scene = Some(self);
+    switch (node.key) {
+    | None => ()
+    | Some(key) =>
+        if (Hashtbl.mem(self.nodesByKey, key)) {
+            failwith("Node with key already exist: " ++ key);
+        } else {
+            Hashtbl.add(self.nodesByKey, key, node);
+        };
+    };
+    switch (node.cls) {
+    | None => ()
+    | Some(cls) =>
+        if (Hashtbl.mem(self.nodesByCls, cls)) {
+            let current = Hashtbl.find(self.nodesByCls, cls);
+            Hashtbl.replace(self.nodesByCls, cls, [node, ...current]);
+        } else {
+            Hashtbl.add(self.nodesByCls, cls, [node]);
+        };
+    };
+    List.iter((dep) => loop(dep, Some(node)), node.deps);
+    List.iter((child) => loop(child, Some(node)), node.children);
+};
+loop(self.root, None)
+};
+
 let make = (
     canvas,
     state,
@@ -568,26 +602,30 @@ let make = (
             draw: DrawListDebug.make(canvas)
         })
     };
-{
-    state,
-    canvas,
-    queuedUpdates: [],
-    root,
-    inited: false,
-    updateLists: Hashtbl.create(5),
-    drawLists: Hashtbl.create(30),
-    drawListsDebug,
-    initedLists: Hashtbl.create(30),
-    initedDeps: Hashtbl.create(10),
-    loadingNodes: [],
-    anims: [],
-    fbuffer: Hashtbl.create(1),
-    stencilDraw: StencilDraw.make(canvas),
-    onFlags: Hashtbl.create(50),
-    updateNodes: ArrayB.make(None),
-    updateRoot: None,
-    hiddenNodes: []
-}
+    let scene = {
+        state,
+        canvas,
+        queuedUpdates: [],
+        nodesByKey: Hashtbl.create(30),
+        nodesByCls: Hashtbl.create(30),
+        root,
+        inited: false,
+        updateLists: Hashtbl.create(5),
+        drawLists: Hashtbl.create(30),
+        drawListsDebug,
+        initedLists: Hashtbl.create(30),
+        initedDeps: Hashtbl.create(10),
+        loadingNodes: [],
+        anims: [],
+        fbuffer: Hashtbl.create(1),
+        stencilDraw: StencilDraw.make(canvas),
+        onFlags: Hashtbl.create(50),
+        updateNodes: ArrayB.make(None),
+        updateRoot: None,
+        hiddenNodes: []
+    };
+    setNodeParentsSceneKeyCls(scene);
+    scene
 };
 
 let queueUpdates = (scene, nodes) => {
@@ -615,16 +653,6 @@ let clearAnim = (scene, animKey) => {
         | None => true
         }
     }, scene.anims);
-};
-
-let setNodeParentsAndScene = (self) => {
-let rec loop = (node, parent) => {
-    node.parent = parent;
-    node.scene = Some(self);
-    List.iter((dep) => loop(dep, Some(node)), node.deps);
-    List.iter((child) => loop(child, Some(node)), node.children);
-};
-loop(self.root, None)
 };
 
 let getTblRef = (node, key, getTbl, resolve) => {
@@ -823,6 +851,17 @@ let rec setChildToUpdate = (updNode) => {
     }
 };
 
+let nodeIdString = (node) => {
+    switch (node.key) {
+    | Some(key) => key ++ ", id: " ++ string_of_int(node.id)
+    | None =>
+        switch (node.cls) {
+        | Some(cls) => "cls: " ++ cls ++ ", id: " ++ string_of_int(node.id)
+        | None => "id: " ++ string_of_int(node.id)
+        }
+    }
+};
+
 let rec setDepParentToUpdate = (updNode) => {
     if (!updNode.updNode.hidden) {
         /* todo: more fine grained update
@@ -993,7 +1032,7 @@ let actRectUntilCovered = (updNode) => {
                     }
                 }
             }
-        | None => failwith("Could not find covering parent for: " ++ updNode.updNode.key
+        | None => failwith("Could not find covering parent for: " ++ nodeIdString(updNode.updNode)
                            ++ ". Maybe add a background node?");
         }
     };
@@ -1510,14 +1549,14 @@ let processDrawList = (scene, drawList, flags, debug) => {
 let logDrawList = (scene, updateState : updateState('flags), drawList) => {
     Js.log2("====\nDrawlist", List.fold_left((str, id) => {
         switch (scene.updateNodes.data[id]) {
-        | Some(node) => str ++ ", " ++ node.updNode.key
+        | Some(node) => str ++ ", " ++ nodeIdString(node.updNode)
         | None => str
         }
     }, "", updateState.updateNodes));
     List.iter((animId) => {
         let n = scene.updateNodes.data[animId];
         let key = switch (n) {
-        | Some(n) => n.updNode.key
+        | Some(n) => nodeIdString(n.updNode)
         | None => "No key"
         };
         Js.log2("Anim: ", key);
@@ -1526,7 +1565,7 @@ let logDrawList = (scene, updateState : updateState('flags), drawList) => {
     | [el, ...rest] =>
         switch (el) {
         | DrawNode(node) =>
-            Js.log("Draw node: " ++ node.key);
+            Js.log("Draw node: " ++ nodeIdString(node));
         | DrawStencil(stencilBuffers) =>
             Js.log2("Draw stencil: ", stencilBuffers.stencilVertices.data);
         | ClearStencil =>
@@ -1609,11 +1648,11 @@ let textures = Array.of_list(List.map(
 ));
 let vertShader = switch (node.vertShader) {
 | Some(vertShader) => vertShader
-| None => failwith("Vertex shader not found on: " ++ node.key)
+| None => failwith("Vertex shader not found on: " ++ nodeIdString(node))
 };
 let fragShader = switch (node.fragShader) {
 | Some(fragShader) => fragShader
-| None => failwith("Fragment shader not found on: " ++ node.key)
+| None => failwith("Fragment shader not found on: " ++ nodeIdString(node))
 };
 node.drawState = Some(Gpu.DrawState.init(
     self.canvas.context,
@@ -1639,56 +1678,12 @@ let rec loop = (node) => {
 loop(self.root)
 };
 
-/* Not really breadth first, which may be most intuitive
-but with a little overhead. OCaml lists should be
-good for it though.
-Breadth first is also confusing wrt deps vs children.
-Should deps be searched completely before children,
-or same level wise, maybe after children altogether.
-For global search, maybe a better solution is to
-maintain a key map maybe with level.
-*/
 let getNode = (self, key) => {
-let rec searchList = (list) => {
-    switch (list) {
-    | [] => None
-    | [node, ...rest] => if (node.key == key) {
-        Some(node)
+    if (Hashtbl.mem(self.nodesByKey, key)) {
+        Some(Hashtbl.find(self.nodesByKey, key))
     } else {
-        searchList(rest)
+        None
     }
-    }
-}
-and traverseList = (list) => {
-    switch (list) {
-    | [] => None
-    | [node, ...rest] =>
-        switch (traverse(node)) {
-        | Some(node) => Some(node)
-        | None => traverseList(rest)
-        }
-    }
-}
-and traverse = (node) => {
-    switch (searchList(node.children)) {
-    | Some(node) => Some(node)
-    | None =>
-        switch (searchList(node.deps)) {
-        | Some(node) => Some(node)
-        | None =>
-            switch (traverseList(node.children)) {
-            | Some(node) => Some(node)
-            | None =>
-                traverseList(node.deps)
-            }
-        }
-    }
-};
-if (self.root.key == key) {
-    Some(self.root)
-} else {
-    traverse(self.root)
-}
 };
 
 let getNodeUnsafe = (scene, nodeKey) => {
@@ -2052,7 +2047,7 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
         node.screenRect.w = calcLayout.inWidth /. vpWidth *. 2.0;
         node.screenRect.h = calcLayout.inHeight /. vpHeight *. 2.0;
         if (debug) {
-            Js.log("Layout for " ++ node.key);
+            Js.log("Layout for " ++ nodeIdString(node));
             Js.log2("pWidth: ", calcLayout.pWidth);
             Js.log2("pHeight: ", calcLayout.pHeight);
             Js.log2("xOff: ", calcLayout.pXOffset);
@@ -2336,7 +2331,7 @@ let update = (self, updateFlags) => {
                             switch (self.drawListsDebug) {
                             | None => ()
                             | Some(_listsDebug) =>
-                                Js.log("==\nDep drawlist: " ++ depNode.updNode.key);
+                                Js.log("==\nDep drawlist: " ++ nodeIdString(depNode.updNode));
                                 logDrawList(self, updateState, depDraws);
                             };
                         | None => failwith("Could not find dep node");
@@ -2479,7 +2474,8 @@ let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()
     let canvas = Gpu.Canvas.init(width, height);
     let userState = ref(setup(canvas));
     let scene = createScene(canvas, userState^);
-    setNodeParentsAndScene(scene);
+    /* There are possibly other options for where to put this,
+       if there is any need for stuff earlier, like scenes make() */
     scene.updateRoot = Some(buildUpdateTree(scene, scene.root));
     calcLayout(scene);
     createDrawStates(scene);

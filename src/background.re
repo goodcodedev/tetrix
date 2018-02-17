@@ -114,7 +114,7 @@ let draw = (self) => {
 let makeNode = (color, children) => {
     open Scene;
     Scene.makeNode(
-        "background",
+        ~key="background",
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~uniforms=[

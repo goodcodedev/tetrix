@@ -279,7 +279,7 @@ let createStartScreen = (state) => {
       FontDraw.makeNode(
         "Vimtris",
         "digitalt",
-        ~key="countdown",
+        ~key="heading",
         ~height=0.25,
         ~align=SdfFont.TextLayout.AlignCenter,
         ()
@@ -287,7 +287,7 @@ let createStartScreen = (state) => {
       FontDraw.makeNode(
         "Press N to play",
         "digitalt",
-        ~key="countdown",
+        ~key="startText",
         ~height=0.08,
         ~align=SdfFont.TextLayout.AlignCenter,
         ()
@@ -442,7 +442,7 @@ let createScene = (canvas, state) => {
     ~drawListDebug=false,
     ()
   );
-  let anim = Animate.uniform(
+  let anim = Animate.nodeUniform(
     Scene.getNodeUnsafe(scene, "background"),
     "anim",
     ~from=0.0,
@@ -565,6 +565,7 @@ let drawGame = (state, scene) => {
   /* Handle element moved (changed position or rotated) */
   if (state.gameState.elMoved) {
     updateElTiles(scene, state.gameState.curEl, state.elState, tileRows, tileCols, Some(state.elCenterRadius));
+    updateBeams(scene, state.gameState.beams, state.beamVO, false);
     /* We want elState.pos transformed by layout as light pos for element */
     let elPos = switch (Scene.UVec2f.get(state.elState.pos)) {
     | Some(elPos) => elPos
@@ -578,7 +579,6 @@ let drawGame = (state, scene) => {
       Scene.UVec3f.set(scene, state.elLightPos, pointPos);
     | _ => ()
     };
-    updateBeams(scene, state.gameState.beams, state.beamVO, false);
   };
   /* Handle update tiles */
   if (state.gameState.updateTiles) {
@@ -587,13 +587,6 @@ let drawGame = (state, scene) => {
       inited.update = true;
       /* Data is updated on the array in place */
       Scene.queueUpdates(scene, state.tilesTex.nodes);
-      Js.log("Texture upd");
-      List.iter((id) => {
-        switch (scene.updateNodes.data[id]) {
-        | Some(node) => Js.log(node.updNode.key)
-        | None => ()
-        }
-      }, state.tilesTex.nodes);
     | None => ()
     };
   };
@@ -689,7 +682,7 @@ let drawGame = (state, scene) => {
         /* Update dropbeams */
         updateBeams(scene, state.gameState.dropBeams, state.dropBeamVO, true);
         Scene.UVec3f.set(scene, state.dropColor, Color.toVec3(state.gameState.dropColor));
-        let dropAnim = Animate.uniform(
+        let dropAnim = Animate.nodeUniform(
           dropNode,
           "sinceDrop",
           ~from=0.0,
@@ -740,7 +733,7 @@ let setScreenState = (state, screen) => {
 let showMask = (scene) => {
   let maskNode = Scene.getNodeUnsafe(scene, "mask");
   let animKey = "maskAnim";
-  let anim = Animate.uniform(
+  let anim = Animate.nodeUniform(
     maskNode,
     "anim",
     ~key=animKey,

@@ -37,7 +37,7 @@ open Gpu;
 
 let makeNode = (elState : SceneState.elState, sdfTiles) => {
     Scene.makeNode(
-        "currEl",
+        ~key="currEl",
         ~vertShader=Shader.make(currElVertex),
         ~fragShader=Shader.make(currElFragment),
         ~vo=elState.vo,

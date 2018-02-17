@@ -23,7 +23,7 @@ open Gpu;
 
 let makeNode = (vo) => {
     Scene.makeNode(
-        "tileBlink",
+        ~key="tileBlink",
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~transparent=true,

@@ -17,7 +17,7 @@ let fragmentSource = {|
 let makeNode = () => {
     open Scene;
     Scene.makeNode(
-        "mask",
+        ~key="mask",
         ~vertShader=Gpu.Shader.make(vertexSource),
         ~fragShader=Gpu.Shader.make(fragmentSource),
         ~transparent=true,

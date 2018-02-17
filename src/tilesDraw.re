@@ -53,7 +53,7 @@ open Gpu;
 let makeNode = (tilesTex, sdfTiles) => {
     open Scene;
     Scene.makeNode(
-        "tilesDraw",
+        ~key="tilesDraw",
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~uniforms=[],

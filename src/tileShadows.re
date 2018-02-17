@@ -222,21 +222,22 @@ let draw = (ts) => {
     Canvas.clearFramebuffer(ts.canvas);
 };
 
+/* Todo: Generalize so it can be used on given base */
 let makeNode = (tilesTex) => {
     /* First draw unblurred */
     let unblurred = Scene.makeNode(
-        "unblurred",
+        ~key="unblurred",
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~textures=[
             ("tiles", tilesTex)
         ],
-        ~drawTo=Scene.TextureRGBA,
+        ~drawTo=Scene.TextureRGB,
         ()
     );
     /* First blur */
     let blur1 = Scene.makeNode(
-        "blur1",
+        ~key="blur1",
         ~vertShader=Shader.make(blurVertex),
         ~fragShader=Shader.make(blurFragment),
         ~uniforms=[
@@ -246,7 +247,7 @@ let makeNode = (tilesTex) => {
         ~textures=[
             ("unblurred", Scene.SceneTex.node(unblurred))
         ],
-        ~drawTo=Scene.TextureRGBA,
+        ~drawTo=Scene.TextureRGB,
         ~deps=[
             unblurred
         ],
@@ -254,7 +255,7 @@ let makeNode = (tilesTex) => {
     );
     /* Second blur */
     Scene.makeNode(
-        "blur2",
+        ~key="blur2",
         ~vertShader=Shader.make(blurVertex),
         ~fragShader=Shader.make(blurFragment),
         ~uniforms=[

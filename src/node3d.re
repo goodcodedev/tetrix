@@ -47,7 +47,7 @@ let make = (
     let vs = vertSource();
     let fs = fragSource(light);
     Scene.makeNode(
-        "node3d",
+        ~cls="node3d",
         ~updateOn,
         ~size,
         ~uniforms=Light.ProgramLight.getUniforms(light),

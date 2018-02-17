@@ -1,6 +1,18 @@
 let pi = 4.0 *. atan(1.0);
 let halfPi = pi /. 2.0;
-let uniform = (
+
+let getEasingFunction = (easing, from, last, duration) => {
+    switch (easing) {
+    | Scene.Linear =>
+        ((anim : Scene.anim('a, 'b)) => from +. (last *. anim.elapsed /. duration))
+    | Scene.SineOut =>
+        ((anim : Scene.anim('a, 'b)) => from +. (last *. sin(anim.elapsed /. duration *. halfPi)))
+    | Scene.SineInOut =>
+        ((anim : Scene.anim('a, 'b)) => from +. (last *. (sin(anim.elapsed /. duration *. pi -. halfPi) *. 0.5 +. 0.5)))
+    }
+};
+
+let nodeUniform = (
     node,
     uniform,
     ~key=?,
@@ -11,14 +23,7 @@ let uniform = (
     ~next=?,
     ()
 ) => {
-    let nextVal = switch (easing) {
-    | Scene.Linear =>
-        ((anim : Scene.anim('a, 'b)) => from +. (last *. anim.elapsed /. duration))
-    | Scene.SineOut =>
-        ((anim : Scene.anim('a, 'b)) => from +. (last *. sin(anim.elapsed /. duration *. halfPi)))
-    | Scene.SineInOut =>
-        ((anim : Scene.anim('a, 'b)) => from +. (last *. (sin(anim.elapsed /. duration *. pi -. halfPi) *. 0.5 +. 0.5)))
-    };
+    let nextVal = getEasingFunction(easing, from, last, duration);
     Scene.makeAnim(
         node,
         (_scene, node, anim) => {

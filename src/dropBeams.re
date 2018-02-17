@@ -26,7 +26,7 @@ open Gpu;
 
 let makeNode = (vo) => {
     Scene.makeNode(
-        "dropBeams",
+        ~key="dropBeams",
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~uniforms=[

@@ -1,6 +1,7 @@
 /* Creates a layout node */
 let vertical = (
-    ~key="verticalLayout",
+    ~key=?,
+    ~cls="verticalLayout",
     ~size=Scene.Aspect(1.0),
     ~spacing=?,
     ~margin=?,
@@ -11,7 +12,8 @@ let vertical = (
     children
 ) => {
     Scene.makeNode(
-        key,
+        ~key=?key,
+        ~cls,
         ~size,
         ~spacing=?spacing,
         ~margin=?margin,
@@ -27,14 +29,16 @@ let vertical = (
 };
 
 let horizontal = (
-    ~key="horizontalLayout",
+    ~key=?,
+    ~cls="horizontalLayout",
     ~size=Scene.Aspect(1.0),
     ~spacing=?,
     ~hidden=false,
     children
 ) => {
     Scene.makeNode(
-        key,
+        ~key=?key,
+        ~cls,
         ~size,
         ~spacing=?spacing,
         ~childLayout=Scene.Horizontal,
@@ -46,7 +50,8 @@ let horizontal = (
 };
 
 let stacked = (
-    ~key="stackedLayout",
+    ~key=?,
+    ~cls="stackedLayout",
     ~size=Scene.Aspect(1.0),
     ~hidden=false,
     ~hAlign=Scene.AlignCenter,
@@ -54,7 +59,8 @@ let stacked = (
     children
 ) => {
     Scene.makeNode(
-        key,
+        ~key=?key,
+        ~cls,
         ~size,
         ~childLayout=Scene.Stacked,
         ~selfDraw=false,

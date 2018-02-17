@@ -138,7 +138,7 @@ let makeNode = (
     open Scene;
     /*let bg = UVec3f.vals(0.08, 0.12, 0.22);*/
     makeNode(
-        "grid",
+        ~key="grid",
         /*
         ~margin=Scene.MarginRBLT(
             Scale(0.01),
