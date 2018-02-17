@@ -10,7 +10,6 @@ module Document = {
 
 open Config;
 
-let tickDuration = 0.5;
 let elColorOffset = 2;
 let boardOffsetX = 50;
 let boardOffsetY = 20;
@@ -848,7 +847,7 @@ let gameLogic = (state) => {
   let timeStep = state.deltaTime;
   let curTime = state.curTime +. timeStep;
   if (!state.hasDroppedDown) {
-    let isNewTick = curTime > state.lastTick +. tickDuration;
+    let isNewTick = curTime > state.lastTick +. Config.tickDuration;
     regularGameLogic(state, isNewTick, curTime)
   } else {
     /* Element has dropped down */

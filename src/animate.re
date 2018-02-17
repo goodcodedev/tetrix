@@ -5,7 +5,8 @@ type animTarget('state, 'flags) =
 /* Anim value, from to */
 type animValue =
   | AnimFloat(float, float)
-  | AnimVec2(Data.Vec2.t, Data.Vec2.t);
+  | AnimVec2(Data.Vec2.t, Data.Vec2.t)
+  | AnimVec3(Data.Vec3.t, Data.Vec3.t);
 
 let pi = 4.0 *. atan(1.0);
 let halfPi = pi /. 2.0;
@@ -17,6 +18,8 @@ let getEasingFunction = (easing, duration) => {
         (elapsed) => (elapsed /. duration)
     | Scene.SineOut =>
         (elapsed) => (sin(elapsed /. duration *. halfPi))
+    | Scene.SineIn =>
+        (elapsed) => (sin((elapsed /. duration *. halfPi) -. halfPi) +. 1.0)
     | Scene.SineInOut =>
         (elapsed) => (sin(elapsed /. duration *. pi -. halfPi) *. 0.5 +. 0.5)
     }
@@ -28,18 +31,25 @@ let anim = (
     ~key=?,
     ~easing=Scene.SineOut,
     ~duration=2.0,
+    ~frameInterval=1,
     ~next=?,
     ()
 ) => {
     let easingFunc = getEasingFunction(easing, duration);
-    let animFunc = switch (animValue) {
+    let (onFrame, setLast) = switch (animValue) {
     | AnimFloat(from, last) =>
         let remaining = last -. from;
         switch (animTarget) {
         | AnimUniform(u) =>
-            (scene, anim : Scene.anim('state, 'flags)) => Scene.UFloat.set(scene, u, from +. (remaining *. easingFunc(anim.elapsed)))
+            (
+                (scene, anim : Scene.anim('state, 'flags)) => Scene.UFloat.set(scene, u, from +. (remaining *. easingFunc(anim.elapsed))),
+                (scene) => Scene.UFloat.set(scene, u, last)
+            )
         | AnimNodeUniform(n, u) =>
-            (scene, anim : Scene.anim('state, 'flags)) => Scene.setUniformFloat(scene, n, u, from +. (remaining *. easingFunc(anim.elapsed)))
+            (
+                (scene, anim : Scene.anim('state, 'flags)) => Scene.setUniformFloat(scene, n, u, from +. (remaining *. easingFunc(anim.elapsed))),
+                (scene) => Scene.setUniformFloat(scene, n, u, last)
+            )
         }
     | AnimVec2(from, last) =>
         let fromX = Data.Vec2.getX(from);
@@ -48,45 +58,63 @@ let anim = (
         let remainingY = Data.Vec2.getY(last) -. fromY;
         switch (animTarget) {
         | AnimUniform(u) =>
-            (scene, anim : Scene.anim('state, 'flags)) => {
-                let easing = easingFunc(anim.elapsed);
-                Scene.UVec2f.set(scene, u, Data.Vec2.make(fromX +. (remainingX *. easing), fromY +. (remainingY *. easing)))
-            }
+            (
+                (scene, anim : Scene.anim('state, 'flags)) => {
+                    let easing = easingFunc(anim.elapsed);
+                    Scene.UVec2f.set(scene, u, Data.Vec2.make(fromX +. (remainingX *. easing), fromY +. (remainingY *. easing)))
+                },
+                (scene) => Scene.UVec2f.set(scene, u, last)
+            )
         | AnimNodeUniform(n, u) =>
-            (scene, anim : Scene.anim('state, 'flags)) => {
-                let easing = easingFunc(anim.elapsed);
-                Scene.setUniformVec2f(scene, n, u, Data.Vec2.make(fromX +. (remainingX *. easing), fromY +. (remainingY *. easing)))
-            }
+            (
+                (scene, anim : Scene.anim('state, 'flags)) => {
+                    let easing = easingFunc(anim.elapsed);
+                    Scene.setUniformVec2f(scene, n, u, Data.Vec2.make(fromX +. (remainingX *. easing), fromY +. (remainingY *. easing)))
+                },
+                (scene) => Scene.setUniformVec2f(scene, n, u, last)
+            )
+        }
+    | AnimVec3(from, last) =>
+        let fromX = Data.Vec3.getX(from);
+        let fromY = Data.Vec3.getY(from);
+        let fromZ = Data.Vec3.getZ(from);
+        let remainingX = Data.Vec3.getX(last) -. fromX;
+        let remainingY = Data.Vec3.getY(last) -. fromY;
+        let remainingZ = Data.Vec3.getZ(last) -. fromZ;
+        switch (animTarget) {
+        | AnimUniform(u) =>
+            (
+                (scene, anim : Scene.anim('state, 'flags)) => {
+                    let easing = easingFunc(anim.elapsed);
+                    Scene.UVec3f.set(scene, u, Data.Vec3.make(
+                        fromX +. (remainingX *. easing),
+                        fromY +. (remainingY *. easing),
+                        fromZ +. (remainingZ *. easing)
+                    ))
+                },
+                (scene) => Scene.UVec3f.set(scene, u, last)
+            )
+        | AnimNodeUniform(n, u) =>
+            (
+                (scene, anim : Scene.anim('state, 'flags)) => {
+                    let easing = easingFunc(anim.elapsed);
+                    Scene.setUniformVec3f(scene, n, u, Data.Vec3.make(
+                        fromX +. (remainingX *. easing),
+                        fromY +. (remainingY *. easing),
+                        fromZ +. (remainingZ *. easing)
+                    ))
+                },
+                (scene) => Scene.setUniformVec3f(scene, n, u, last)
+            )
         }
     };
     Scene.makeAnim(
-        animFunc,
+        onFrame,
+        setLast,
         duration,
         ~key=?key,
         ~next=?next,
-        ()
-    )
-};
-
-/* Maybe nice with helper functions, this particular is a bit accidental */
-let nodeUniform = (
-    node,
-    uniform,
-    ~key=?,
-    ~from,
-    ~last,
-    ~duration=2.0,
-    ~easing=Scene.SineOut,
-    ~next=?,
-    ()
-) => {
-    anim(
-        AnimNodeUniform(node, uniform),
-        AnimFloat(from, last),
-        ~key=?key,
-        ~easing,
-        ~duration,
-        ~next=?next,
+        ~frameInterval,
         ()
     )
 };

@@ -565,16 +565,59 @@ let drawGame = (state, scene) => {
     updateElTiles(scene, state.gameState.curEl, state.elState, tileRows, tileCols, Some(state.elCenterRadius));
     updateBeams(scene, state.gameState.beams, state.beamVO, false);
     /* We want elState.pos transformed by layout as light pos for element */
-    let elPos = switch (Scene.UVec2f.get(state.elState.pos)) {
-    | Some(elPos) => elPos
-    | _ => Data.Vec2.zeros()
-    };
+    let elPos = Scene.UVec2f.get(state.elState.pos);
     let gridNode = Scene.getNodeUnsafe(scene, "grid");
     switch (gridNode.layoutUniform) {
     | Some(Gpu.UniformMat3f(layout)) =>
-      let pointPos = Data.Mat3.vecmul(layout^, Data.Vec3.fromVec2(elPos, 1.0));
-      Data.Vec3.setZ(pointPos, 0.25);
-      Scene.UVec3f.set(scene, state.elLightPos, pointPos);
+      open Data;
+      let pointPos = Mat3.vecmul(layout^, Vec3.fromVec2(elPos, 1.0));
+      Vec3.setZ(pointPos, 0.25);
+      let lightAnim = "elLightAnim";
+      Scene.clearAnim(scene, lightAnim);
+      if (state.gameState.elChanged) {
+        Scene.UVec3f.set(scene, state.elLightPos, pointPos);
+      } else {
+        let from = Scene.UVec3f.get(state.elLightPos);
+        let (isDropDown, completedRows) = switch (state.gameState.touchDown) {
+        | None => (false, false)
+        | Some(touchDown) => (touchDown.isDropDown, touchDown.completedRows)
+        };
+        let anim = if (isDropDown) {
+          /* Let anim go from reduced distance */
+          Vec3.setY(from, Vec3.getY(pointPos) -. (Vec3.getY(pointPos) -. Vec3.getY(from)) /. 1.5);
+          if (completedRows) {
+            /* SineIn easing for extra boom effect */
+            Animate.anim(
+              Animate.AnimUniform(state.elLightPos),
+              Animate.AnimVec3(from, pointPos),
+              ~key=lightAnim,
+              ~duration=Config.dropDownBeforeTouchDown,
+              ~easing=Scene.SineIn,
+              ~frameInterval=2,
+              ()
+            )
+          } else {
+            Animate.anim(
+              Animate.AnimUniform(state.elLightPos),
+              Animate.AnimVec3(from, pointPos),
+              ~key=lightAnim,
+              ~duration=Config.dropDownBeforeTick /. 2.0,
+              ~frameInterval=2,
+              ()
+            )
+          }
+        } else {
+          Animate.anim(
+            Animate.AnimUniform(state.elLightPos),
+            Animate.AnimVec3(from, pointPos),
+            ~key=lightAnim,
+            ~duration=Config.tickDuration /. 3.0,
+            ~frameInterval=3,
+            ()
+          )
+        };
+        Scene.doAnim(scene, anim);
+      }
     | _ => ()
     };
   };

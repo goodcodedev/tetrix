@@ -38,6 +38,16 @@ module Vec3 {
         a
     };
 
+    let getX = (v : t) => v[0];
+    let getY = (v : t) => v[1];
+    let getZ = (v : t) => v[2];
+
+    let setX = (v : t, newVal) => {
+        v[0] = newVal;
+    };
+    let setY = (v : t, newVal) => {
+        v[1] = newVal;
+    };
     let setZ = (v : t, newVal) => {
         v[2] = newVal;
     };

@@ -51,6 +51,7 @@ type blockSize =
 type easing =
   | Linear
   | SineOut
+  | SineIn
   | SineInOut;
 
 let currNodeId = ref(0);
@@ -189,8 +190,11 @@ and calcLayout = {
 and anim('state, 'flags) = {
     animKey: option(string),
     onFrame: (t('state, 'flags), anim('state, 'flags)) => unit,
+    setLast: (t('state, 'flags)) => unit,
     duration: float,
     mutable elapsed: float,
+    frameInterval: int,
+    mutable numFrames: int,
     next: option(anim('state, 'flags))
 }
 and updateStencil = {
@@ -632,12 +636,15 @@ let queueUpdates = (scene, nodes) => {
     }, scene.queuedUpdates, nodes);
 };
 
-let makeAnim = (onFrame, duration, ~key=?, ~next=?, ()) => {
+let makeAnim = (onFrame, setLast, duration, ~key=?, ~next=?, ~frameInterval=1, ()) => {
 {
     animKey: key,
     onFrame,
+    setLast,
     duration,
     elapsed: 0.0,
+    frameInterval,
+    numFrames: 0,
     next
 }
 };
@@ -2188,8 +2195,14 @@ let update = (self, updateFlags) => {
         | [] => []
         | [anim, ...rest] =>
             anim.elapsed = anim.elapsed +. self.canvas.deltaTime;
-            anim.onFrame(self, anim);
+            if (anim.frameInterval == 1) {
+                anim.onFrame(self, anim);
+            } else if (anim.numFrames mod anim.frameInterval == 0) {
+                anim.onFrame(self, anim);
+            };
+            anim.numFrames = anim.numFrames + 1;
             if (anim.elapsed >= anim.duration) {
+                anim.setLast(self);
                 doAnims(rest)
             } else {
                 [anim, ...doAnims(rest)]
@@ -2500,8 +2513,8 @@ module UVec2f {
     };
     let get = (self) => {
         switch (self.uniform) {
-        | Gpu.UniformVec2f(v) => Some(v^)
-        | _ => None
+        | Gpu.UniformVec2f(v) => v^
+        | _ => failwith("Could not get vec2 uniform")
         }
     };
 };
@@ -2521,6 +2534,13 @@ module UVec3f {
     };
     let setQuiet = (self, v) => {
         Gpu.Uniform.setVec3f(self.uniform, v);
+    };
+
+    let get = (self) => {
+        switch (self.uniform) {
+        | Gpu.UniformVec3f(v) => v^
+        | _ => failwith("Could not get vec3 uniform")
+        }
     };
 };
 
