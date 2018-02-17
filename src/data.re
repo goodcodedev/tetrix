@@ -10,6 +10,9 @@ module Vec2 {
         a
     };
 
+    let getX = (v : t) => v[0];
+    let getY = (v : t) => v[1];
+
     let make = (a, b) => [|a, b|];
 
     let zeros = () : t => [|0.0, 0.0|];

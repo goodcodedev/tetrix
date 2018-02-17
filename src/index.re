@@ -442,13 +442,11 @@ let createScene = (canvas, state) => {
     ~drawListDebug=false,
     ()
   );
-  let anim = Animate.nodeUniform(
-    Scene.getNodeUnsafe(scene, "background"),
-    "anim",
-    ~from=0.0,
-    ~last=1.0,
-    ~duration=1.5,
+  let anim = Animate.anim(
+    AnimNodeUniform(Scene.getNodeUnsafe(scene, "background"), "anim"),
+    AnimFloat(0.0, 1.0),
     ~easing=Scene.SineOut,
+    ~duration=1.5,
     ()
   );
   Scene.doAnim(scene, anim);
@@ -682,11 +680,10 @@ let drawGame = (state, scene) => {
         /* Update dropbeams */
         updateBeams(scene, state.gameState.dropBeams, state.dropBeamVO, true);
         Scene.UVec3f.set(scene, state.dropColor, Color.toVec3(state.gameState.dropColor));
-        let dropAnim = Animate.nodeUniform(
-          dropNode,
-          "sinceDrop",
-          ~from=0.0,
-          ~last=1.0,
+        let dropAnim = Animate.anim(
+          AnimNodeUniform(dropNode, "sinceDrop"),
+          AnimFloat(0.0, 1.0),
+          ~easing=Scene.SineOut,
           ~duration=Config.dropAnimDuration,
           ()
         );
@@ -733,17 +730,15 @@ let setScreenState = (state, screen) => {
 let showMask = (scene) => {
   let maskNode = Scene.getNodeUnsafe(scene, "mask");
   let animKey = "maskAnim";
-  let anim = Animate.nodeUniform(
-    maskNode,
-    "anim",
+  Scene.clearAnim(scene, animKey);
+  let anim = Animate.anim(
+    AnimNodeUniform(maskNode, "anim"),
+    AnimFloat(0.0, 1.0),
     ~key=animKey,
-    ~from=0.0,
-    ~last=1.0,
-    ~duration=3.0,
     ~easing=Scene.SineOut,
+    ~duration=3.0,
     ()
   );
-  Scene.clearAnim(scene, animKey);
   Scene.showNode(scene, maskNode);
   Scene.doAnim(scene, anim);
 };

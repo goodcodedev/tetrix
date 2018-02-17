@@ -98,7 +98,6 @@ and drawListDebug('state, 'flags) = {
 }
 and updateState('flags) = {
     flags: list('flags),
-    anims: list(int),
     updateNodes: list(int),
     hiddenNodes: list(int)
 }
@@ -188,9 +187,8 @@ and calcLayout = {
     mutable pYOffset: float
 }
 and anim('state, 'flags) = {
-    animNode: node('state, 'flags),
     animKey: option(string),
-    onFrame: (t('state, 'flags), node('state, 'flags), anim('state, 'flags)) => unit,
+    onFrame: (t('state, 'flags), anim('state, 'flags)) => unit,
     duration: float,
     mutable elapsed: float,
     next: option(anim('state, 'flags))
@@ -634,9 +632,8 @@ let queueUpdates = (scene, nodes) => {
     }, scene.queuedUpdates, nodes);
 };
 
-let makeAnim = (node, onFrame, duration, ~key=?, ~next=?, ()) => {
+let makeAnim = (onFrame, duration, ~key=?, ~next=?, ()) => {
 {
-    animNode: node,
     animKey: key,
     onFrame,
     duration,
@@ -1553,14 +1550,6 @@ let logDrawList = (scene, updateState : updateState('flags), drawList) => {
         | None => str
         }
     }, "", updateState.updateNodes));
-    List.iter((animId) => {
-        let n = scene.updateNodes.data[animId];
-        let key = switch (n) {
-        | Some(n) => nodeIdString(n.updNode)
-        | None => "No key"
-        };
-        Js.log2("Anim: ", key);
-    }, updateState.anims);
     let rec processDrawEl = (list) => switch (list) {
     | [el, ...rest] =>
         switch (el) {
@@ -1720,26 +1709,6 @@ let showNodeByKey = (scene, nodeKey) => {
     | Some(node) => showNode(scene, node)
     | None => failwith("Could not find node: " ++ nodeKey)
     };
-};
-
-let setUniformFloat = (node, key, value) => {
-let uniform = Hashtbl.find(node.uniforms, key);
-Gpu.Uniform.setFloat(uniform.uniform, value);
-};
-
-let setUniformVec2f = (node, key, value) => {
-let uniform = Hashtbl.find(node.uniforms, key);
-Gpu.Uniform.setVec2f(uniform.uniform, value);
-};
-
-let setUniformVec3f = (node, key, value) => {
-let uniform = Hashtbl.find(node.uniforms, key);
-Gpu.Uniform.setVec3f(uniform.uniform, value);
-};
-
-let setUniformMat3f = (node, key, value) => {
-let uniform = Hashtbl.find(node.uniforms, key);
-Gpu.Uniform.setMat3f(uniform.uniform, value);
 };
 
 let calcLayout = (self) => {
@@ -2164,67 +2133,6 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
     calcNodeLayout(self.root);
 };
 
-let update2 = (self, updateFlags) => {
-    /* Anims */
-    let animIds = List.sort((a, b) => (a < b) ? -1 : 1, List.map((anim : anim('state, 'flags)) => anim.animNode.id, self.anims));
-    let rec doAnims = (anims) => {
-        switch (anims) {
-        | [] => []
-        | [anim, ...rest] =>
-            anim.elapsed = anim.elapsed +. self.canvas.deltaTime;
-            anim.onFrame(self, anim.animNode, anim);
-            if (anim.elapsed >= anim.duration) {
-                doAnims(rest)
-            } else {
-                [anim, ...doAnims(rest)]
-            }
-        }
-    };
-    self.anims = doAnims(self.anims);
-    /* todo: is this ok to sort variant types?
-       use some hashset type? */
-    let sortedFlags = List.sort((a, b) => (a < b) ? -1 : 1, updateFlags);
-    let updateState = {
-        flags: sortedFlags,
-        anims: animIds,
-        updateNodes: [],
-        hiddenNodes: self.hiddenNodes
-    };
-    if (!Hashtbl.mem(self.updateLists, updateState)) {
-        Hashtbl.add(self.updateLists, updateState, getSceneNodesToUpdate(sortedFlags, animIds, self.root));
-    };
-    /* Check if any node in loadingNodes is loaded */
-    let rec checkLoaded = (loadingNodes) => {
-        switch (loadingNodes) {
-        | [] => []
-        | [(_updateList, node) as item, ...rest] =>
-            if (!node.loading) {
-                /* Todo: Draw with updateList for the area of the node or something */
-                switch (node.onUpdate) {
-                | Some(update) => update(node, self.state, sortedFlags)
-                | None => draw(self, node)
-                };
-                checkLoaded(rest)
-            } else {
-                [item, ...checkLoaded(rest)]
-            }
-        }
-    };
-    self.loadingNodes = checkLoaded(self.loadingNodes);
-    /* todo: possibly optimize with a second transformed data structure
-       so the drawstate etc is readily available */
-    List.iter((node) => {
-        if (node.loading) {
-            self.loadingNodes = [(updateFlags, node), ...self.loadingNodes]
-        } else {
-            switch (node.onUpdate) {
-            | Some(update) => update(node, self.state, sortedFlags)
-            | None => draw(self, node)
-            };
-        };
-    }, Hashtbl.find(self.updateLists, updateState));
-};
-
 /* Returns list of dep node ids */
 let collectDeps = (scene, nodeIds, hiddenNodes) => {
     let rec loop = (node, list) => {
@@ -2275,13 +2183,12 @@ let isNodeHidden = (scene, nodeId) => {
    areas are updating */
 let update = (self, updateFlags) => {
     /* Anims */
-    let animIds = List.sort((a, b) => (a < b) ? -1 : 1, List.map((anim : anim('state, 'flags)) => anim.animNode.id, self.anims));
     let rec doAnims = (anims) => {
         switch (anims) {
         | [] => []
         | [anim, ...rest] =>
             anim.elapsed = anim.elapsed +. self.canvas.deltaTime;
-            anim.onFrame(self, anim.animNode, anim);
+            anim.onFrame(self, anim);
             if (anim.elapsed >= anim.duration) {
                 doAnims(rest)
             } else {
@@ -2292,7 +2199,7 @@ let update = (self, updateFlags) => {
     self.anims = doAnims(self.anims);
     /* Queued nodes, these are queued because of
        updates in uniforms, vertices or textures */
-    let updateNodes = List.sort_uniq((a, b) => (a < b) ? -1 : (a > b) ? 1 : 0, List.append(animIds, self.queuedUpdates));
+    let updateNodes = List.sort_uniq((a, b) => (a < b) ? -1 : (a > b) ? 1 : 0, self.queuedUpdates);
     /* todo: Consider filtering hidden node ids.
        Those hidden may be hidden below another hidden node,
        requiring some traversal. Maybe a cache could be used,
@@ -2304,7 +2211,6 @@ let update = (self, updateFlags) => {
     let sortedFlags = List.sort((a, b) => (a < b) ? -1 : 1, updateFlags);
     let updateState = {
         flags: sortedFlags,
-        anims: animIds,
         updateNodes,
         hiddenNodes: self.hiddenNodes
     };
@@ -2639,4 +2545,26 @@ module UMat3f {
         Gpu.Uniform.setMat3f(self.uniform, v);
         queueUpdates(scene, self.nodes);
     };
+};
+
+/* These finds the uniform in node first,
+   maybe reorganize someway */
+let setUniformFloat = (scene, node, key, value) => {
+let uniform = Hashtbl.find(node.uniforms, key);
+UFloat.set(scene, uniform, value);
+};
+
+let setUniformVec2f = (scene, node, key, value) => {
+let uniform = Hashtbl.find(node.uniforms, key);
+UVec2f.set(scene, uniform, value);
+};
+
+let setUniformVec3f = (scene, node, key, value) => {
+let uniform = Hashtbl.find(node.uniforms, key);
+UVec3f.set(scene, uniform, value);
+};
+
+let setUniformMat3f = (scene, node, key, value) => {
+let uniform = Hashtbl.find(node.uniforms, key);
+UMat3f.set(scene, uniform, value);
 };
