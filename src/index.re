@@ -252,30 +252,38 @@ let createRightRow = (state) => {
         ~light=state.sceneAndElLight,
         ()
       ),
-      Layout.vertical(
-        ~margin=Scene.(
-          MarginRBLT(
-            Scale(0.0),
-            Scale(0.0),
-            Scale(0.0),
-            Scale(0.03)
-          )
-        ),
-        ~spacing=Scene.Scale(0.04),
-        ~vAlign=Scene.AlignTop,
-        [
-          FontDraw.makeNode(
-            "NEXT",
-            "digitalt",
-            ~opacity=0.7,
-            ~height=0.27,
-            ~align=SdfFont.TextLayout.AlignCenter,
-            ()
+      CacheResult.makeNode(
+        ~transparent=true,
+        ~partialDraw=true,
+        ~size=Scene.(Dimensions(Scale(1.0), Scale(0.6))),
+        Layout.vertical(
+          ~key="nextElements",
+          ~margin=Scene.(
+            MarginRBLT(
+              Scale(0.0),
+              Scale(0.0),
+              Scale(0.0),
+              Scale(0.03)
+            )
           ),
-          DrawElement.makeNode(state.nextEls[0], state.sceneLight),
-          DrawElement.makeNode(state.nextEls[1], state.sceneLight),
-          DrawElement.makeNode(state.nextEls[2], state.sceneLight)
-        ]
+          ~spacing=Scene.Scale(0.04),
+          ~vAlign=Scene.AlignTop,
+          [
+            FontDraw.makeNode(
+              "NEXT",
+              "digitalt",
+              ~key="next",
+              ~opacity=0.7,
+              ~height=0.27,
+              ~align=SdfFont.TextLayout.AlignCenter,
+              ()
+            ),
+            DrawElement.makeNode(state.nextEls[0], state.sceneLight),
+            DrawElement.makeNode(state.nextEls[1], state.sceneLight),
+            DrawElement.makeNode(state.nextEls[2], state.sceneLight)
+          ]
+        ),
+        ()
       )
     ]
   )

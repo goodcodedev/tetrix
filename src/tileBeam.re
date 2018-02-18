@@ -59,7 +59,7 @@ let init = (canvas : Gpu.Canvas.t) => {
 let draw = (self, canvas) => {
     FrameBuffer.bindTexture(self.fbuffer, self.canvas.context, self.beams);
     Canvas.setFramebuffer(self.canvas, self.fbuffer);
-    Canvas.clear(canvas, 0.0, 0.0, 0.0);
+    Canvas.clear(canvas, 0.0, 0.0, 0.0, 1.0);
     DrawState.draw(self.drawState, self.canvas);
     Canvas.clearFramebuffer(self.canvas);
 };

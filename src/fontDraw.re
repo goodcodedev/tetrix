@@ -165,7 +165,7 @@ let init = (canvas : Gpu.Canvas.t, vertices, image, model, bgDraw) => {
 let drawToTexture = (self) => {
     FrameBuffer.bindTexture(self.fbuffer, self.canvas.context, self.fbTexture);
     Canvas.setFramebuffer(self.canvas, self.fbuffer);
-    Canvas.clear(self.canvas, 0.0, 0.0, 0.0);
+    Canvas.clear(self.canvas, 0.0, 0.0, 0.0, 0.0);
     DrawState.draw(self.drawState, self.canvas);
     Canvas.clearFramebuffer(self.canvas);
     self.hasTexture = true;

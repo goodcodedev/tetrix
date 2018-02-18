@@ -1,4 +1,4 @@
-let sdfDist = (cols, rows) => {
+let sdfDist = (cols, rows, tileSpace) => {
     let colsGl = string_of_float(cols);
     let rowsGl = string_of_float(rows);
     {|
@@ -31,7 +31,7 @@ let sdfDist = (cols, rows) => {
         d = max( d, abs( dot(point, vec3(  0, -octa.y, octa.z )) ));
         d = max( d, abs( dot(point, vec3(  0, octa.y, octa.z )) ));
         // Some spacing added, maybe this should be calibrated to a pixel
-        float o = d - octa.z / (rows + rows / 20.0);
+        float o = d - octa.z / (rows + |} ++ string_of_float(tileSpace) ++ {|);
         // Intersection
         //return o;
         return max(o, box);
@@ -48,7 +48,7 @@ type t = {
 };
 
 let make = (canvas: Canvas.t, lighting) => {
-    let sdfProgram = SdfNode.init(SdfNode.make(sdfDist(12.0, 26.0), SdfNode.ZeroToOne, None, lighting, ()), canvas);
+    let sdfProgram = SdfNode.init(SdfNode.make(sdfDist(12.0, 26.0, 1.3), SdfNode.ZeroToOne, None, lighting, ()), canvas);
     let texture = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA, Texture.LinearFilter);
     let fbuffer = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
     {
@@ -82,6 +82,7 @@ let makeNode = (
     ~key=?,
     ~model=?,
     ~margin=?,
+    ~tileSpace=1.3,
     ()
 ) => {
     let aspect = (cols /. rows);
@@ -90,7 +91,7 @@ let makeNode = (
     | None => SdfNode.ZeroToOne
     };
     let sdfNode = SdfNode.make(
-        sdfDist(cols, rows),
+        sdfDist(cols, rows, tileSpace),
         fragCoords,
         model,
         lighting,

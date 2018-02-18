@@ -303,7 +303,9 @@ and  drawListItem('state, 'flags) =
   | SetRect(Geom2d.Rect.t)
   | ClearRect
   | DrawStencil(stencilBuffers)
-  | ClearStencil;
+  | ClearStencil
+  | BindDrawTexture(node('state, 'flags))
+  | UnBindDrawTexture;
 
 let quadVertices = Gpu.VertexBuffer.makeQuad(());
 let quadIndices = Gpu.IndexBuffer.makeQuad();
@@ -855,13 +857,13 @@ let rec setChildToUpdate = (updNode) => {
     }
 };
 
-let nodeIdString = (node) => {
+let nodeDescrString = (node) => {
     switch (node.key) {
-    | Some(key) => key ++ ", id: " ++ string_of_int(node.id)
+    | Some(key) => key ++ " id:" ++ string_of_int(node.id)
     | None =>
         switch (node.cls) {
-        | Some(cls) => "cls: " ++ cls ++ ", id: " ++ string_of_int(node.id)
-        | None => "id: " ++ string_of_int(node.id)
+        | Some(cls) => "cls: " ++ cls ++ " id:" ++ string_of_int(node.id)
+        | None => "id:" ++ string_of_int(node.id)
         }
     }
 };
@@ -1036,7 +1038,7 @@ let actRectUntilCovered = (updNode) => {
                     }
                 }
             }
-        | None => failwith("Could not find covering parent for: " ++ nodeIdString(updNode.updNode)
+        | None => failwith("Could not find covering parent for: " ++ nodeDescrString(updNode.updNode)
                            ++ ". Maybe add a background node?");
         }
     };
@@ -1225,7 +1227,16 @@ let createDrawList = (scene, flags, updateNodes, updRoot) => {
            when not transparent, it could make sense
            to update stencils */
         if (!updNode.updNode.selfDraw) {
-            updNode.update = false; /* in case */
+            /* Allow draw texture also for nodes that don't self draw */
+            let (drawList, drawToTexture) = if (updNode.update) {
+                updNode.update = false;
+                switch (updNode.updNode.drawToTexture) {
+                | Some(_) => ([BindDrawTexture(updNode.updNode), ...drawList], true)
+                | None => (drawList, false)
+                }
+            } else {
+                (drawList, false)
+            };
             /* Recurse to children if they have update or childUpdate flagged */
             let drawList = List.fold_left((drawList, updChild) => {
                 if (updChild.update) {
@@ -1236,6 +1247,11 @@ let createDrawList = (scene, flags, updateNodes, updRoot) => {
                     drawList
                 }
             }, drawList, updNode.updChildren);
+            let drawList = if (drawToTexture) {
+                [UnBindDrawTexture, ...drawList]
+            } else {
+                drawList
+            };
             drawList
         } else if (hidden) {
             updNode.update = false;
@@ -1326,12 +1342,21 @@ let createDrawList = (scene, flags, updateNodes, updRoot) => {
                 } else {
                     drawList
                 };
+                let (drawList, drawToTexture) = switch (updNode.updNode.drawToTexture) {
+                | Some(_) => ([BindDrawTexture(updNode.updNode), ...drawList], true)
+                | None => (drawList, false)
+                };
                 let drawList = [DrawNode(updNode.updNode), ...drawList];
                 /* Since this node is flagged for update, assume all children
                 will also be updated */
                 let drawList = List.fold_left((drawList, updChild) => {
                     drawListLoop(updChild, drawList, hidden)
                 }, drawList, updNode.updChildren);
+                let drawList = if (drawToTexture) {
+                    [UnBindDrawTexture, ...drawList]
+                } else {
+                    drawList
+                };
                 /* Clean up active stencils */
                 List.iter((stencil) => stencil.active = false, stencils);
                 /* Clean up active rects */
@@ -1428,30 +1453,61 @@ let getFBuffer = (self, config : fbufferConfig) => {
     }
 };
 
-let debugNodes = [];
+let debugNodes = ["next", "cachedResult"];
+
+let bindDrawTexture = (self, node) => {
+    switch (node.drawToTexture) {
+    | Some(texture) =>
+        /* Let pixels go from offset of node */
+        /* Possibly use for this, would need to adjust layouts */
+        /*
+        Reasongl.Gl.viewport(
+            ~context=self.canvas.context,
+            ~x=int_of_float(node.rect.x),
+            ~y=int_of_float(node.rect.y),
+            ~width=int_of_float(node.rect.w),
+            ~height=int_of_float(node.rect.h)
+        );*/
+        let config = {
+            width: 1024,
+            height: 1024
+        };
+        let fbuffer = getFBuffer(self, config);
+        Gpu.FrameBuffer.bindTexture(fbuffer, self.canvas.context, texture);
+        Gpu.Canvas.setFramebuffer(self.canvas, fbuffer);
+        if (node.clearOnDraw) {
+            Gpu.Canvas.clear(self.canvas, 0.0, 0.0, 0.0, 0.0);
+        };
+    | None => failwith("Node is not drawToTexture")
+    };
+};
+
+let unbindDrawTexture = (self) => {
+    Gpu.Canvas.clearFramebuffer(self.canvas);
+    /*
+    Reasongl.Gl.viewport(
+        ~context=self.canvas.context,
+        ~x=0,
+        ~y=0,
+        ~width=self.canvas.width,
+        ~height=self.canvas.height
+    );*/
+};
 
 let draw = (self, node) => {
     /*Js.log("Drawing " ++ node.key);*/
     switch (node.drawState) {
     | Some(drawState) =>
-        let drawToTexture = switch (node.drawToTexture) {
-        | Some(texture) =>
-            let config = {
-                width: 1024,
-                height: 1024
-            };
-            let fbuffer = getFBuffer(self, config);
-            Gpu.FrameBuffer.bindTexture(fbuffer, self.canvas.context, texture);
-            Gpu.Canvas.setFramebuffer(self.canvas, fbuffer);
-            if (node.clearOnDraw) {
-                Gpu.Canvas.clear(self.canvas, 0.0, 0.0, 0.0);
-            };
-            true
-        | None => false
-        };
         switch (node.elapsedUniform) {
         | Some(elapsedUniform) => Gpu.Uniform.setFloat(elapsedUniform, self.canvas.elapsed);
         | None => ()
+        };
+        let isDebug = switch (node.key) {
+        | Some(key) => List.exists((debug) => key == debug, debugNodes)
+        | None => false
+        };
+        if (isDebug) {
+            [%debugger];
         };
         if (node.transparent) {
             let context = self.canvas.context;
@@ -1460,17 +1516,13 @@ let draw = (self, node) => {
             Gpu.DrawState.draw(drawState, self.canvas);
             Gpu.Gl.disable(~context, Gpu.Constants.blend);
         } else {
-            if (List.exists((debug) => node.key == debug, debugNodes)) {
+            if (isDebug) {
                 Gpu.DrawState.draw(drawState, self.canvas);
                 Gpu.Canvas.clearFramebuffer(self.canvas);
                 Gpu.DrawState.draw(drawState, self.canvas);
-                [%debugger];
             } else {
                 Gpu.DrawState.draw(drawState, self.canvas);
             };
-        };
-        if (drawToTexture) {
-            Gpu.Canvas.clearFramebuffer(self.canvas);
         };
     | None => failwith("Drawstate not found")
     };
@@ -1543,6 +1595,14 @@ let processDrawList = (scene, drawList, flags, debug) => {
             );
         | ClearRect =>
             Gl.disable(~context, Scissor.scissorTest);
+        | BindDrawTexture(n) =>
+            if (!debug) {
+                bindDrawTexture(scene, n);
+            };
+        | UnBindDrawTexture =>
+            if (!debug) {
+                unbindDrawTexture(scene);
+            };
         };
         processDrawEl(rest);
     | [] => ()
@@ -1553,7 +1613,7 @@ let processDrawList = (scene, drawList, flags, debug) => {
 let logDrawList = (scene, updateState : updateState('flags), drawList) => {
     Js.log2("====\nDrawlist", List.fold_left((str, id) => {
         switch (scene.updateNodes.data[id]) {
-        | Some(node) => str ++ ", " ++ nodeIdString(node.updNode)
+        | Some(node) => str ++ ", " ++ nodeDescrString(node.updNode)
         | None => str
         }
     }, "", updateState.updateNodes));
@@ -1561,7 +1621,7 @@ let logDrawList = (scene, updateState : updateState('flags), drawList) => {
     | [el, ...rest] =>
         switch (el) {
         | DrawNode(node) =>
-            Js.log("Draw node: " ++ nodeIdString(node));
+            Js.log("Draw node: " ++ nodeDescrString(node));
         | DrawStencil(stencilBuffers) =>
             Js.log2("Draw stencil: ", stencilBuffers.stencilVertices.data);
         | ClearStencil =>
@@ -1570,6 +1630,10 @@ let logDrawList = (scene, updateState : updateState('flags), drawList) => {
             Js.log2("Set rect: ", rect);
         | ClearRect =>
             Js.log("Clear rect");
+        | BindDrawTexture(n) =>
+            Js.log("Bind draw texture: " ++ nodeDescrString(n))
+        | UnBindDrawTexture =>
+            Js.log("Unbind draw texture")
         };
         processDrawEl(rest);
     | [] => ()
@@ -1644,11 +1708,11 @@ let textures = Array.of_list(List.map(
 ));
 let vertShader = switch (node.vertShader) {
 | Some(vertShader) => vertShader
-| None => failwith("Vertex shader not found on: " ++ nodeIdString(node))
+| None => failwith("Vertex shader not found on: " ++ nodeDescrString(node))
 };
 let fragShader = switch (node.fragShader) {
 | Some(fragShader) => fragShader
-| None => failwith("Fragment shader not found on: " ++ nodeIdString(node))
+| None => failwith("Fragment shader not found on: " ++ nodeDescrString(node))
 };
 node.drawState = Some(Gpu.DrawState.init(
     self.canvas.context,
@@ -1691,7 +1755,7 @@ let getNodeUnsafe = (scene, nodeKey) => {
 
 let hideNode = (scene, node) => {
     node.hidden = true;
-    scene.hiddenNodes = List.sort((a, b) => (a > b) ? 1 : -1, [node.id, ...scene.hiddenNodes]);
+    scene.hiddenNodes = List.sort_uniq((a, b) => (a > b) ? 1 : -1, [node.id, ...scene.hiddenNodes]);
     /* todo: Queuing root for now to cover updated area,
        but this could be more precise. Optimally find covering
        area and redraw */
@@ -1716,6 +1780,13 @@ let showNodeByKey = (scene, nodeKey) => {
     | Some(node) => showNode(scene, node)
     | None => failwith("Could not find node: " ++ nodeKey)
     };
+};
+
+type parentDrawToTex = {
+    nOffX: float,
+    nOffY: float,
+    texOffX: float,
+    texOffY: float
 };
 
 let calcLayout = (self) => {
@@ -1852,7 +1923,7 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
     cl.inWidth = cl.pWidth -. cl.marginX1 -. cl.marginX2;
     cl.inHeight = cl.pHeight -. cl.marginY1 -. cl.marginY2;
 };
-    let rec calcNodeLayout = (node) => {
+    let rec calcNodeLayout = (node, parentDrawToTex) => {
         let layout = node.layout;
         let calcLayout = node.calcLayout;
         /* Calc padding */
@@ -2031,52 +2102,80 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
         node.screenRect.w = inW /. vpWidth *. 2.0;
         node.screenRect.h = inH /. vpHeight *. 2.0;
         if (debug) {
-            Js.log("Layout for " ++ nodeIdString(node));
+            Js.log("Layout for " ++ nodeDescrString(node));
             Js.log2("pWidth: ", calcLayout.pWidth);
             Js.log2("pHeight: ", calcLayout.pHeight);
             Js.log2("xOff: ", calcLayout.pXOffset);
             Js.log2("yOff: ", calcLayout.pYOffset);
         };
-        switch (node.layoutUniform) {
-        | None => ();
+        let parentDrawToTex = switch (node.layoutUniform) {
+        | None => parentDrawToTex;
         | Some(layoutUniform) =>
             let scaleX = inW /. vpWidth;
             let scaleY = inH /. vpHeight;
             let scale = Data.Mat3.scale(scaleX, scaleY);
             switch (node.drawToTexture, node.texTransUniform) {
-            | (Some(texture), None) =>
+            | (Some(_texture), None) =>
                 /* Translate texture to begin from 0,0.
                    The important thing is correspondance with texture
                    uniforms below */
                 /* Todo: maintain values for quick lookup? */
+                /* Todo: Pack texture into available space,
+                   resize texture on need? */
+                /*
                 let (texWidth, texHeight) = switch (Gpu.Texture.getSize(texture)) {
                 | Some((texWidth, texHeight)) => (float_of_int(texWidth), float_of_int(texHeight))
                 | None => failwith("Could not find texture size");
                 };
+                */
+                let texOffX = -1.0 +. scaleX;
+                let texOffY = 1.0 -. scaleY;
                 let translate = Data.Mat3.trans(
-                    (texWidth -. scaleX *. texWidth) /. texWidth *. -1.0,
-                    (texHeight -. scaleY *. texHeight) /. texHeight
+                    texOffX,
+                    texOffY
                 );
                 let layoutMat = Data.Mat3.matmul(translate, scale);
                 Gpu.Uniform.setMat3f(layoutUniform, layoutMat);
                 if (debug) {
                     Js.log2("Layout: ", layoutMat);
                 };
+                let transX = (((pXOff *. 2.0 +. inW) /. vpWidth) -. 1.0);
+                let transY = (((pYOff *. -2.0 -. inH) /. vpHeight) +. 1.0);
+                /* Initiate parentTexTrans */
+                Some({
+                    nOffX: transX,
+                    nOffY: transY,
+                    texOffX,
+                    texOffY
+                })
             | (None, _) =>
-                let layoutMat = Data.Mat3.scaleTrans(
-                    scaleX,
-                    scaleY,
-                    (((pXOff *. 2.0 +. inW) /. vpWidth) -. 1.0),
-                    (((pYOff *. -2.0 -. inH) /. vpHeight) +. 1.0)
-                );
+                let transX = (((pXOff *. 2.0 +. inW) /. vpWidth) -. 1.0);
+                let transY = (((pYOff *. -2.0 -. inH) /. vpHeight) +. 1.0);
+                let layoutMat = switch (parentDrawToTex) {
+                | None =>
+                    Data.Mat3.scaleTrans(
+                        scaleX,
+                        scaleY,
+                        transX,
+                        transY
+                    )
+                | Some(pt) =>
+                    Data.Mat3.scaleTrans(
+                        scaleX,
+                        scaleY,
+                        pt.texOffX +. transX -. pt.nOffX,
+                        pt.texOffY +. transY -. pt.nOffY
+                    )
+                };
                 Gpu.Uniform.setMat3f(layoutUniform, layoutMat);
                 if (debug) {
                     Js.log2("Layout: ", layoutMat);
                 };
-            | (Some(texture), Some(texTransUniform)) =>
+                parentDrawToTex
+            | (Some(_texture), Some(texTransUniform)) =>
                 /* First regular layout uniform */
-                let transX = ((pXOff +. (inW /. 2.0) -. vpWidthCenter) /. vpWidth *. 2.0);
-                let transY = ((pYOff +. (inH /. 2.0) -. vpHeightMiddle) /. vpHeight *. -2.0);
+                let transX = (((pXOff *. 2.0 +. inW) /. vpWidth) -. 1.0);
+                let transY = (((pYOff *. -2.0 -. inH) /. vpHeight) +. 1.0);
                 let translate = Data.Mat3.trans(
                     transX,
                     transY
@@ -2084,15 +2183,20 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
                 let layoutMat = Data.Mat3.matmul(translate, scale);
                 Gpu.Uniform.setMat3f(layoutUniform, layoutMat);
                 /* texTransUniform */
-                let (texWidth, texHeight) = switch (Gpu.Texture.getSize(texture)) {
-                | Some((texWidth, texHeight)) => (float_of_int(texWidth), float_of_int(texHeight))
-                | None => failwith("Could not find texture size");
-                };
+                let texOffX = -1.0 +. scaleX;
+                let texOffY = 1.0 -. scaleY;
                 let translate = Data.Mat3.trans(
-                    (texWidth -. scaleX *. texWidth) /. texWidth *. -1.0 -. transX,
-                    (texHeight -. scaleY *. texHeight) /. texHeight -. transY
+                    texOffX -. transX,
+                    texOffY -. transY
                 );
                 Gpu.Uniform.setMat3f(texTransUniform, translate);
+                /* Initiate parent tex transform */
+                Some({
+                    nOffX: transX,
+                    nOffY: transY,
+                    texOffX,
+                    texOffY
+                })
             }
         };
         switch (node.pixelSizeUniform) {
@@ -2104,10 +2208,10 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
             ));
         };
         List.iter((dep) => {
-            calcNodeLayout(dep);
+            calcNodeLayout(dep, None);
         }, node.deps);
         List.iter((child) => {
-            calcNodeLayout(child);
+            calcNodeLayout(child, parentDrawToTex);
         }, node.children);
         /* After deps and children have been processed, set texture matrices */
         Hashtbl.iter((_name, nodeTex : sceneTexture) => {
@@ -2123,8 +2227,8 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
                 | Some(texNode) => texNode.updNode
                 | None => failwith("Could not find texNode");
                 };
-                let scaleX = texNode.calcLayout.pWidth /. vpWidth /. 2.0;
-                let scaleY = texNode.calcLayout.pHeight /. vpHeight /. 2.0;
+                let scaleX = texNode.rect.w /. vpWidth /. 2.0;
+                let scaleY = texNode.rect.h /. vpHeight /. 2.0;
                 let scale = Data.Mat3.scale(
                     scaleX,
                     scaleY
@@ -2143,7 +2247,7 @@ let calcNodeDimensions = (node, paddedWidth, paddedHeight) => {
     calcNodeDimensions(self.root, vpWidth, vpHeight);
     self.root.calcLayout.pXOffset = 0.0;
     self.root.calcLayout.pYOffset = 0.0;
-    calcNodeLayout(self.root);
+    calcNodeLayout(self.root, None);
 };
 
 /* Returns list of dep node ids */
@@ -2233,6 +2337,24 @@ let update = (self, updateFlags) => {
         updateNodes,
         hiddenNodes: self.hiddenNodes
     };
+    /* Debug function to ensure state is reset after processing of tree */
+    let rec checkForCleanState = (updNode) => {
+        if (updNode.update || updNode.childUpdate) {
+            [%debugger];
+        };
+        List.iter((stencil) => {
+            if (stencil.active) {
+                [%debugger];
+            };
+        }, updNode.stencils);
+        List.iter((rect : updateRect('s, 'f)) => {
+            if (rect.active) {
+                [%debugger];
+            };
+        }, updNode.childRects);
+        List.iter((dep) => checkForCleanState(dep), updNode.updDeps);
+        List.iter((child) => checkForCleanState(child), updNode.updChildren);
+    };
     /* Ensure state is inited */
     /* Both here and when creating drawList, we could
        use filtered list of visible nodes,
@@ -2256,8 +2378,9 @@ let update = (self, updateFlags) => {
                             switch (self.drawListsDebug) {
                             | None => ()
                             | Some(_listsDebug) =>
-                                Js.log("==\nDep drawlist: " ++ nodeIdString(depNode.updNode));
+                                Js.log("==\nDep drawlist: " ++ nodeDescrString(depNode.updNode));
                                 logDrawList(self, updateState, depDraws);
+                                checkForCleanState(depNode);
                             };
                         | None => failwith("Could not find dep node");
                         };
@@ -2313,24 +2436,6 @@ let update = (self, updateFlags) => {
     /* todo: possibly optimize with a second transformed data structure
        so the drawstate etc is readily available */
     processDrawList(self, Hashtbl.find(self.drawLists, updateState), sortedFlags, false);
-    /* Debug function to ensure state is reset after processing of tree */
-    let rec checkForCleanState = (updNode) => {
-        if (updNode.update || updNode.childUpdate) {
-            [%debugger];
-        };
-        List.iter((stencil) => {
-            if (stencil.active) {
-                [%debugger];
-            };
-        }, updNode.stencils);
-        List.iter((rect : updateRect('s, 'f)) => {
-            if (rect.active) {
-                [%debugger];
-            };
-        }, updNode.childRects);
-        List.iter((dep) => checkForCleanState(dep), updNode.updDeps);
-        List.iter((child) => checkForCleanState(child), updNode.updChildren);
-    };
     switch (self.drawListsDebug) {
     | None => ()
     | Some(_) =>
@@ -2363,6 +2468,8 @@ let cleanUpDrawList = (scene, drawList) => {
             | ClearStencil => ()
             | SetRect(_rect) => ()
             | ClearRect => ()
+            | BindDrawTexture(_) => ()
+            | UnBindDrawTexture => ()
             };
             loop(rest);
         | [] => ()

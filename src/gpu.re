@@ -1081,8 +1081,8 @@ module Canvas = {
         _depthMask(context, Js.Boolean.to_js_boolean(flag));
     };
 
-    let clear = (canvas, r, g, b) => {
-        Gl.clearColor(~context=canvas.context, ~r, ~g, ~b, ~a=1.);
+    let clear = (canvas, r, g, b, a) => {
+        Gl.clearColor(~context=canvas.context, ~r, ~g, ~b, ~a);
         Gl.clear(~context=canvas.context, ~mask=Constants.color_buffer_bit);
     };
 

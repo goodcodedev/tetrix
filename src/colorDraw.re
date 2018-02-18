@@ -61,7 +61,7 @@ let drawToTexture = (self, texture, color, ~clearColor=?, ()) => {
     Canvas.setFramebuffer(self.canvas, self.fbuffer);
     switch (clearColor) {
     | Some(color) =>
-        Canvas.clear(self.canvas, color[0], color[1], color[2]);
+        Canvas.clear(self.canvas, color[0], color[1], color[2], 1.0);
     | None => ()
     };
     Gpu.Uniform.setVec4f(self.drawState.program.uniforms[0].uniform, Data.Vec4.fromArray(color));
