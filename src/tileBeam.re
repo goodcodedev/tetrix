@@ -14,10 +14,8 @@ let fragmentSource = {|
     precision mediump float;
     varying vec2 vPosition;
 
-    uniform vec3 color;
-
     void main() {
-        gl_FragColor = vec4(color, 1.0);
+        gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
     }
 |};
 
@@ -32,7 +30,7 @@ type t = {
 /* Draws a "beams" to a framebuffer given coords and a color */
 let init = (canvas : Gpu.Canvas.t) => {
     let context = canvas.context;
-    let beams = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA, Texture.NearestFilter);
+    let beams = Texture.make(IntDataTexture(Some(Array.make(1024*1024*4, 0)), 1024, 1024), Texture.RGBA, Texture.NearestFilter);
     let fbuffer = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
     let vertexQuad = VertexBuffer.makeQuad(());
     let indexQuad = IndexBuffer.makeQuad();
@@ -80,14 +78,11 @@ let updateVertices = (self, vertices, canvas) => {
     draw(self, canvas);
 };
 
-let makeNode = (elColor, vo) => {
+let makeNode = (vo) => {
     Scene.makeNode(
         ~key="beams",
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
-        ~uniforms=[
-            ("color", elColor)
-        ],
         ~drawTo=Scene.TextureRGB,
         ~clearOnDraw=true,
         ~vo,

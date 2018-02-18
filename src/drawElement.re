@@ -35,7 +35,7 @@ let makeNode = (elState : SceneState.elState, lighting) => {
         ~color=SdfNode.SdfDynColor(elState.color),
         ~model=elState.pos,
         ~margin=MarginXY(Scale(0.25), Scale(0.05)),
-        ~tileSpace=0.22,
+        ~tileSpace=0.25,
         ()
     )
     /*

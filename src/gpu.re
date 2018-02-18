@@ -567,12 +567,13 @@ module Texture = {
 
     type format =
       | Luminance
+      | Alpha
       | RGB
       | RGBA;
 
     type data =
       | ImageTexture(Reasongl.Gl.imageT)
-      | IntDataTexture(array(int), int, int)
+      | IntDataTexture(option(array(int)), int, int)
       | EmptyTexture;
 
     type filter =
@@ -624,6 +625,7 @@ module Texture = {
     };
 
     let luminance = 6409;
+    let alpha = 6406;
     
     [@bs.send]
     external _texImage2D :
@@ -637,7 +639,7 @@ module Texture = {
       ~border: int,
       ~format: int,
       ~type_: int,
-      ~data: Gl.Bigarray.t('a, 'b)
+      ~data: Js.nullable(Gl.Bigarray.t('a, 'b))
     ) =>
     unit =
     "texImage2D";
@@ -651,16 +653,16 @@ module Texture = {
         int
     ) => unit = "pixelStorei";
 
-    let makeEmptyRgba = (~width=1024, ~height=1024, ~filter=LinearFilter, ()) => {
-        make(IntDataTexture(Array.make(width*height*4, 0), width, height), RGBA, filter);
+    let makeEmptyRgba = (~width=128, ~height=128, ~filter=LinearFilter, ()) => {
+        make(IntDataTexture(None, width, height), RGBA, filter);
     };
 
-    let makeEmptyRgb = (~width=1024, ~height=1024, ~filter=LinearFilter, ()) => {
-        make(IntDataTexture(Array.make(width*height*3, 0), width, height), RGB, filter);
+    let makeEmptyRgb = (~width=128, ~height=128, ~filter=LinearFilter, ()) => {
+        make(IntDataTexture(None, width, height), RGB, filter);
     };
 
-    let makeEmptyGreyscale = (~width=1024, ~height=1024, ~filter=LinearFilter, ()) => {
-        make(IntDataTexture(Array.make(width*height, 0), width, height), Luminance, filter);
+    let makeEmptyGreyscale = (~width=128, ~height=128, ~filter=LinearFilter, ()) => {
+        make(IntDataTexture(None, width, height), Alpha, filter);
     };
 
     let init = (texture : t, context) => {
@@ -704,6 +706,7 @@ module Texture = {
             let format = switch (texture.format) {
             | RGBA => Constants.rgba
             | RGB => Constants.rgb
+            | Alpha => alpha
             | Luminance => luminance
             };
             /* Luminance format gives 1 value per pixel repeated for rgba */
@@ -732,7 +735,10 @@ module Texture = {
                     ~border=0,
                     ~format,
                     ~type_=RGLConstants.unsigned_byte,
-                    ~data=Gl.Bigarray.of_array(Gl.Bigarray.Uint8, intArray)
+                    ~data=switch (intArray) {
+                    | Some(intArray) => Js.Nullable.return(Gl.Bigarray.of_array(Gl.Bigarray.Uint8, intArray))
+                    | None => Js.Nullable.null
+                    }
                 );
             | EmptyTexture => ()
             };
@@ -748,6 +754,7 @@ module Texture = {
         }
         }
     };
+
     let initOrBind = (texture : t, context) => {
         switch (texture.inited) {
         | Some(inited) => {
@@ -764,6 +771,76 @@ module Texture = {
         }
         }
     };
+
+    let ensureSize = (self : t, context, width, height) => {
+        Js.log3("Ensuring size: ", width, height);
+        switch (self.data) {
+        | IntDataTexture(data, w, h) =>
+            if (w < width || h < height) {
+                /* As I understand it, opengl want
+                   texture sizes in power of twos */
+                let maxDim = max(width, height);
+                let rec findDim = (test) => {
+                    if (maxDim <= test) {
+                        test
+                    } else {
+                        findDim(test * 2)
+                    }
+                };
+                let dim = findDim(1);
+                let inited = initOrBind(self, context);
+                let resizeArr = (arr, newSize) => {
+                    let prevLen = Array.length(arr);
+                    Array.init(newSize, (i) => {
+                        if (i < prevLen) {
+                            arr[i]
+                        } else {
+                            0
+                        }
+                    })
+                };
+                let data = switch (data) {
+                | None =>
+                    inited.data = IntDataTexture(None, dim, dim);
+                    Js.Nullable.null
+                | Some(intArray) =>
+                    switch (self.format) {
+                    | RGB =>
+                        let data = resizeArr(intArray, dim * dim * 3);
+                        inited.data = IntDataTexture(Some(data), dim, dim);
+                        Js.Nullable.return(Gl.Bigarray.of_array(Gl.Bigarray.Uint8, data))
+                    | RGBA =>
+                        let data = resizeArr(intArray, dim * dim * 4);
+                        inited.data = IntDataTexture(Some(data), dim, dim);
+                        Js.Nullable.return(Gl.Bigarray.of_array(Gl.Bigarray.Uint8, data))
+                    | Luminance =>
+                        let data = resizeArr(intArray, dim * dim);
+                        inited.data = IntDataTexture(Some(data), dim, dim);
+                        Js.Nullable.return(Gl.Bigarray.of_array(Gl.Bigarray.Uint8, data))
+                    | Alpha =>
+                        let data = resizeArr(intArray, dim * dim);
+                        inited.data = IntDataTexture(Some(data), dim, dim);
+                        Js.Nullable.return(Gl.Bigarray.of_array(Gl.Bigarray.Uint8, data))
+                    }
+                };
+                _texImage2D(
+                    ~context,
+                    ~target=Constants.texture_2d,
+                    ~level=0,
+                    ~internalFormat=inited.format,
+                    ~width=dim,
+                    ~height=dim,
+                    ~border=0,
+                    ~format=inited.format,
+                    ~type_=RGLConstants.unsigned_byte,
+                    ~data
+                );
+                Js.log2("Resized to", dim);
+            };
+        | _ => failwith("Need int data texture to resize")
+        };
+    };
+
     let updateGpuData = (inited : inited) => {
         let context = inited.context;
         Gl.bindTexture(
@@ -790,7 +867,10 @@ module Texture = {
                 ~border=0,
                 ~format=inited.format,
                 ~type_=RGLConstants.unsigned_byte,
-                ~data=Gl.Bigarray.of_array(Gl.Bigarray.Uint8, data)
+                ~data=switch (data) {
+                | Some(intArray) => Js.Nullable.return(Gl.Bigarray.of_array(Gl.Bigarray.Uint8, intArray))
+                | None => Js.Nullable.null
+                }
             );
         | EmptyTexture => ()
         };

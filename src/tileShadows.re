@@ -125,7 +125,7 @@ type t = {
 let init = (canvas : Gpu.Canvas.t, boardCoords : Coords.boardCoords, tilesTex) => {
     let context = canvas.context;
     /* First draw unblurred */
-    let unblurred = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA, Texture.LinearFilter);
+    let unblurred = Texture.make(IntDataTexture(Some(Array.make(1024*1024*4, 0)), 1024, 1024), Texture.RGBA, Texture.LinearFilter);
     let fbuffer1 = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
     let vertexQuad = VertexBuffer.makeQuad(());
     let indexQuad = IndexBuffer.makeQuad();
@@ -147,9 +147,9 @@ let init = (canvas : Gpu.Canvas.t, boardCoords : Coords.boardCoords, tilesTex) =
         |]
     );
     /* Blur draw */
-    let blurTex1 = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA, Texture.LinearFilter);
+    let blurTex1 = Texture.make(IntDataTexture(Some(Array.make(1024*1024*4, 0)), 1024, 1024), Texture.RGBA, Texture.LinearFilter);
     let fbuffer2 = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
-    let blurTex2 = Texture.make(IntDataTexture(Array.make(1024*1024*4, 0), 1024, 1024), Texture.RGBA, Texture.LinearFilter);
+    let blurTex2 = Texture.make(IntDataTexture(Some(Array.make(1024*1024*4, 0)), 1024, 1024), Texture.RGBA, Texture.LinearFilter);
     let fbuffer3 = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
     let blurVertex = Shader.make(blurVertex);
     let blurFragment = Shader.make(blurFragment);
@@ -224,6 +224,9 @@ let draw = (ts) => {
 
 /* Todo: Generalize so it can be used on given base */
 let makeNode = (tilesTex) => {
+    /* Use two textures */
+    let tex1 = Gpu.Texture.makeEmptyRgb();
+    let tex2 = Gpu.Texture.makeEmptyRgb();
     /* First draw unblurred */
     let unblurred = Scene.makeNode(
         ~key="unblurred",
@@ -232,7 +235,7 @@ let makeNode = (tilesTex) => {
         ~textures=[
             ("tiles", tilesTex)
         ],
-        ~drawTo=Scene.TextureRGB,
+        ~drawTo=Scene.TextureItem(tex1),
         ()
     );
     /* First blur */
@@ -247,7 +250,7 @@ let makeNode = (tilesTex) => {
         ~textures=[
             ("unblurred", Scene.SceneTex.node(unblurred))
         ],
-        ~drawTo=Scene.TextureRGB,
+        ~drawTo=Scene.TextureItem(tex2),
         ~deps=[
             unblurred
         ],
@@ -265,7 +268,7 @@ let makeNode = (tilesTex) => {
         ~textures=[
             ("unblurred", Scene.SceneTex.node(blur1))
         ],
-        ~drawTo=Scene.TextureRGB,
+        ~drawTo=Scene.TextureItem(tex1),
         ~deps=[
             blur1
         ],

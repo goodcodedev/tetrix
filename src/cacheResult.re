@@ -32,12 +32,13 @@ let makeNode = (
     ()
 ) => {
     let (drawTo, clearOnDraw) = switch (transparent, partialDraw) {
-    | (Some(true), _) => (Scene.TextureRGBA, true)
-    | (_, Some(true)) => (Scene.TextureRGBA, true)
-    | (_, _) => (Scene.TextureRGB, false)
+    | (Some(true), _) => (Scene.TextureRGBADim(1024), true)
+    | (_, Some(true)) => (Scene.TextureRGBADim(1024), true)
+    | (_, _) => (Scene.TextureRGBDim(1024), false)
     };
     let texNode = Scene.makeNode(
         ~cls="cacheResultTex",
+        ~key="cacheResultTex",
         ~children=[node],
         ~drawTo,
         ~selfDraw=false,

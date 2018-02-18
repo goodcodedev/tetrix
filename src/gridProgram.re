@@ -67,11 +67,6 @@ let fragmentSource = {|
     const float tileHeight = 1.0 / numRows;
 
     void main() {
-        float xblank = (mod(lineCoords.x, colSize) > singlePixel.x) ? 1.0 : 0.0;
-        float x3blank = (mod(lineCoords.x - wordStart, wordSize) > singlePixel.x * 2.0) ? 1.0 : 0.0;
-        float yblank = (mod(lineCoords.y, rowSize) > singlePixel.y) ? 1.0 : 0.0;
-        float lineCoef = (1.0 - xblank * yblank * x3blank) * 0.9 + (1.0 - x3blank) * 0.1;
-
         // todo: Calculate in vertex shader?
         vec2 elVec = vPosition - centerRadius.xy;
         vec2 elVecNorm = normalize(elVec);
@@ -83,27 +78,33 @@ let fragmentSource = {|
         float triangleDir = dot(elVecNorm, vec2(0.0, -1.0));
         float triangleLight = smoothstep(-0.3, 0.5, triangleDir) * lengthCoef * 0.05;
 
-        // Aura light
-        float skew = (vPosition.y - centerRadius.y + 0.15) / 0.8;
-        skew = 1.0;
-        float auraLight = max(0.15 - length(elVec * centerRadius.wz) * skew, 0.0) * 0.05;
-
         // Shadow
         float shadow = texture2D(tileShadows, tileShadowsPos).x;
         vec3 color = mix(bg, vec3(0.0, 0.0, 0.0), shadow * 0.15);
 
+        // Aura light
+        /*
+        float skew = (vPosition.y - centerRadius.y + 0.15) / 0.8;
+        skew = 1.0;
+        float auraLight = max(0.15 - length(elVec * centerRadius.wz) * skew, 0.0) * 0.05;
+        color = color + elColor * auraLight;
+        */
+
         // Line
+        float xblank = (mod(lineCoords.x, colSize) > singlePixel.x) ? 1.0 : 0.0;
+        float x3blank = (mod(lineCoords.x - wordStart, wordSize) > singlePixel.x * 2.0) ? 1.0 : 0.0;
+        float yblank = (mod(lineCoords.y, rowSize) > singlePixel.y) ? 1.0 : 0.0;
+        float lineCoef = (1.0 - xblank * yblank * x3blank) * 0.9 + (1.0 - x3blank) * 0.1;
         color = mix(color, lineColor, lineCoef);
 
         // Beam
         vec3 beam = texture2D(beams, beamsPos).xyz;
-        color = mix(color, beam, (beam.x == 0.0) ? 0.0 : 0.05);
+        color = mix(color, elColor, (beam.x == 0.0) ? 0.0 : 0.05);
 
         // Dropbeam
         float dropBeam = texture2D(drop, dropPos).x;
         color = mix(color, dropColor, dropBeam * 0.2);
 
-        color = color + elColor * auraLight;
         gl_FragColor = vec4(color + triangleLight, 1.0);
     }
 |};

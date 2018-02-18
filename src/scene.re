@@ -344,8 +344,10 @@ module SceneVO = {
 type drawTo =
   | Framebuffer
   | TextureRGBA
+  | TextureRGBADim(int)
   | TextureRGB
-  | TextureGreyscale
+  | TextureRGBDim(int)
+  | TextureGreyscale /* This is not usable, havent gotten greyscale to work yet, errors on not renderable */
   | TextureItem(Gpu.Texture.t);
 
 module SceneTex {
@@ -496,8 +498,14 @@ let makeNode = (
     | TextureRGB =>
         let texture = Gpu.Texture.makeEmptyRgb(());
         Some(texture)
+    | TextureRGBDim(dim) =>
+        let texture = Gpu.Texture.makeEmptyRgb(~width=dim, ~height=dim, ());
+        Some(texture)
     | TextureRGBA =>
         let texture = Gpu.Texture.makeEmptyRgba(());
+        Some(texture)
+    | TextureRGBADim(dim) =>
+        let texture = Gpu.Texture.makeEmptyRgba(~width=dim, ~height=dim, ());
         Some(texture)
     | TextureGreyscale =>
         let texture = Gpu.Texture.makeEmptyGreyscale(());
@@ -1231,7 +1239,14 @@ let createDrawList = (scene, flags, updateNodes, updRoot) => {
             let (drawList, drawToTexture) = if (updNode.update) {
                 updNode.update = false;
                 switch (updNode.updNode.drawToTexture) {
-                | Some(_) => ([BindDrawTexture(updNode.updNode), ...drawList], true)
+                | Some(tex) =>
+                    /* Ensuring texture has size to hold result
+                       Doing this elsewhere might be cleaner, but
+                       performance is nice */
+                       [%debugger];
+                       Js.log("Ensureing size for " ++ nodeDescrString(updNode.updNode));
+                    Gpu.Texture.ensureSize(tex, scene.canvas.context, int_of_float(updNode.updNode.rect.w), int_of_float(updNode.updNode.rect.h));
+                    ([BindDrawTexture(updNode.updNode), ...drawList], true)
                 | None => (drawList, false)
                 }
             } else {
@@ -1343,7 +1358,10 @@ let createDrawList = (scene, flags, updateNodes, updRoot) => {
                     drawList
                 };
                 let (drawList, drawToTexture) = switch (updNode.updNode.drawToTexture) {
-                | Some(_) => ([BindDrawTexture(updNode.updNode), ...drawList], true)
+                | Some(tex) =>
+                       Js.log("Ensureing size for " ++ nodeDescrString(updNode.updNode));
+                    Gpu.Texture.ensureSize(tex, scene.canvas.context, int_of_float(updNode.updNode.rect.w), int_of_float(updNode.updNode.rect.h));
+                    ([BindDrawTexture(updNode.updNode), ...drawList], true)
                 | None => (drawList, false)
                 };
                 let drawList = [DrawNode(updNode.updNode), ...drawList];
@@ -1453,7 +1471,7 @@ let getFBuffer = (self, config : fbufferConfig) => {
     }
 };
 
-let debugNodes = ["next", "cachedResult"];
+let debugNodes = ["cachedResult"];
 
 let bindDrawTexture = (self, node) => {
     switch (node.drawToTexture) {
@@ -1477,6 +1495,12 @@ let bindDrawTexture = (self, node) => {
         Gpu.Canvas.setFramebuffer(self.canvas, fbuffer);
         if (node.clearOnDraw) {
             Gpu.Canvas.clear(self.canvas, 0.0, 0.0, 0.0, 0.0);
+        };
+        let d = switch (node.key) {
+        | Some(k) when k == "cacheResultTex" =>
+            /*Gpu.Canvas.clearFramebuffer(self.canvas);*/
+            [%debugger];
+        | _ => ()
         };
     | None => failwith("Node is not drawToTexture")
     };

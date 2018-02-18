@@ -69,7 +69,7 @@ let setup = (canvas) => {
   let tiles = Array.make(tileRows * tileCols, 0);
   /* Texture with tiles data */
   let tilesTex = Scene.SceneTex.tex(Texture.make(
-    IntDataTexture(tiles, tileCols, tileRows),
+    IntDataTexture(Some(tiles), tileCols, tileRows),
     Texture.Luminance,
     Texture.NearestFilter
   ));
@@ -133,7 +133,7 @@ let createBoardNode = (state) => {
     ()
   );
   /* Beam from current element downwards */
-  let beamNode = TileBeam.makeNode(state.elState.color, state.beamVO);
+  let beamNode = TileBeam.makeNode(state.beamVO);
   /* Drop down animation */
   let dropNode = DropBeams.makeNode(state.dropBeamVO);
   /* Shadow of tiles */

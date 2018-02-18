@@ -146,7 +146,7 @@ let init = (canvas : Gpu.Canvas.t, tiles) => {
     /* Tile beam program */
     let tileBeam = TileBeam.init(canvas);
     /* Tiles texture */
-    let tilesTexture = Texture.make(IntDataTexture(tiles, 12, 26), Texture.Luminance, Texture.NearestFilter);
+    let tilesTexture = Texture.make(IntDataTexture(Some(tiles), 12, 26), Texture.Luminance, Texture.NearestFilter);
     /* Tiles shadow */
     let tileShadows = TileShadows.init(canvas, boardCoords, tilesTexture);
     /* Grid */
