@@ -2,7 +2,7 @@ open Gpu;
 open Config;
 open SceneState;
 
-let resize = (state) => {
+let resize = (_state) => {
   /* todo: throttle? */
   /*BoardProgram.onResize(state.boardProgram);*/
   ()
@@ -51,7 +51,7 @@ let setBg = (state) => {
   state
 };
 
-let setup = (canvas) => {
+let setup = (_canvas) => {
   /* Element position and color uniforms */
   let beamVO = Scene.SVertexObject.makeQuad(~usage=DynamicDraw, ());
   let blinkVO = Scene.SVertexObject.makeQuad(~usage=DynamicDraw, ());
@@ -289,7 +289,7 @@ let createRightRow = (state) => {
   )
 };
 
-let createStartScreen = (state) => {
+let createStartScreen = () => {
   Layout.vertical(
     ~key="startScreen",
     [
@@ -313,7 +313,7 @@ let createStartScreen = (state) => {
   )
 };
 
-let createPauseScreen = (state) => {
+let createPauseScreen = () => {
   Layout.stacked(
     ~key="pauseScreen",
     ~hidden=true,
@@ -341,7 +341,7 @@ let createPauseScreen = (state) => {
   )
 };
 
-let createGameOverScreen = (state) => {
+let createGameOverScreen = () => {
   Layout.vertical(
     [
       FontDraw.makeNode(
@@ -363,7 +363,7 @@ let createGameOverScreen = (state) => {
   )
 };
 
-let createHelpScreen = (state) => {
+let createHelpScreen = () => {
   let helpLines = [
     "Space - pause",
     "H - move left",
@@ -401,7 +401,7 @@ let createHelpScreen = (state) => {
   )
 };
 
-let createNextLevelScreen = (state) => {
+let createNextLevelScreen = () => {
   Layout.vertical(
     [
       FontDraw.makeNode(
@@ -445,8 +445,8 @@ let createRootNode = (state) => {
         ]
       ),
       Mask.makeNode(),
-      createStartScreen(state),
-      createPauseScreen(state)
+      createStartScreen(),
+      createPauseScreen()
     ]
   )
 };

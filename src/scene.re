@@ -103,7 +103,7 @@ and node('s) = {
     cls: option(string),
     id: int,
     mutable drawState: option(Gpu.DrawState.t),
-    onUpdate: option((node('s), 's) => unit),
+    onUpdate: option([@bs] (node('s), 's) => unit),
     layout: layout,
     calcLayout: calcLayout,
     /* Rect in pixels */
@@ -183,8 +183,8 @@ and calcLayout = {
 }
 and anim('s) = {
     animKey: option(string),
-    onFrame: (t('s), anim('s)) => unit,
-    setLast: (t('s)) => unit,
+    onFrame: [@bs] (t('s), anim('s)) => unit,
+    setLast: [@bs] (t('s)) => unit,
     duration: float,
     mutable elapsed: float,
     frameInterval: int,
@@ -656,68 +656,6 @@ let clearAnim = (scene, animKey) => {
         }
     }, scene.anims);
 };
-
-let getTblRef = (node, key, getTbl, resolve) => {
-let rec findInDeps = (deps, key) => {
-    switch (deps) {
-    | [] => None
-    | [dep, ...rest] =>
-        let tbl = getTbl(dep);
-        if (Hashtbl.mem(tbl, key)) {
-            resolve(dep, Hashtbl.find(tbl, key))
-        } else {
-            findInDeps(rest, key)
-        }
-    }
-};
-let rec findInParents = (parent, key) => {
-    switch (parent) {
-    | None => None
-    | Some(parent) =>
-        let tbl = getTbl(parent);
-        if (Hashtbl.mem(tbl, key)) {
-            resolve(parent, Hashtbl.find(tbl, key))
-        } else {
-            switch (findInDeps(parent.deps, key)) {
-            | None => findInParents(parent.parent, key)
-            | Some(resource) => Some(resource)
-            }
-        }
-    }
-};
-findInParents(node, key)
-};
-
-/* Searches deps and parents (with their deps) */
-let getNodeRef = (node, key, resolve) => {
-let rec findInDeps = (deps, key) => {
-    switch (deps) {
-    | [] => None
-    | [dep, ...rest] =>
-        if (dep.key == key) {
-            resolve(dep)
-        } else {
-            findInDeps(rest, key)
-        }
-    }
-};
-let rec findInParents = (parent, key) => {
-    switch (parent) {
-    | None => None
-    | Some(parent) =>
-        if (parent.key == key) {
-            resolve(parent)
-        } else {
-            switch (findInDeps(parent.deps, key)) {
-            | None => findInParents(parent.parent, key)
-            | Some(resource) => Some(resource)
-            }
-        }
-    }
-};
-findInParents(node, key)
-};
-
 
 /* Can also consider using depth buffer
    and draw from closest down parents when
@@ -1504,10 +1442,10 @@ let draw = (self, node) => {
         };
         if (node.transparent) {
             let context = self.canvas.context;
-            Gpu.Gl.enable(~context, Gpu.Constants.blend);
-            Gpu.Gl.blendFunc(~context, Gpu.Constants.src_alpha, Gpu.Constants.one_minus_src_alpha);
+            Gpu.glEnable(context, Gpu.Constants.blend);
+            Gpu.glBlendFunc(context, Gpu.Constants.src_alpha, Gpu.Constants.one_minus_src_alpha);
             Gpu.DrawState.draw(drawState, self.canvas);
-            Gpu.Gl.disable(~context, Gpu.Constants.blend);
+            Gpu.glDisable(context, Gpu.Constants.blend);
         } else {
             if (isDebug) {
                 Gpu.DrawState.draw(drawState, self.canvas);
@@ -1547,14 +1485,14 @@ let processDrawList = (scene, drawList, debug) => {
                     };
                 } else {
                     switch (node.onUpdate) {
-                    | Some(update) => update(node, scene.state);
+                    | Some(update) => [@bs] update(node, scene.state);
                     | None =>
                         draw(scene, node);
                     };
                 };
             };
         | DrawStencil(stencilBuffers) =>
-            Gl.enable(~context, Stencil.stencilTest);
+            glEnable(context, Stencil.stencilTest);
             Canvas.clearStencil(scene.canvas);
             /* Always write 1s */
             Stencil.stencilFunc(context, Stencil.always, 1, 0xFF);
@@ -1574,9 +1512,9 @@ let processDrawList = (scene, drawList, debug) => {
             /* We can also disable stencil writing */
             Stencil.stencilMask(context, 0x00);
         | ClearStencil =>
-            Gl.disable(~context, Stencil.stencilTest);
+            glDisable(context, Stencil.stencilTest);
         | SetRect(rect) =>
-            Gl.enable(~context, Scissor.scissorTest);
+            glEnable(context, Scissor.scissorTest);
             /* todo: Int rect */
             Scissor.scissor(
                 context,
@@ -1586,7 +1524,7 @@ let processDrawList = (scene, drawList, debug) => {
                 int_of_float(rect.h)
             );
         | ClearRect =>
-            Gl.disable(~context, Scissor.scissorTest);
+            glDisable(context, Scissor.scissorTest);
         | BindDrawTexture(n) =>
             if (!debug) {
                 bindDrawTexture(scene, n);
@@ -1785,8 +1723,6 @@ let debug = false;
 /* These are assumed "ints"/rounded */
 let vpWidth = float_of_int(self.canvas.width);
 let vpHeight = float_of_int(self.canvas.height);
-let vpWidthCenter = vpWidth /. 2.0;
-let vpHeightMiddle = vpHeight /. 2.0;
 
 let calcMargins = (node, outerWidth, outerHeight) => {
     /* Calc margins. Not sure how best to handle
@@ -2297,13 +2233,13 @@ let update = (self) => {
         | [anim, ...rest] =>
             anim.elapsed = anim.elapsed +. self.canvas.deltaTime;
             if (anim.frameInterval == 1) {
-                anim.onFrame(self, anim);
+                [@bs] anim.onFrame(self, anim);
             } else if (anim.numFrames mod anim.frameInterval == 0) {
-                anim.onFrame(self, anim);
+                [@bs] anim.onFrame(self, anim);
             };
             anim.numFrames = anim.numFrames + 1;
             if (anim.elapsed >= anim.duration) {
-                anim.setLast(self);
+                [@bs] anim.setLast(self);
                 doAnims(rest)
             } else {
                 [anim, ...doAnims(rest)]
@@ -2407,7 +2343,7 @@ let update = (self) => {
     if (List.length(loaded) > 0) {
         let loadedIds = List.map((node) => {
             switch (node.onUpdate) {
-            | Some(update) => update(node, self.state) 
+            | Some(update) => [@bs] update(node, self.state) 
             | None => ()
             };
             node.id
@@ -2433,10 +2369,10 @@ let update = (self) => {
            since last paint, and maybe setting alpha
            based on it */
         let context = self.canvas.context;
-        Gpu.Gl.enable(~context, Gpu.Constants.blend);
-        Gpu.Gl.blendFunc(~context, Gpu.Constants.src_alpha, Gpu.Constants.one_minus_src_alpha);
+        Gpu.glEnable(context, Gpu.Constants.blend);
+        Gpu.glBlendFunc(context, Gpu.Constants.src_alpha, Gpu.Constants.one_minus_src_alpha);
         processDrawList(self, Hashtbl.find(self.drawLists, updateState), true);
-        Gpu.Gl.disable(~context, Gpu.Constants.blend);
+        Gpu.glDisable(context, Gpu.Constants.blend);
     };
 };
 
@@ -2487,7 +2423,16 @@ let doResize = (scene) => {
     update(scene);
 };
 
-let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()) => {
+let run = (
+    width,
+    height,
+    setup,
+    createScene,
+    draw,
+    ~keyPressed=?,
+    ~resize=?,
+    ()
+) => {
     let canvas = Gpu.Canvas.init(width, height);
     let userState = ref(setup(canvas));
     let scene = createScene(canvas, userState^);

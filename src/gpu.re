@@ -43,6 +43,15 @@ type bufferUsage =
 
 open Data;
 
+/* Put here to avoid curry since currently bucklescript
+   does not uncurry functions with labelled arguments */
+[@bs.send] external glEnable : (Gl.contextT, int) => unit = "enable";
+[@bs.send] external glDisable : (Gl.contextT, int) => unit = "disable";
+[@bs.send] external glBlendFunc : (Gl.contextT, int, int) => unit = "blendFunc";
+/* Context, target, buffer */
+[@bs.send] external glBindBuffer : (Gl.contextT, int, Gl.bufferT) => unit = "bindBuffer";
+
+
 type uniform =
   | UniformFloat(ref(float))
   | UniformInt(ref(int))
@@ -129,26 +138,31 @@ module Uniform = {
     };
 
     [@bs.send]
-    external uniformMatrix3fv :
-        (~context: Gl.contextT, ~location: Gl.uniformT, ~transpose: Js.boolean, ~values: array(float)) => unit =
-        "uniformMatrix3fv";
+    external uniformMatrix3fv : (Gl.contextT, Gl.uniformT, Js.boolean, array(float)) => unit = "uniformMatrix3fv";
+    
+    /* Put here to avoid currying while bucklescript doesnt yet optimize labelled arguments */
+    [@bs.send] external uniform1i : (Gl.contextT, Gl.uniformT, int) => unit = "uniform1i";
+    [@bs.send] external uniform1f : (Gl.contextT, Gl.uniformT, float) => unit = "uniform1f";
+    [@bs.send] external uniform2f : (Gl.contextT, Gl.uniformT, float, float) => unit = "uniform2f";
+    [@bs.send] external uniform3f : (Gl.contextT, Gl.uniformT, float, float, float) => unit = "uniform3f";
+    [@bs.send] external uniform4f : (Gl.contextT, Gl.uniformT, float, float, float, float) => unit = "uniform4f";
 
     let valueToGpu = (uniform : inited, context) => {
         switch (uniform.uniform) {
-        | UniformFloat(value) => Gl.uniform1f(~context, ~location=uniform.loc, ~value=value^);
-        | UniformInt(value) => Gl.uniform1i(~context, ~location=uniform.loc, ~value=value^);
+        | UniformFloat(value) => uniform1f(context, uniform.loc, value^);
+        | UniformInt(value) => uniform1i(context, uniform.loc, value^);
         | UniformVec2f(value) =>
             let value = value^;
-            Gl.uniform2f(~context, ~location=uniform.loc, ~v1=value[0], ~v2=value[1]);
+            uniform2f(context, uniform.loc, value[0], value[1]);
         | UniformVec3f(value) =>
             let value = value^;
-            Gl.uniform3f(~context, ~location=uniform.loc, ~v1=value[0], ~v2=value[1], ~v3=value[2]);
+            uniform3f(context, uniform.loc, value[0], value[1], value[2]);
         | UniformVec4f(value) =>
             let value = value^;
-            Gl.uniform4f(~context, ~location=uniform.loc, ~v1=value[0], ~v2=value[1], ~v3=value[2], ~v4=value[3]);
+            uniform4f(context, uniform.loc, value[0], value[1], value[2], value[3]);
         | UniformMat3f(values) =>
             let values = values^;
-            uniformMatrix3fv(~context, ~location=uniform.loc, ~transpose=Js.false_, ~values=values);
+            uniformMatrix3fv(context, uniform.loc, Js.false_, values);
         };
     };
 };
@@ -183,15 +197,30 @@ module VertexAttrib = {
         }
     };
 
+    /* context, attribute, size, type, normalize, stride, offset */
+    [@bs.send]
+    external _vertexAttribPointer :
+    (
+        Gl.contextT,
+        Gl.attributeT,
+        int,
+        int,
+        Js.boolean,
+        int,
+        int
+    ) =>
+    unit =
+    "vertexAttribPointer";
+
     let setPointer = (inited, context) => {
-        Gl.vertexAttribPointer(
-            ~context,
-            ~attribute=inited.loc,
-            ~size=inited.size,
-            ~type_=inited.type_,
-            ~normalize=false,
-            ~stride=inited.stride,
-            ~offset=inited.offset
+        _vertexAttribPointer(
+            context,
+            inited.loc,
+            inited.size,
+            inited.type_,
+            Js.false_,
+            inited.stride,
+            inited.offset
         );
     };
 };
@@ -286,6 +315,9 @@ module Program = {
 
 [@bs.send] external _deleteBuffer : (Gl.contextT, Gl.bufferT) => unit = "deleteBuffer";
 
+/* context, target, data, usage */
+[@bs.send] external _bufferData : (Gl.contextT, int, Gl.Bigarray.t('a, 'b), int) => unit = "bufferData";
+
 module VertexBuffer = {
     type inited = {
         bufferRef: Gl.bufferT,
@@ -359,11 +391,11 @@ module VertexBuffer = {
 
     let updateGpuData = (inited : inited, context) => {
         inited.count = Array.length(inited.data);
-        Gl.bufferData(
-            ~context,
-            ~target=Constants.array_buffer,
-            ~data=Gl.Bigarray.of_array(Gl.Bigarray.Float32, inited.data),
-            ~usage=switch (inited.usage) {
+        _bufferData(
+            context,
+            Constants.array_buffer,
+            Gl.Bigarray.of_array(Gl.Bigarray.Float32, inited.data),
+            switch (inited.usage) {
             | StaticDraw => Constants.static_draw
             | DynamicDraw => Constants.dynamic_draw
             | StreamingDraw => Constants.stream_draw
@@ -376,16 +408,16 @@ module VertexBuffer = {
         | Some(inited) => inited
         | None => {
             let vertexBuffer = Gl.createBuffer(~context);
-            Gl.bindBuffer(
-                ~context,
-                ~target=Constants.array_buffer,
-                ~buffer=vertexBuffer
+            glBindBuffer(
+                context,
+                Constants.array_buffer,
+                vertexBuffer
             );
-            Gl.bufferData(
-                ~context,
-                ~target=Constants.array_buffer,
-                ~data=Gl.Bigarray.of_array(Gl.Bigarray.Float32, buffer.data),
-                ~usage=switch (buffer.usage) {
+            _bufferData(
+                context,
+                Constants.array_buffer,
+                Gl.Bigarray.of_array(Gl.Bigarray.Float32, buffer.data),
+                switch (buffer.usage) {
                 | StaticDraw => Constants.static_draw
                 | DynamicDraw => Constants.dynamic_draw
                 | StreamingDraw => Constants.stream_draw
@@ -479,11 +511,11 @@ module IndexBuffer = {
     let updateGpuData = (inited : inited) => {
         let context = inited.context;
         inited.count = Array.length(inited.data);
-        Gl.bufferData(
-            ~context,
-            ~target=Constants.element_array_buffer,
-            ~data=Gl.Bigarray.of_array(Gl.Bigarray.Uint16, inited.data),
-            ~usage=switch (inited.usage) {
+        _bufferData(
+            context,
+            Constants.element_array_buffer,
+            Gl.Bigarray.of_array(Gl.Bigarray.Uint16, inited.data),
+            switch (inited.usage) {
             | StaticDraw => Constants.static_draw
             | DynamicDraw => Constants.dynamic_draw
             | StreamingDraw => Constants.stream_draw
@@ -495,16 +527,16 @@ module IndexBuffer = {
         | Some(inited) => inited
         | None => {
             let bufferRef = Gl.createBuffer(~context);
-            Gl.bindBuffer(
-                ~context,
-                ~target=Constants.element_array_buffer,
-                ~buffer=bufferRef
+            glBindBuffer(
+                context,
+                Constants.element_array_buffer,
+                bufferRef
             );
-            Gl.bufferData(
-                ~context,
-                ~target=Constants.element_array_buffer,
-                ~data=Gl.Bigarray.of_array(Gl.Bigarray.Uint16, buffer.data),
-                ~usage=switch buffer.usage {
+            _bufferData(
+                context,
+                Constants.element_array_buffer,
+                Gl.Bigarray.of_array(Gl.Bigarray.Uint16, buffer.data),
+                switch buffer.usage {
                 | StaticDraw => Constants.static_draw
                 | DynamicDraw => Constants.dynamic_draw
                 | StreamingDraw => Constants.stream_draw
@@ -773,7 +805,6 @@ module Texture = {
     };
 
     let ensureSize = (self : t, context, width, height) => {
-        Js.log3("Ensuring size: ", width, height);
         switch (self.data) {
         | IntDataTexture(data, w, h) =>
             if (w < width || h < height) {
@@ -840,7 +871,6 @@ module Texture = {
                     ~type_=RGLConstants.unsigned_byte,
                     ~data
                 );
-                Js.log2("Resized to", dim);
             };
         | _ => failwith("Need int data texture to resize")
         };
@@ -1091,7 +1121,7 @@ module Canvas = {
         /*let context = Gl.Window.getContext(window);*/
         let (canvasEl, _) = __destructureWindowHack(window);
         let context = getContext(canvasEl, "webgl", {"preserveDrawingBuffer": true, "antialias": true, "stencil": true});
-        Gl.enable(~context, cull_face);
+        glEnable(context, cull_face);
         Gl.viewport(~context, ~x=0, ~y=0, ~width, ~height);
         {
             window,
@@ -1185,6 +1215,9 @@ module Canvas = {
         Gl.viewport(~context=canvas.context, ~x=0, ~y=0, ~width=canvas.width, ~height=canvas.height);
     };
 
+    [@bs.send] external enableVertexAttribArray : (Gl.contextT, Gl.attributeT) => unit = "enableVertexAttribArray";
+
+    /* todo: currently not used, not sure if it works */
     let drawVertices = (canvas, program, vertexBuffer) => {
         let context = canvas.context;
         switch (canvas.currProgram) {
@@ -1197,14 +1230,14 @@ module Canvas = {
         switch (canvas.currVertexBuffer) {
         | Some(currBuffer) when (currBuffer === vertexBuffer) => ()
         | _ => {
-            Gl.bindBuffer(
-                ~context,
-                ~target=Constants.array_buffer,
-                ~buffer=vertexBuffer.bufferRef
+            glBindBuffer(
+                context,
+                Constants.array_buffer,
+                vertexBuffer.bufferRef
             );
             Array.iter((attrib : VertexAttrib.inited) => {
                 VertexAttrib.setPointer(attrib, context);
-                Gl.enableVertexAttribArray(~context, ~attribute=attrib.loc);
+                enableVertexAttribArray(context, attrib.loc);
             }, vertexBuffer.attribs);
         }
         };
@@ -1216,12 +1249,20 @@ module Canvas = {
         );
     };
 
+    /* Putting some here to avoid currying in
+       this function that runs very often */
+    [@bs.send] external useProgram : (Gl.contextT, Gl.programT) => unit = "useProgram";
+    [@bs.send] external activeTexture : (Gl.contextT, int) => unit = "activeTexture";
+    [@bs.send] external bindTexture : (Gl.contextT, int, Gl.textureT) => unit = "bindTexture";
+    /* context, mode, count, type, offset */
+    [@bs.send] external drawElements : (Gl.contextT, int, int, int, int) => unit = "drawElements";
+
     let drawIndexes = (canvas, program, vertexBuffer, indexBuffer, textures) => {
         let context = canvas.context;
         switch (canvas.currProgram) {
         | Some(currentProgram) when (currentProgram === program) => ()
         | _ => {
-            Gl.useProgram(~context, program.programRef);
+            useProgram(context, program.programRef);
             canvas.currProgram = Some(program);
         }
         };
@@ -1233,17 +1274,13 @@ module Canvas = {
         switch (canvas.currVertexBuffer) {
         | Some(currBuffer) when (currBuffer === vertexBuffer) => ()
         | _ => {
-            Gl.bindBuffer(
-                ~context,
-                ~target=Constants.array_buffer,
-                ~buffer=vertexBuffer.bufferRef
-            );
+            glBindBuffer(context, Constants.array_buffer, vertexBuffer.bufferRef);
             if (vertexBuffer.update) {
                 VertexBuffer.updateGpuData(vertexBuffer, context);
             };
             Array.iter((attrib : VertexAttrib.inited) => {
                 VertexAttrib.setPointer(attrib, context);
-                Gl.enableVertexAttribArray(~context, ~attribute=attrib.loc);
+                enableVertexAttribArray(context, attrib.loc);
             }, vertexBuffer.attribs);
             canvas.currVertexBuffer = Some(vertexBuffer);
         }
@@ -1252,11 +1289,7 @@ module Canvas = {
         switch (canvas.currIndexBuffer) {
         | Some(currBuffer) when (currBuffer === indexBuffer) => ()
         | _ => {
-            Gl.bindBuffer(
-                ~context,
-                ~target=Constants.element_array_buffer,
-                ~buffer=indexBuffer.elBufferRef
-            );
+            glBindBuffer(context, Constants.element_array_buffer, indexBuffer.elBufferRef);
             if (indexBuffer.update) {
                 IndexBuffer.updateGpuData(indexBuffer);
             };
@@ -1268,29 +1301,29 @@ module Canvas = {
         let currTexLength = Array.length(canvas.currTextures);
         canvas.currTextures = Array.mapi((i, pInit : ProgramTexture.inited) => {
             let wasBound = if (i > currTexLength - 1 || canvas.currTextures[i] !== pInit) {
-                Gl.uniform1i(~context, ~location=pInit.uniformRef, ~value=i);
-                Gl.activeTexture(~context, tex0 + i);
-                Gl.bindTexture(~context, ~target=Constants.texture_2d, ~texture=pInit.texture.texRef);
+                Uniform.uniform1i(context, pInit.uniformRef, i);
+                activeTexture(context, tex0 + i);
+                bindTexture(context, Constants.texture_2d, pInit.texture.texRef);
                 true
             } else {
                 false
             };
             if (pInit.texture.update) {
                 if (!wasBound) {
-                    Gl.activeTexture(~context, tex0 + i);
-                    Gl.bindTexture(~context, ~target=Constants.texture_2d, ~texture=pInit.texture.texRef);
+                    activeTexture(context, tex0 + i);
+                    bindTexture(context, Constants.texture_2d, pInit.texture.texRef);
                 };
                 Texture.updateGpuData(pInit.texture);
             };
             pInit
         }, textures);
         /* Draw elements */
-        Gl.drawElements(
-            ~context,
-            ~mode=Constants.triangles,
-            ~count=indexBuffer.count,
-            ~type_=Constants.unsigned_short,
-            ~offset=0
+        drawElements(
+            context,
+            Constants.triangles,
+            indexBuffer.count,
+            Constants.unsigned_short,
+            0
         );
         switch (Error.getErrorString(context)) {
         | None => ()

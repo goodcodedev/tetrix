@@ -164,7 +164,7 @@ module Directional = {
         dir ++ color
     };
 
-    let getLightFuncSource = (self, camera) => {
+    let getLightFuncSource = (self) => {
         let dir = switch (self.dir) {
         | StaticDir(v) => Data.Vec3.toGlsl(v)
         | DynamicDir(_) => "uDir"
@@ -216,7 +216,7 @@ module ProgramLight = {
         uniforms
     };
 
-    let getVertVarDecls = (self) => {
+    let getVertVarDecls = (_self) => {
         ()
     };
 
@@ -233,7 +233,7 @@ module ProgramLight = {
         let (_, parts) = List.fold_left(((i, parts), p) => {
             (i + 1, [PointLight.getLightFuncSource(p, i, self.camera), ...parts])
         }, (0, []), self.points);
-        let parts = [Directional.getLightFuncSource(self.dir, self.camera), ...parts];
+        let parts = [Directional.getLightFuncSource(self.dir), ...parts];
         let (statements, addends) = List.fold_left(((statements, addends), part) => {
             (statements ++ part.statements, [part.addend, ...addends])
         }, ("", []), parts);
