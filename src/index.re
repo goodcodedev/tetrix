@@ -849,7 +849,7 @@ let draw = (state, scene, canvas : Gpu.Canvas.t) => {
   | NextLevel => state
   | GameOver => state
   };
-  Scene.update(scene, []);
+  Scene.update(scene);
   state
 };
 

@@ -69,46 +69,41 @@ type fbufferConfig = {
 };
 
 /* user defined state and update flags */
-type t('state, 'flags) = {
-    state: 'state,
+type t('s) = {
+    state: 's,
     mutable queuedUpdates: list(int),
-    nodesByKey: Hashtbl.t(string, node('state, 'flags)),
-    nodesByCls: Hashtbl.t(string, list(node('state, 'flags))),
+    nodesByKey: Hashtbl.t(string, node('s)),
+    nodesByCls: Hashtbl.t(string, list(node('s))),
     canvas: Gpu.Canvas.t,
-    root: node('state, 'flags),
+    root: node('s),
     mutable inited: bool,
-    updateLists: Hashtbl.t(updateState('flags), list(node('state, 'flags))),
-    drawLists: Hashtbl.t(updateState('flags), list(drawListItem('state, 'flags))),
-    drawListsDebug: option(drawListDebug('state, 'flags)),
-    initedLists: Hashtbl.t(updateState('flags), bool),
+    drawLists: Hashtbl.t(updateState, list(drawListItem('s))),
+    drawListsDebug: option(drawListDebug('s)),
+    initedLists: Hashtbl.t(updateState, bool),
     initedDeps: Hashtbl.t(int, bool),
-    mutable loadingNodes: list((list('flags), node('state, 'flags))),
-    mutable anims: list(anim('state, 'flags)),
+    mutable loadingNodes: list(node('s)),
+    mutable anims: list(anim('s)),
     fbuffer: Hashtbl.t(fbufferConfig, Gpu.FrameBuffer.inited),
     stencilDraw: StencilDraw.t,
-    /* List of nodes that needs update on flags */
-    onFlags: Hashtbl.t('flags, list(updateListNode('state, 'flags))),
     /* Update nodes keyed by node id/number,
        array is sized to cover all nodes */
-    updateNodes: ArrayB.t(option(updateListNode('state, 'flags))),
-    mutable updateRoot: option(updateListNode('state, 'flags)),
+    updateNodes: ArrayB.t(option(updateListNode('s))),
+    mutable updateRoot: option(updateListNode('s)),
     mutable hiddenNodes: list(int)
 }
-and drawListDebug('state, 'flags) = {
+and drawListDebug('s) = {
     draw: DrawListDebug.t
 }
-and updateState('flags) = {
-    flags: list('flags),
+and updateState = {
     updateNodes: list(int),
     hiddenNodes: list(int)
 }
-and node('state, 'flags) = {
+and node('s) = {
     key: option(string),
     cls: option(string),
     id: int,
-    updateOn: list('flags),
     mutable drawState: option(Gpu.DrawState.t),
-    onUpdate: option((node('state, 'flags), 'state, list('flags)) => unit),
+    onUpdate: option((node('s), 's) => unit),
     layout: layout,
     calcLayout: calcLayout,
     /* Rect in pixels */
@@ -119,11 +114,10 @@ and node('state, 'flags) = {
     selfDraw: bool,
     transparent: bool,
     partialDraw: bool,
-    hidable: bool,
     mutable hidden: bool,
     mutable loading: bool,
-    deps: list(node('state, 'flags)),
-    children: list(node('state, 'flags)),
+    deps: list(node('s)),
+    children: list(node('s)),
     vertShader: option(Gpu.Shader.t),
     fragShader: option(Gpu.Shader.t),
     textureList: list(string),
@@ -137,8 +131,8 @@ and node('state, 'flags) = {
     drawToTexture: option(Gpu.Texture.t),
     texTransUniform: option(Gpu.uniform),
     clearOnDraw: bool,
-    mutable parent: option(node('state, 'flags)),
-    mutable scene: option(t('state, 'flags))
+    mutable parent: option(node('s)),
+    mutable scene: option(t('s))
 }
 /* Also consider assigning id's to these
    objects, then connecting id's to nodes */
@@ -159,9 +153,9 @@ and sceneTexture = {
     offsetX: dimension,
     offsetY: dimension
 }
-and nodeTex('state, 'flags) = {
+and nodeTex('s) = {
     texture: Gpu.Texture.t,
-    texNode: option(node('state, 'flags)),
+    texNode: option(node('s)),
     uniformMat: option(Gpu.uniform),
     offsetX: dimension,
     offsetY: dimension
@@ -187,15 +181,15 @@ and calcLayout = {
     mutable pXOffset: float,
     mutable pYOffset: float
 }
-and anim('state, 'flags) = {
+and anim('s) = {
     animKey: option(string),
-    onFrame: (t('state, 'flags), anim('state, 'flags)) => unit,
-    setLast: (t('state, 'flags)) => unit,
+    onFrame: (t('s), anim('s)) => unit,
+    setLast: (t('s)) => unit,
     duration: float,
     mutable elapsed: float,
     frameInterval: int,
     mutable numFrames: int,
-    next: option(anim('state, 'flags))
+    next: option(anim('s))
 }
 and updateStencil = {
     mutable rect: Geom2d.Rect.t,
@@ -219,7 +213,7 @@ and updateStencil = {
    from caching of intermediary results, while a static
    scene wouldn't require this and could be somewhat better
    of with a quick algorithm */
-and updateListNode('state, 'flags) = {
+and updateListNode('s) = {
     /* Whether there is a full update triggered
        on the node, currently through flag or animation */
     mutable update: bool,
@@ -232,11 +226,11 @@ and updateListNode('state, 'flags) = {
     isDepRoot: bool,
     /* Whether this is part of a stacked layout,
        then placed as a child */
-    prevStacked: list(updateListNode('state, 'flags)),
+    prevStacked: list(updateListNode('s)),
     /* Partitioned to prev and next stacked */
-    mutable nextStacked: list(updateListNode('state, 'flags)),
+    mutable nextStacked: list(updateListNode('s)),
     /* Reference to the node */
-    updNode: node('state, 'flags),
+    updNode: node('s),
     /* Rectangle of the node, this is referenced in
        updateRects and stencils, and the data may
        be updated on resize
@@ -259,18 +253,18 @@ and updateListNode('state, 'flags) = {
        where the ones needed should be activated,
        then on traversal all active rects
        should be reconciled */
-    mutable childRects: list(updateRect('state, 'flags)),
+    mutable childRects: list(updateRect('s)),
     /* Rects upwards in the tree that are needed
        to redraw this node, the list will be
        expanded as needed */
-    mutable parentRects: list(updateRect('state, 'flags)),
-    mutable updDeps: list(updateListNode('state, 'flags)),
-    mutable updChildren: list(updateListNode('state, 'flags)),
-    parent: option(updateListNode('state, 'flags))
+    mutable parentRects: list(updateRect('s)),
+    mutable updDeps: list(updateListNode('s)),
+    mutable updChildren: list(updateListNode('s)),
+    parent: option(updateListNode('s))
 }
 /* Update rect that will be listen on the node
    that needs these rects to be drawn below. */
-and updateRect('state, 'flags) = {
+and updateRect('s) = {
     /* Rectangle mutable for resize,
        maybe this is not sufficient if nodes
        will be responsively rearranged */
@@ -280,7 +274,7 @@ and updateRect('state, 'flags) = {
     /* Node that may draw this rect, it will
        be checked for hidden and update state
        when setting active rects */
-    rNode: updateListNode('state, 'flags),
+    rNode: updateListNode('s),
     /* List of stencils that are among child nodes,
        they will have active state determined by
        whether nodes are visible */
@@ -298,13 +292,13 @@ and stencilBuffers = {
     mutable stencilVertices: Gpu.VertexBuffer.inited,
     mutable stencilIndices: Gpu.IndexBuffer.inited,
 }
-and  drawListItem('state, 'flags) =
-  | DrawNode(node('state, 'flags))
+and  drawListItem('s) =
+  | DrawNode(node('s))
   | SetRect(Geom2d.Rect.t)
   | ClearRect
   | DrawStencil(stencilBuffers)
   | ClearStencil
-  | BindDrawTexture(node('state, 'flags))
+  | BindDrawTexture(node('s))
   | UnBindDrawTexture;
 
 let quadVertices = Gpu.VertexBuffer.makeQuad(());
@@ -409,7 +403,6 @@ let makeNode = (
     ~cls=?,
     ~vertShader=?,
     ~fragShader=?,
-    ~updateOn=[],
     ~update=?,
     ~children=[],
     ~textures : list((string, sceneTexture)) =[],
@@ -430,7 +423,6 @@ let makeNode = (
     ~transparent=false,
     ~partialDraw=false,
     ~hidden=false,
-    ~hidable=false,
     ~deps=[],
     ~drawTo=Framebuffer,
     ~texTransUniform=false,
@@ -527,7 +519,6 @@ let makeNode = (
         cls,
         id: nextNodeId(),
         onUpdate: update,
-        updateOn,
         drawState: None,
         layout,
         calcLayout: {
@@ -550,7 +541,6 @@ let makeNode = (
         transparent,
         partialDraw,
         hidden,
-        hidable: (hidden || hidable),
         children,
         deps,
         vertShader,
@@ -622,7 +612,6 @@ let make = (
         nodesByCls: Hashtbl.create(30),
         root,
         inited: false,
-        updateLists: Hashtbl.create(5),
         drawLists: Hashtbl.create(30),
         drawListsDebug,
         initedLists: Hashtbl.create(30),
@@ -631,7 +620,6 @@ let make = (
         anims: [],
         fbuffer: Hashtbl.create(1),
         stencilDraw: StencilDraw.make(canvas),
-        onFlags: Hashtbl.create(50),
         updateNodes: ArrayB.make(None),
         updateRoot: None,
         hiddenNodes: []
@@ -798,14 +786,6 @@ let buildUpdateTree = (scene, root) => {
         };
         /* Add to indexes for node id/number and flag */
         scene.updateNodes.data[node.id] = Some(updateNode);
-        List.iter((flag) => {
-            if (!Hashtbl.mem(scene.onFlags, flag)) {
-                Hashtbl.add(scene.onFlags, flag, [updateNode]);
-            } else {
-                let nodes = Hashtbl.find(scene.onFlags, flag);
-                Hashtbl.replace(scene.onFlags, flag, [updateNode, ...nodes]);
-            };
-        }, node.updateOn);
         updateNode.updDeps = List.map((dep) => loop(dep, Some(updateNode), true, true, []), node.deps);
         switch (node.layout.childLayout) {
         | Stacked =>
@@ -994,7 +974,7 @@ let actRectUntilCovered = (updNode) => {
        parents, sets their active status and return
        a list of newly created updateRects until
        a covering node is found */
-    let rec loopNewRects = (parNode : updateListNode('state, 'flags)) => {
+    let rec loopNewRects = (parNode : updateListNode('s)) => {
         /* First process any prevStacked */
         let next = switch (parNode.prevStacked) {
         | [] => parNode.parent
@@ -1050,7 +1030,7 @@ let actRectUntilCovered = (updNode) => {
                            ++ ". Maybe add a background node?");
         }
     };
-    let rec loopRects = (rects : list(updateRect('state, 'flags))) => {
+    let rec loopRects = (rects : list(updateRect('s))) => {
         switch (rects) {
         | [updRect] =>
             /* Check if we need to continue
@@ -1102,7 +1082,7 @@ let actRectUntilCovered = (updNode) => {
     loopRects(updNode.parentRects);
 };
 
-let rec setAdjecentStackedToUpdate = (updNode : option(updateListNode('s, 'f))) => {
+let rec setAdjecentStackedToUpdate = (updNode : option(updateListNode('s))) => {
     switch (updNode) {
     | Some(updNode) =>
         setAdjecentStackedToUpdate(updNode.parent);
@@ -1132,23 +1112,12 @@ let rec setAdjecentStackedToUpdate = (updNode : option(updateListNode('s, 'f))) 
 };
 
 /* UpdateNodes should be checked for visibility up front */
-let createDrawList = (scene, flags, updateNodes, updRoot) => {
+let createDrawList = (scene, updateNodes, updRoot) => {
     let updRoot = switch (scene.updateNodes.data[updRoot.id]) {
     | Some(updRoot) => updRoot
     | None => failwith("Root update node not found");
     };
     /* Set nodes to update */
-    let updNodes = List.fold_left((updNodes, flag) => {
-        if (Hashtbl.mem(scene.onFlags, flag)) {
-            let toUpdate = Hashtbl.find(scene.onFlags, flag);
-            List.iter((toUpdate) => {
-                setToUpdate(toUpdate);
-            }, toUpdate);
-            [toUpdate, ...updNodes]
-        } else {
-            updNodes
-        };
-    }, [], flags);
     let updNodes = [List.fold_left((nodes, nodeId) => {
         switch (scene.updateNodes.data[nodeId]) {
         | Some(updNode) =>
@@ -1156,9 +1125,9 @@ let createDrawList = (scene, flags, updateNodes, updRoot) => {
             [updNode, ...nodes]
         | None => failwith("Could not find update node with id: " ++ string_of_int(nodeId));
         };
-    }, [], updateNodes), ...updNodes];
+    }, [], updateNodes), []];
     List.iter((nodes) => {
-        List.iter((updNode : updateListNode('state, 'flags)) => {
+        List.iter((updNode : updateListNode('s)) => {
             /* Nodes could be part of a stacked layout
             here or further up in the scene. Traverse
             node and parents and for now, simply flag
@@ -1170,7 +1139,7 @@ let createDrawList = (scene, flags, updateNodes, updRoot) => {
        do second pass on nodes to update
        to check for transparent nodes and
        ensure they are covered by a parent */
-    let rec actRecLoop = (updNode: updateListNode('state, 'flags)) => {
+    let rec actRecLoop = (updNode: updateListNode('s)) => {
         if (updNode.update) {
             if (updNode.updNode.transparent || updNode.updNode.partialDraw) {
                 actRectUntilCovered(updNode);
@@ -1270,7 +1239,7 @@ let createDrawList = (scene, flags, updateNodes, updRoot) => {
         } else if (hidden) {
             updNode.update = false;
             /* Clean up active flag on rects */
-            List.iter((updRect : updateRect('state, 'flags)) => updRect.active = false, updNode.childRects);
+            List.iter((updRect : updateRect('s)) => updRect.active = false, updNode.childRects);
             /* Recurse children to clean up if they
                have update or childUpdate flagged */
             let drawList = List.fold_left((drawList, updChild) => {
@@ -1377,18 +1346,18 @@ let createDrawList = (scene, flags, updateNodes, updRoot) => {
                 /* Clean up active stencils */
                 List.iter((stencil) => stencil.active = false, stencils);
                 /* Clean up active rects */
-                List.iter((rect : updateRect('state, 'flags)) => rect.active = false, updNode.childRects);
+                List.iter((rect : updateRect('s)) => rect.active = false, updNode.childRects);
                 drawList
             } else {
                 /* Check for active rects */
-                let rects = List.filter((updRect : updateRect('state, 'flags)) => updRect.active, updNode.childRects);
+                let rects = List.filter((updRect : updateRect('s)) => updRect.active, updNode.childRects);
                 /* Filter duplicate/contained  */
-                let rec nonDupRects = (list : list(updateRect('state, 'flags))) => switch (list) {
+                let rec nonDupRects = (list : list(updateRect('s))) => switch (list) {
                 | [] => []
                 | [rect, ...rest] =>
                     /* !! Also negates active flag !! */
                     rect.active = false;
-                    if (List.exists((rect2 : updateRect('state, 'flags)) => Geom2d.Rect.contains(rect2.rect, rect.rect), rest)) {
+                    if (List.exists((rect2 : updateRect('s)) => Geom2d.Rect.contains(rect2.rect, rect.rect), rest)) {
                         nonDupRects(rest)
                     } else {
                         [rect, ...nonDupRects(rest)]
@@ -1402,7 +1371,7 @@ let createDrawList = (scene, flags, updateNodes, updRoot) => {
                    that much better as a scissor rect should be easier
                    to deal with for the gpu? So it would be nice to
                    see benchmarks */
-                let drawList = List.fold_left((drawList, rect: updateRect('a, 'b)) => {
+                let drawList = List.fold_left((drawList, rect: updateRect('s)) => {
                     if (activeRect^ == None) {
                         activeRect := Some(rect.scisRect);
                         [
@@ -1556,7 +1525,7 @@ module Gl = Reasongl.Gl;
 
 /* Debug parameter passed, it would be a slight optimization
    to create own function for debug.. */
-let processDrawList = (scene, drawList, flags, debug) => {
+let processDrawList = (scene, drawList, debug) => {
     let context = scene.canvas.context;
     let elapsed = scene.canvas.elapsed;
     open Gpu;
@@ -1573,13 +1542,12 @@ let processDrawList = (scene, drawList, flags, debug) => {
                 }
             } else {
                 if (node.loading) {
-                    if (!List.exists(((_flags, loading)) => loading === node, scene.loadingNodes)) {
-                        /* todo: flags.. are they needed? */
-                        scene.loadingNodes = [(flags, node), ...scene.loadingNodes];
+                    if (!List.exists((loading) => loading === node, scene.loadingNodes)) {
+                        scene.loadingNodes = [node, ...scene.loadingNodes];
                     };
                 } else {
                     switch (node.onUpdate) {
-                    | Some(update) => update(node, scene.state, flags);
+                    | Some(update) => update(node, scene.state);
                     | None =>
                         draw(scene, node);
                     };
@@ -1634,7 +1602,7 @@ let processDrawList = (scene, drawList, flags, debug) => {
     processDrawEl(drawList);
 };
 
-let logDrawList = (scene, updateState : updateState('flags), drawList) => {
+let logDrawList = (scene, updateState : updateState, drawList) => {
     Js.log2("====\nDrawlist", List.fold_left((str, id) => {
         switch (scene.updateNodes.data[id]) {
         | Some(node) => str ++ ", " ++ nodeDescrString(node.updNode)
@@ -1665,14 +1633,13 @@ let logDrawList = (scene, updateState : updateState('flags), drawList) => {
     processDrawEl(drawList);
 };
 
-let getSceneNodesToUpdate = (flags, animIds, root) => {
+let getSceneNodesToUpdate = (animIds, root) => {
     let rec loop = (node, list, parentUpdate) => {
         let depsToUpdate = List.fold_left((list, dep) => loop(dep, list, false), [], node.deps);
         let doUpdate = (
             parentUpdate
             || (List.length(depsToUpdate) > 0)
             || List.exists((animId) => node.id == animId, animIds)
-            || List.exists((updateOn) => List.exists((flag) => flag == updateOn, flags), node.updateOn)
         );
         /* todo: tail recursive? */
         let childList = List.fold_left((list, child) => loop(child, list, doUpdate), list, node.children);
@@ -2322,7 +2289,7 @@ let isNodeHidden = (scene, nodeId) => {
 
 /* Creates a drawList that shows which
    areas are updating */
-let update = (self, updateFlags) => {
+let update = (self) => {
     /* Anims */
     let rec doAnims = (anims) => {
         switch (anims) {
@@ -2353,11 +2320,7 @@ let update = (self, updateFlags) => {
        maybe it's not so bad as the list should be similar
        when things update anyway, and drawlist is cached */
     self.queuedUpdates = [];
-    /* todo: is this ok to sort variant types?
-       use some hashset type? */
-    let sortedFlags = List.sort((a, b) => (a < b) ? -1 : 1, updateFlags);
     let updateState = {
-        flags: sortedFlags,
         updateNodes,
         hiddenNodes: self.hiddenNodes
     };
@@ -2371,7 +2334,7 @@ let update = (self, updateFlags) => {
                 [%debugger];
             };
         }, updNode.stencils);
-        List.iter((rect : updateRect('s, 'f)) => {
+        List.iter((rect : updateRect('s)) => {
             if (rect.active) {
                 [%debugger];
             };
@@ -2397,8 +2360,8 @@ let update = (self, updateFlags) => {
                     if (!List.exists((nodeId) => nodeId == depId, updateNodes)) {
                         switch (self.updateNodes.data[depId]) {
                         | Some(depNode) =>
-                            let depDraws = createDrawList(self, [], [depId], depNode.updNode);
-                            processDrawList(self, depDraws, [], false);
+                            let depDraws = createDrawList(self, [depId], depNode.updNode);
+                            processDrawList(self, depDraws, false);
                             switch (self.drawListsDebug) {
                             | None => ()
                             | Some(_listsDebug) =>
@@ -2428,7 +2391,7 @@ let update = (self, updateFlags) => {
         | None => List.filter((nodeId) => !isNodeHidden(self, nodeId), updateNodes)
         | Some(visibleNodes) => visibleNodes
         };
-        let drawList = createDrawList(self, sortedFlags, visibleNodes, self.root);
+        let drawList = createDrawList(self, visibleNodes, self.root);
         Hashtbl.add(self.drawLists, updateState, drawList);
         switch (self.drawListsDebug) {
         | None => ()
@@ -2437,29 +2400,27 @@ let update = (self, updateFlags) => {
         };
     };
     /* Check if any node in loadingNodes is loaded */
-    let (newList, loaded) = List.partition((loading) => {
-        let (_updateList, node) = loading;
+    let (newList, loaded) = List.partition((node) => {
         node.loading
     }, self.loadingNodes);
     self.loadingNodes = newList;
     if (List.length(loaded) > 0) {
-        let loadedIds = List.map((loaded) => {
-            let (_updateList, node) = loaded;
+        let loadedIds = List.map((node) => {
             switch (node.onUpdate) {
-            | Some(update) => update(node, self.state, sortedFlags) 
+            | Some(update) => update(node, self.state) 
             | None => ()
             };
             node.id
         }, loaded);
-        let drawList = createDrawList(self, [], loadedIds, self.root);
+        let drawList = createDrawList(self, loadedIds, self.root);
         /* Drawing loaded nodes in a special drawlist
            The loaded node will redraw if they are
            in the main drawlist anyway, todo */
-        processDrawList(self, drawList, sortedFlags, false);
+        processDrawList(self, drawList, false);
     };
     /* todo: possibly optimize with a second transformed data structure
        so the drawstate etc is readily available */
-    processDrawList(self, Hashtbl.find(self.drawLists, updateState), sortedFlags, false);
+    processDrawList(self, Hashtbl.find(self.drawLists, updateState), false);
     switch (self.drawListsDebug) {
     | None => ()
     | Some(_) =>
@@ -2474,7 +2435,7 @@ let update = (self, updateFlags) => {
         let context = self.canvas.context;
         Gpu.Gl.enable(~context, Gpu.Constants.blend);
         Gpu.Gl.blendFunc(~context, Gpu.Constants.src_alpha, Gpu.Constants.one_minus_src_alpha);
-        processDrawList(self, Hashtbl.find(self.drawLists, updateState), sortedFlags, true);
+        processDrawList(self, Hashtbl.find(self.drawLists, updateState), true);
         Gpu.Gl.disable(~context, Gpu.Constants.blend);
     };
 };
@@ -2523,7 +2484,7 @@ let doResize = (scene) => {
     queueUpdates(scene, [scene.root.id]);
     /* Not sure how well it fits to do update, but it
        might make cleaner draw lists */
-    update(scene, []);
+    update(scene);
 };
 
 let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()) => {
@@ -2547,7 +2508,7 @@ let run = (width, height, setup, createScene, draw, ~keyPressed=?, ~resize=?, ()
             if (!scene.inited) {
                 /* Create updateNodes */
                 queueUpdates(scene, [scene.root.id]);
-                update(scene, []);
+                update(scene);
                 scene.inited = true;
             };
             userState := draw(userState^, scene, canvas);

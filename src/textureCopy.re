@@ -27,7 +27,6 @@ open Gpu;
 let makeNode = (~node, ()) => {
     Scene.makeNode(
         ~cls="textureCopy",
-        ~updateOn=[],
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~textures=[

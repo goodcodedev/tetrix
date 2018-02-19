@@ -1,6 +1,6 @@
-type animTarget('state, 'flags) =
+type animTarget('state) =
   | AnimUniform(Scene.sceneUniform)
-  | AnimNodeUniform(Scene.node('state, 'flags), string);
+  | AnimNodeUniform(Scene.node('state), string);
 
 /* Anim value, from to */
 type animValue =
@@ -42,12 +42,12 @@ let anim = (
         switch (animTarget) {
         | AnimUniform(u) =>
             (
-                (scene, anim : Scene.anim('state, 'flags)) => Scene.UFloat.set(scene, u, from +. (remaining *. easingFunc(anim.elapsed))),
+                (scene, anim : Scene.anim('state)) => Scene.UFloat.set(scene, u, from +. (remaining *. easingFunc(anim.elapsed))),
                 (scene) => Scene.UFloat.set(scene, u, last)
             )
         | AnimNodeUniform(n, u) =>
             (
-                (scene, anim : Scene.anim('state, 'flags)) => Scene.setUniformFloat(scene, n, u, from +. (remaining *. easingFunc(anim.elapsed))),
+                (scene, anim : Scene.anim('state)) => Scene.setUniformFloat(scene, n, u, from +. (remaining *. easingFunc(anim.elapsed))),
                 (scene) => Scene.setUniformFloat(scene, n, u, last)
             )
         }
@@ -59,7 +59,7 @@ let anim = (
         switch (animTarget) {
         | AnimUniform(u) =>
             (
-                (scene, anim : Scene.anim('state, 'flags)) => {
+                (scene, anim : Scene.anim('state)) => {
                     let easing = easingFunc(anim.elapsed);
                     Scene.UVec2f.set(scene, u, Data.Vec2.make(fromX +. (remainingX *. easing), fromY +. (remainingY *. easing)))
                 },
@@ -67,7 +67,7 @@ let anim = (
             )
         | AnimNodeUniform(n, u) =>
             (
-                (scene, anim : Scene.anim('state, 'flags)) => {
+                (scene, anim : Scene.anim('state)) => {
                     let easing = easingFunc(anim.elapsed);
                     Scene.setUniformVec2f(scene, n, u, Data.Vec2.make(fromX +. (remainingX *. easing), fromY +. (remainingY *. easing)))
                 },
@@ -84,7 +84,7 @@ let anim = (
         switch (animTarget) {
         | AnimUniform(u) =>
             (
-                (scene, anim : Scene.anim('state, 'flags)) => {
+                (scene, anim : Scene.anim('state)) => {
                     let easing = easingFunc(anim.elapsed);
                     Scene.UVec3f.set(scene, u, Data.Vec3.make(
                         fromX +. (remainingX *. easing),
@@ -96,7 +96,7 @@ let anim = (
             )
         | AnimNodeUniform(n, u) =>
             (
-                (scene, anim : Scene.anim('state, 'flags)) => {
+                (scene, anim : Scene.anim('state)) => {
                     let easing = easingFunc(anim.elapsed);
                     Scene.setUniformVec3f(scene, n, u, Data.Vec3.make(
                         fromX +. (remainingX *. easing),

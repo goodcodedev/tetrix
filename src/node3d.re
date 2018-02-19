@@ -39,7 +39,6 @@ let fragSource = (light) => {
 
 let make = (
     vo,
-    ~updateOn=[],
     ~size=Scene.Dimensions(Scene.Scale(1.0), Scene.Scale(1.0)),
     ~light,
     ()
@@ -48,7 +47,6 @@ let make = (
     let fs = fragSource(light);
     Scene.makeNode(
         ~cls="node3d",
-        ~updateOn,
         ~size,
         ~uniforms=Light.ProgramLight.getUniforms(light),
         ~transparent=true,
