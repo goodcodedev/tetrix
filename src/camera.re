@@ -1,9 +1,3 @@
-type t = {
-    pos: Data.Vec3.t
-};
+type t = {pos: Data.Vec3.t};
 
-let make = (pos) : t => {
-    {
-        pos : pos
-    }
-};
+let make = pos : t => {pos: pos};

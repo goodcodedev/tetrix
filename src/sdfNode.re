@@ -10,31 +10,31 @@ type sdfColor =
   | SdfDynColor(Scene.sceneUniform);
 
 type t = {
-    sdfDist: string,
-    fragCoords: fragCoords,
-    width: float,
-    height: float,
-    model: option(Scene.sceneUniform),
-    color: sdfColor,
-    colorMix: float,
-    vo: option(Scene.sceneVertexObject),
-    opacity: option(float),
-    alphaLimit: option(float),
-    lighting: Light.ProgramLight.t
+  sdfDist: string,
+  fragCoords,
+  width: float,
+  height: float,
+  model: option(Scene.sceneUniform),
+  color: sdfColor,
+  colorMix: float,
+  vo: option(Scene.sceneVertexObject),
+  opacity: option(float),
+  alphaLimit: option(float),
+  lighting: Light.ProgramLight.t
 };
 
 type inited = {
-    self: t,
-    drawState: DrawState.t,
-    canvas: Canvas.t
+  self: t,
+  drawState: DrawState.t,
+  canvas: Canvas.t
 };
 
 /* Some of these are incomplete,
    should rethink some of the options here
    that are accidental */
-let makeVertexSource = (self) => {
-    switch (self.model, self.fragCoords) {
-    | (Some(_model), ByModel) => {|
+let makeVertexSource = self =>
+  switch (self.model, self.fragCoords) {
+  | (Some(_model), ByModel) => {|
         precision mediump float;
         attribute vec2 position;
         uniform mat3 model;
@@ -53,7 +53,7 @@ let makeVertexSource = (self) => {
             gl_Position = vec4(pos, 0.0, 1.0);
         }
     |}
-    | (Some(_model), ZeroToOne) => {|
+  | (Some(_model), ZeroToOne) => {|
         precision mediump float;
         attribute vec2 position;
         uniform mat3 model;
@@ -70,7 +70,7 @@ let makeVertexSource = (self) => {
             gl_Position = vec4(pos, 0.0, 1.0);
         }
     |}
-    | (None, ZeroToOne) => {|
+  | (None, ZeroToOne) => {|
         precision mediump float;
         attribute vec2 position;
         uniform mat3 layout;
@@ -86,7 +86,7 @@ let makeVertexSource = (self) => {
             gl_Position = vec4(pos, 0.0, 1.0);
         }
     |}
-    | (None, _) => {|
+  | (None, _) => {|
         precision mediump float;
         attribute vec2 position;
         uniform mat3 layout;
@@ -102,49 +102,73 @@ let makeVertexSource = (self) => {
             gl_Position = vec4(pos, 0.0, 1.0);
         }
     |}
-    }
-};
+  };
 
-let makeFragmentSource = (self) => {
-    let fragCoords = switch (self.model, self.fragCoords) {
+let makeFragmentSource = self => {
+  let fragCoords =
+    switch (self.model, self.fragCoords) {
     | (Some(_model), ByModel) => "vPosition"
     | (_, ZeroToOne) => "vPosition"
-    | (None, ByModel) => failwith("ByModel fragCoords requested, but no model provided")
+    | (None, ByModel) =>
+      failwith("ByModel fragCoords requested, but no model provided")
     };
-    let sf = string_of_float;
-    let (uniformDecls, glColor) = switch (self.color) {
+  let sf = string_of_float;
+  let (uniformDecls, glColor) =
+    switch self.color {
     | NoColor => ("", "color")
-    | SdfStaticColor(color) => ("", "mix(color, " ++ Color.toGlsl(color) ++ ", " ++ string_of_float(self.colorMix) ++ ")")
-    | SdfDynColor(_) => ("uniform vec3 uColor;\n", "mix(color, uColor, " ++ string_of_float(self.colorMix) ++ ")")
+    | SdfStaticColor(color) => (
+        "",
+        "mix(color, "
+        ++ Color.toGlsl(color)
+        ++ ", "
+        ++ string_of_float(self.colorMix)
+        ++ ")"
+      )
+    | SdfDynColor(_) => (
+        "uniform vec3 uColor;\n",
+        "mix(color, uColor, " ++ string_of_float(self.colorMix) ++ ")"
+      )
     };
-    let glAlpha = switch(self.alphaLimit, self.opacity) {
-    | (Some(alphaLimit), Some(opacity)) => "(pixelEye.z - dist < " ++ sf(alphaLimit) ++ ") ? 0.0 : " ++ sf(opacity)
-    | (Some(alphaLimit), None) => "(pixelEye.z - dist < " ++ sf(alphaLimit) ++ ") ? 0.0 : 1.0"
+  let glAlpha =
+    switch (self.alphaLimit, self.opacity) {
+    | (Some(alphaLimit), Some(opacity)) =>
+      "(pixelEye.z - dist < " ++ sf(alphaLimit) ++ ") ? 0.0 : " ++ sf(opacity)
+    | (Some(alphaLimit), None) =>
+      "(pixelEye.z - dist < " ++ sf(alphaLimit) ++ ") ? 0.0 : 1.0"
     | (None, Some(opacity)) => sf(opacity)
     | (None, None) => "1.0"
     };
-    let lightDecls = Light.ProgramLight.getFragVarDecls(self.lighting);
-    let lightSrc = Light.ProgramLight.getLightFunction(self.lighting);
-    let source = {|
+  let lightDecls = Light.ProgramLight.getFragVarDecls(self.lighting);
+  let lightSrc = Light.ProgramLight.getLightFunction(self.lighting);
+  let source =
+    {|
         precision mediump float;
         varying vec2 vPosition;
         varying vec3 vScreenPos;
 
-        |} ++ uniformDecls ++ {|
-        
+        |}
+    ++ uniformDecls
+    ++ {|
+
         float epsilon = 0.00005;
         float minDist = 1.0;
         float maxDist = 5.0;
         const int marchingSteps = 30;
 
-        |} ++ lightDecls ++ {|
-        
-        |} ++ lightSrc ++ {|
-        
+        |}
+    ++ lightDecls
+    ++ {|
+
+        |}
+    ++ lightSrc
+    ++ {|
+
         float sdfDist(vec3 point) {
-            |} ++ self.sdfDist ++ {|
+            |}
+    ++ self.sdfDist
+    ++ {|
         }
-        
+
         vec3 estimateNormal(vec3 point) {
             return normalize(vec3(
                 sdfDist(vec3(point.x + epsilon, point.y, point.z)) - sdfDist(vec3(point.x - epsilon, point.y, point.z)),
@@ -152,7 +176,7 @@ let makeFragmentSource = (self) => {
                 sdfDist(vec3(point.x, point.y, point.z + epsilon)) - sdfDist(vec3(point.x, point.y, point.z - epsilon))
             ));
         }
-        
+
         float shortestDistance(vec3 eye, vec3 dir) {
             float depth = minDist;
             float end = maxDist;
@@ -172,7 +196,9 @@ let makeFragmentSource = (self) => {
 
         void main() {
             vec2 viewport = vec2(1.0, 1.0);
-            vec2 fragCoord = |} ++ fragCoords ++ {|;
+            vec2 fragCoord = |}
+    ++ fragCoords
+    ++ {|;
             vec3 eye = vec3(0.0, 0.0, 5.0);
             vec3 pixelEye = vec3(fragCoord, 4.0);
             float dist = shortestDistance(pixelEye, vec3(0.0, 0.0, -1.0));
@@ -184,87 +210,96 @@ let makeFragmentSource = (self) => {
             N.y = N.y * -1.0;
             float light = (lighting(p, vec3(vScreenPos.xy, p.z), N)).x;
             color = mix(mix(color, vec3(1.0, 1.0, 1.0), max(light - 0.5, 0.0)) * 0.9, vec3(0.0, 0.0, 0.0), max(0.5 + light * -1.0, 0.0) * 1.5);
-            float alpha = |} ++ glAlpha  ++ {|;
-            gl_FragColor = vec4(|} ++ glColor  ++ {|, alpha);
+            float alpha = |}
+    ++ glAlpha
+    ++ {|;
+            gl_FragColor = vec4(|}
+    ++ glColor
+    ++ {|, alpha);
         }
     |};
-    source
+  source;
 };
 
-let make = (
-    sdfDist,
-    fragCoords,
-    model,
-    lighting,
-    ~width=1.0,
-    ~height=1.0,
-    ~color=NoColor,
-    ~colorMix=0.4,
-    ~vo=?,
-    ~opacity=?,
-    ~alphaLimit=?,
-    ()
+let make =
+    (
+      sdfDist,
+      fragCoords,
+      model,
+      lighting,
+      ~width=1.0,
+      ~height=1.0,
+      ~color=NoColor,
+      ~colorMix=0.4,
+      ~vo=?,
+      ~opacity=?,
+      ~alphaLimit=?,
+      ()
     ) => {
-    {
-        sdfDist,
-        fragCoords,
-        width,
-        height,
-        model,
-        color,
-        colorMix,
-        vo,
-        opacity,
-        alphaLimit,
-        lighting
-    }
+  sdfDist,
+  fragCoords,
+  width,
+  height,
+  model,
+  color,
+  colorMix,
+  vo,
+  opacity,
+  alphaLimit,
+  lighting
 };
 
-let makeNode = (
-    self,
-    ~key=?,
-    ~cls="sdfNode",
-    ~aspect=?,
-    ~drawTo=?,
-    ~margin=?,
-    ~children=[],
-    ()
-) => {
-    let transparent = switch((self.opacity, self.alphaLimit)) {
+let makeNode =
+    (
+      self,
+      ~key=?,
+      ~cls="sdfNode",
+      ~aspect=?,
+      ~drawTo=?,
+      ~margin=?,
+      ~children=[],
+      ()
+    ) => {
+  let transparent =
+    switch (self.opacity, self.alphaLimit) {
     | (_, Some(_alphaLimit)) => true
-    | (Some(opacity), _) => (opacity < 1.0)
+    | (Some(opacity), _) => opacity < 1.0
     | _ => false
     };
-    let uniforms = switch(self.model) {
+  let uniforms =
+    switch self.model {
     | Some(model) => [("model", model)]
     | None => []
     };
-    let uniforms = switch (self.color) {
+  let uniforms =
+    switch self.color {
     | SdfDynColor(color) => [("uColor", color), ...uniforms]
     | _ => uniforms
     };
-    let size = switch (aspect) {
+  let size =
+    switch aspect {
     | Some(aspect) => Scene.Aspect(aspect)
     | None => Dimensions(Scale(self.width), Scale(self.height))
     };
-    let partialDraw = switch (self.vo) {
+  let partialDraw =
+    switch self.vo {
     | Some(_) => true
     | None => false
     };
-    Scene.makeNode(
-        ~key=?key,
-        ~cls,
-        ~vertShader=Shader.make(makeVertexSource(self)),
-        ~fragShader=Shader.make(makeFragmentSource(self)),
-        ~size,
-        ~margin=?margin,
-        ~transparent,
-        ~uniforms,
-        ~children,
-        ~vo=?self.vo,
-        ~partialDraw,
-        ~drawTo=?drawTo,
-        ~texTransUniform=true,
-        ()
-    )
+  Scene.makeNode(
+    ~key?,
+    ~cls,
+    ~vertShader=Shader.make(makeVertexSource(self)),
+    ~fragShader=Shader.make(makeFragmentSource(self)),
+    ~size,
+    ~margin?,
+    ~transparent,
+    ~uniforms,
+    ~children,
+    ~vo=?self.vo,
+    ~partialDraw,
+    ~drawTo?,
+    ~texTransUniform=true,
+    ()
+  );
 };

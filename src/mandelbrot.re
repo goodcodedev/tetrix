@@ -1,45 +1,41 @@
 let maxIterations = 99999;
+
 type complexNumber = {
-    real: float,
-    imaginary: float
+  real: float,
+  imaginary: float
 };
+
 let multComplex = (c1, c2) => {
-    {
-        real: (c1.real *. c2.real) -. (c1.imaginary *. c2.imaginary),
-        imaginary: (c1.real *. c2.imaginary) +. (c1.imaginary *. c2.real)
-    }
+  real: c1.real *. c2.real -. c1.imaginary *. c2.imaginary,
+  imaginary: c1.real *. c2.imaginary +. c1.imaginary *. c2.real
 };
+
 let addComplex = (c1, c2) => {
-    {
-        real: c1.real +. c2.real,
-        imaginary: c1.imaginary +. c2.imaginary
-    }
+  real: c1.real +. c2.real,
+  imaginary: c1.imaginary +. c2.imaginary
 };
-let absComplex = (c) => {
-    Js_math.sqrt(c.real *. c.real +. c.imaginary *. c.imaginary)
-};
+
+let absComplex = c =>
+  Js_math.sqrt(c.real *. c.real +. c.imaginary *. c.imaginary);
+
 let calcIterations = (x, y) => {
-    let z = {
-        real: 0.,
-        imaginary: 0.
+  let z = {real: 0., imaginary: 0.};
+  let c = {real: x, imaginary: y};
+  let rec iterate = (z, c, iterations) => {
+    let z = addComplex(multComplex(z, z), c);
+    if (absComplex(z) > 2.0) {
+      iterations;
+    } else {
+      iterate(z, c, iterations + 1);
     };
-    let c = {
-        real: x,
-        imaginary: y
-    };
-    let rec iterate = (z, c, iterations) => {
-        let z = addComplex(multComplex(z, z), c);
-        if (absComplex(z) > 2.0) {
-            iterations
-        } else {
-            iterate(z, c, iterations + 1)
-        };
-    };
-    iterate(z, c, 0)
+  };
+  iterate(z, c, 0);
 };
 
 module Constants = RGLConstants;
+
 module Gl = Reasongl.Gl;
+
 let vertexSource = {|
     precision mediump float;
     attribute vec2 position;
@@ -89,17 +85,18 @@ let fragmentSource = {|
 open Gpu;
 
 let createCanvas = () => {
-    let canvas = Canvas.init(400, 300);
-    let drawState = DrawState.init(
-        canvas.context,
-        Program.make(
-            Shader.make(vertexSource),
-            Shader.make(fragmentSource),
-            [||]
-        ),
-        VertexBuffer.makeQuad(),
-        Some(IndexBuffer.makeQuad()),
+  let canvas = Canvas.init(400, 300);
+  let drawState =
+    DrawState.init(
+      canvas.context,
+      Program.make(
+        Shader.make(vertexSource),
+        Shader.make(fragmentSource),
         [||]
+      ),
+      VertexBuffer.makeQuad(),
+      Some(IndexBuffer.makeQuad()),
+      [||]
     );
-    DrawState.draw(drawState, canvas);
+  DrawState.draw(drawState, canvas);
 };

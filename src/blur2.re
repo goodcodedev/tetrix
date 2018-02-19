@@ -18,6 +18,7 @@ let blurVertex = {|
         gl_Position = vec4(pos, 0.0, 1.0);
     }
 |};
+
 let blurFragment = {|
     precision mediump float;
     varying vec2 vPosition;
@@ -92,40 +93,29 @@ let blurFragment = {|
 open Gpu;
 
 let makeNode = (origNode, toTex, tempTex) => {
-    /* First blur */
-    let blur1 = Scene.makeNode(
-        ~key="blur1",
-        ~vertShader=Shader.make(blurVertex),
-        ~fragShader=Shader.make(blurFragment),
-        ~uniforms=[
-            ("pDistance", Scene.UFloat.make(4.0))
-        ],
-        ~pixelSizeUniform=true,
-        ~textures=[
-            ("orig", Scene.SceneTex.node(origNode))
-        ],
-        ~drawTo=Scene.TextureItem(tempTex),
-        ~deps=[
-            origNode
-        ],
-        ()
-    );
-    /* Second blur */
+  /* First blur */
+  let blur1 =
     Scene.makeNode(
-        ~key="blur2",
-        ~vertShader=Shader.make(blurVertex),
-        ~fragShader=Shader.make(blurFragment),
-        ~uniforms=[
-            ("pDistance", Scene.UFloat.make(1.0))
-        ],
-        ~pixelSizeUniform=true,
-        ~textures=[
-            ("orig", Scene.SceneTex.node(blur1))
-        ],
-        ~drawTo=Scene.TextureItem(toTex),
-        ~deps=[
-            blur1
-        ],
-        ()
-    )
+      ~key="blur1",
+      ~vertShader=Shader.make(blurVertex),
+      ~fragShader=Shader.make(blurFragment),
+      ~uniforms=[("pDistance", Scene.UFloat.make(4.0))],
+      ~pixelSizeUniform=true,
+      ~textures=[("orig", Scene.SceneTex.node(origNode))],
+      ~drawTo=Scene.TextureItem(tempTex),
+      ~deps=[origNode],
+      ()
+    );
+  /* Second blur */
+  Scene.makeNode(
+    ~key="blur2",
+    ~vertShader=Shader.make(blurVertex),
+    ~fragShader=Shader.make(blurFragment),
+    ~uniforms=[("pDistance", Scene.UFloat.make(1.0))],
+    ~pixelSizeUniform=true,
+    ~textures=[("orig", Scene.SceneTex.node(blur1))],
+    ~drawTo=Scene.TextureItem(toTex),
+    ~deps=[blur1],
+    ()
+  );
 };

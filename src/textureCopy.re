@@ -24,15 +24,12 @@ let fragmentSource = {|
 
 open Gpu;
 
-let makeNode = (~node, ()) => {
-    Scene.makeNode(
-        ~cls="textureCopy",
-        ~vertShader=Shader.make(vertexSource),
-        ~fragShader=Shader.make(fragmentSource),
-        ~textures=[
-            ("tex", Scene.SceneTex.node(node))
-        ],
-        ~drawTo=Scene.TextureRGB,
-        ()
-    )
-};
+let makeNode = (~node, ()) =>
+  Scene.makeNode(
+    ~cls="textureCopy",
+    ~vertShader=Shader.make(vertexSource),
+    ~fragShader=Shader.make(fragmentSource),
+    ~textures=[("tex", Scene.SceneTex.node(node))],
+    ~drawTo=Scene.TextureRGB,
+    ()
+  );

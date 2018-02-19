@@ -21,14 +21,13 @@ let fragmentSource = {|
 
 open Gpu;
 
-let makeNode = (vo) => {
-    Scene.makeNode(
-        ~key="tileBlink",
-        ~vertShader=Shader.make(vertexSource),
-        ~fragShader=Shader.make(fragmentSource),
-        ~transparent=true,
-        ~hidden=true,
-        ~vo,
-        ()
-    )
-};
+let makeNode = vo =>
+  Scene.makeNode(
+    ~key="tileBlink",
+    ~vertShader=Shader.make(vertexSource),
+    ~fragShader=Shader.make(fragmentSource),
+    ~transparent=true,
+    ~hidden=true,
+    ~vo,
+    ()
+  );

@@ -24,17 +24,14 @@ let fragmentSource = {|
 
 open Gpu;
 
-let makeNode = (vo) => {
-    Scene.makeNode(
-        ~key="dropBeams",
-        ~vertShader=Shader.make(vertexSource),
-        ~fragShader=Shader.make(fragmentSource),
-        ~uniforms=[
-            ("sinceDrop", Scene.UFloat.zero())
-        ],
-        ~drawTo=Scene.TextureRGBDim(1024),
-        ~clearOnDraw=true,
-        ~vo,
-        ()
-    )
-};
+let makeNode = vo =>
+  Scene.makeNode(
+    ~key="dropBeams",
+    ~vertShader=Shader.make(vertexSource),
+    ~fragShader=Shader.make(fragmentSource),
+    ~uniforms=[("sinceDrop", Scene.UFloat.zero())],
+    ~drawTo=Scene.TextureRGBDim(1024),
+    ~clearOnDraw=true,
+    ~vo,
+    ()
+  );

@@ -1,10 +1,9 @@
-let listRange = (countDown) => {
-  let rec addToList = (list, countDown) => {
+let listRange = countDown => {
+  let rec addToList = (list, countDown) =>
     if (countDown <= 0) {
-      list
+      list;
     } else {
-      addToList([countDown, ...list], countDown - 1)
-    }
-  };
-  addToList([], countDown)
+      addToList([countDown, ...list], countDown - 1);
+    };
+  addToList([], countDown);
 };

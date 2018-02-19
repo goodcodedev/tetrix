@@ -9,7 +9,7 @@ let vertexSource = {|
 
     varying vec2 vUv;
     varying float smoothFactor;
-    
+
     void main() {
         vUv = uv;
         // x scale. I got the value of this by outputting smoothfactor and sampling color
@@ -23,6 +23,7 @@ let vertexSource = {|
         gl_Position = vec4(pos, 0.0, 1.0);
     }
 |};
+
 /* https://github.com/libgdx/libgdx/wiki/Distance-field-fonts */
 let fragmentSource = {|
     #ifdef GL_OES_standard_derivatives
@@ -62,23 +63,29 @@ let fragmentSource = {|
         }
     }
 |};
-let msdfVertexSource = String.trim({|#version 300 es
+
+let msdfVertexSource =
+  String.trim(
+    {|#version 300 es
     precision mediump float;
     attribute vec2 position;
     attribute vec2 uv;
     varying vec2 vUv;
-    
+
     //uniform mat3 model;
-    
+
     void main() {
         vUv = uv;
         //vec2 pos = vec3(model * vec3(position, 1.0)).xy;
         vec2 pos = position;
         gl_Position = vec4((pos - vec2(40.0, 0.0)) / 50., 0.0, 1.0);
     }
-|});
+|}
+  );
 
-let msdfFragmentSource = String.trim({|#version 300 es
+let msdfFragmentSource =
+  String.trim(
+    {|#version 300 es
     #ifdef GL_OES_standard_derivatives
     #extension GL_OES_standard_derivatives : enable
     #endif
@@ -98,85 +105,95 @@ let msdfFragmentSource = String.trim({|#version 300 es
         float alpha = clamp(sigDist/fwidth(sigDist) + 0.5, 0.0, 1.0);
         gl_FragColor = vec4(color.xyz, alpha * opacity);
     }
-|});
+|}
+  );
 
 open Gpu;
 
-let makeNode = (
-    text,
+let makeNode =
+    (
+      text,
+      font,
+      ~key=?,
+      ~cls="fontDraw",
+      ~height=0.2,
+      ~numLines=1,
+      ~align=SdfFont.TextLayout.AlignLeft,
+      ~color=Color.fromFloats(1.0, 1.0, 1.0),
+      ~opacity=1.0,
+      ~hidden=false,
+      ()
+    ) => {
+  let fontTexture =
+    Texture.make(Texture.EmptyTexture, Texture.RGBA, Texture.LinearFilter);
+  let vertexBuffer =
+    VertexBuffer.make(
+      [||],
+      [|
+        VertexAttrib.make("position", GlType.Vec2f),
+        VertexAttrib.make("uv", GlType.Vec2f)
+      |],
+      StaticDraw
+    );
+  let indexBuffer = IndexBuffer.make([||], StaticDraw);
+  let uModel = Scene.UMat3f.id();
+  let aspect = 1.0 /. (height *. float_of_int(numLines));
+  let vo = Scene.SceneVO.make(vertexBuffer, Some(indexBuffer));
+  let node =
+    Scene.makeNode(
+      ~key?,
+      ~cls,
+      ~vertShader=Shader.make(vertexSource),
+      ~fragShader=Shader.make(fragmentSource),
+      ~textures=[("map", Scene.SceneTex.tex(fontTexture))],
+      ~vo,
+      ~uniforms=[
+        ("model", uModel),
+        ("color", Scene.UVec3f.vec(Color.toVec3(color))),
+        ("opacity", Scene.UFloat.make(opacity))
+      ],
+      ~pixelSizeUniform=true,
+      ~transparent=true,
+      ~loading=true,
+      ~size=Scene.Aspect(aspect),
+      ~hidden,
+      ()
+    );
+  FontFiles.request(
     font,
-    ~key=?,
-    ~cls="fontDraw",
-    ~height=0.2,
-    ~numLines=1,
-    ~align=SdfFont.TextLayout.AlignLeft,
-    ~color=Color.fromFloats(1.0, 1.0, 1.0),
-    ~opacity=1.0,
-    ~hidden=false,
-    ()
-) => {
-    let fontTexture = Texture.make(Texture.EmptyTexture, Texture.RGBA, Texture.LinearFilter);
-    let vertexBuffer = VertexBuffer.make(
-        [||],
-        [|
-            VertexAttrib.make("position", GlType.Vec2f),
-            VertexAttrib.make("uv", GlType.Vec2f)
-        |],
-        StaticDraw
-    );
-    let indexBuffer = IndexBuffer.make([||], StaticDraw);
-    let uModel = Scene.UMat3f.id();
-    let aspect = 1.0 /. (height *. float_of_int(numLines));
-    let vo = Scene.SceneVO.make(vertexBuffer, Some(indexBuffer));
-    let node = Scene.makeNode(
-        ~key=?key,
-        ~cls,
-        ~vertShader=Shader.make(vertexSource),
-        ~fragShader=Shader.make(fragmentSource),
-        ~textures=[("map", Scene.SceneTex.tex(fontTexture))],
-        ~vo,
-        ~uniforms=[
-            ("model", uModel),
-            ("color", Scene.UVec3f.vec(Color.toVec3(color))),
-            ("opacity", Scene.UFloat.make(opacity))
-        ],
-        ~pixelSizeUniform=true,
-        ~transparent=true,
-        ~loading=true,
-        ~size=Scene.Aspect(aspect),
-        ~hidden,
-        ()
-    );
-    
-    FontFiles.request(font, "sheet0", (fontFiles) => {
-        let font = SdfFont.BMFont.parse(fontFiles.bin);
-        let scale = 2.0 /. float_of_int(font.common.lineHeight) *. height;
-        let width = 2.0 /. scale;
-        /* todo: move to nodes update function */
-        let layout = SdfFont.TextLayout.make(
-            text,
-            font,
-            int_of_float(width),
-            ~align,
-            ()
-        );
-        let (maxLineWidth, glyphs) = SdfFont.TextLayout.update(layout);
-        let vertices = SdfFont.TextLayout.vertexData(layout, glyphs);
-        VertexBuffer.setDataT(vertexBuffer, vertices);
-        IndexBuffer.setDataT(indexBuffer, IndexBuffer.makeQuadsData(Array.length(vertices) / 16));
-        Texture.setDataT(fontTexture, Texture.ImageTexture(fontFiles.image));
-        /* Update model matrix value */
-        let xTrans = switch (align) {
-        | SdfFont.TextLayout.AlignLeft => -1.0
-        | SdfFont.TextLayout.AlignCenter => (float_of_int(maxLineWidth) *. scale) *. -0.5;
-        | SdfFont.TextLayout.AlignRight => (1.0 -. (float_of_int(maxLineWidth) *. scale))
+    "sheet0",
+    fontFiles => {
+      let font = SdfFont.BMFont.parse(fontFiles.bin);
+      let scale = 2.0 /. float_of_int(font.common.lineHeight) *. height;
+      let width = 2.0 /. scale;
+      /* todo: move to nodes update function */
+      let layout =
+        SdfFont.TextLayout.make(text, font, int_of_float(width), ~align, ());
+      let (maxLineWidth, glyphs) = SdfFont.TextLayout.update(layout);
+      let vertices = SdfFont.TextLayout.vertexData(layout, glyphs);
+      VertexBuffer.setDataT(vertexBuffer, vertices);
+      IndexBuffer.setDataT(
+        indexBuffer,
+        IndexBuffer.makeQuadsData(Array.length(vertices) / 16)
+      );
+      Texture.setDataT(fontTexture, Texture.ImageTexture(fontFiles.image));
+      /* Update model matrix value */
+      let xTrans =
+        switch align {
+        | SdfFont.TextLayout.AlignLeft => (-1.0)
+        | SdfFont.TextLayout.AlignCenter =>
+          float_of_int(maxLineWidth) *. scale *. (-0.5)
+        | SdfFont.TextLayout.AlignRight =>
+          1.0 -. float_of_int(maxLineWidth) *. scale
         };
-        let modelMat = Data.Mat3.matmul(
-            Data.Mat3.trans(xTrans, 0.0),
-            Data.Mat3.scale(scale, scale *. aspect)
+      let modelMat =
+        Data.Mat3.matmul(
+          Data.Mat3.trans(xTrans, 0.0),
+          Data.Mat3.scale(scale, scale *. aspect)
         );
-        Uniform.setMat3f(uModel.uniform, modelMat);
-        node.loading = false;
-    });
-    node
+      Uniform.setMat3f(uModel.uniform, modelMat);
+      node.loading = false;
+    }
+  );
+  node;
 };

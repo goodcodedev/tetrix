@@ -12,9 +12,9 @@ type sceneLayout =
 
 type sceneState = {
   tiles: array(int),
-  sceneLayout: sceneLayout,
+  sceneLayout,
   tilesTex: Scene.sceneTexture,
-  elState: elState,
+  elState,
   elCenterRadius: Scene.sceneUniform,
   nextEls: array(elState),
   holdingEl: elState,

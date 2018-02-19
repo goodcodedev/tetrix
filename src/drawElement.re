@@ -14,6 +14,7 @@ let currElVertex = {|
         gl_Position = vec4(transformed.xy, 0.0, 1.0);
     }
 |};
+
 let currElFragment = {|
     precision mediump float;
     varying vec2 vPosition;
@@ -26,31 +27,31 @@ let currElFragment = {|
     }
 |};
 
-let makeNode = (elState : SceneState.elState, lighting) => {
-    SdfTiles.makeNode(
-        2.0,
-        1.5,
-        lighting,
-        ~vo=elState.vo,
-        ~color=SdfNode.SdfDynColor(elState.color),
-        ~model=elState.pos,
-        ~margin=MarginXY(Scale(0.25), Scale(0.05)),
-        ~tileSpace=0.25,
-        ()
-    )
+let makeNode = (elState: SceneState.elState, lighting) =>
+  SdfTiles.makeNode
+    (
+      2.0,
+      1.5,
+      lighting,
+      ~vo=elState.vo,
+      ~color=SdfNode.SdfDynColor(elState.color),
+      ~model=elState.pos,
+      ~margin=MarginXY(Scale(0.25), Scale(0.05)),
+      ~tileSpace=0.25,
+      ()
+    );
     /*
-    Scene.makeNode(
-        ~cls="element",
-        ~size=Aspect(4.0 /. 3.0),
-        ~partialDraw=true,
-        ~margin=MarginXY(Scale(0.25), Scale(0.022)),
-        ~vertShader=Shader.make(currElVertex),
-        ~fragShader=Shader.make(currElFragment),
-        ~vo=elState.vo,
-        ~uniforms=[
-            ("elColor", elState.color),
-            ("translation", elState.pos)
-        ],
-        ()
-    )*/
-};
+     Scene.makeNode(
+         ~cls="element",
+         ~size=Aspect(4.0 /. 3.0),
+         ~partialDraw=true,
+         ~margin=MarginXY(Scale(0.25), Scale(0.022)),
+         ~vertShader=Shader.make(currElVertex),
+         ~fragShader=Shader.make(currElFragment),
+         ~vo=elState.vo,
+         ~uniforms=[
+             ("elColor", elState.color),
+             ("translation", elState.pos)
+         ],
+         ()
+     )*/

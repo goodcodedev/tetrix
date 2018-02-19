@@ -24,41 +24,35 @@ let fragmentSource = {|
 
 open Gpu;
 
-let makeNode = (
-    node,
-    ~transparent=?,
-    ~partialDraw=?,
-    ~size=?,
-    ()
-) => {
-    /* Not sure why, but texture doesn't show up when
-       dims are not 1024 */
-    let (drawTo, clearOnDraw) = switch (transparent, partialDraw) {
+let makeNode = (node, ~transparent=?, ~partialDraw=?, ~size=?, ()) => {
+  /* Not sure why, but texture doesn't show up when
+     dims are not 1024 */
+  let (drawTo, clearOnDraw) =
+    switch (transparent, partialDraw) {
     | (Some(true), _) => (Scene.TextureRGBADim(1024), true)
     | (_, Some(true)) => (Scene.TextureRGBADim(1024), true)
     | (_, _) => (Scene.TextureRGBDim(1024), false)
     };
-    let texNode = Scene.makeNode(
-        ~cls="cacheResultTex",
-        ~key="cacheResultTex",
-        ~children=[node],
-        ~drawTo,
-        ~selfDraw=false,
-        ~clearOnDraw,
-        ()
-    );
+  let texNode =
     Scene.makeNode(
-        ~cls="cachedResult",
-        ~key="cachedResult",
-        ~vertShader=Shader.make(vertexSource),
-        ~fragShader=Shader.make(fragmentSource),
-        ~transparent=?transparent,
-        ~partialDraw=?partialDraw,
-        ~size=?size,
-        ~textures=[
-            ("tex", Scene.SceneTex.node(texNode))
-        ],
-        ~deps=[texNode],
-        ()
-    )
+      ~cls="cacheResultTex",
+      ~key="cacheResultTex",
+      ~children=[node],
+      ~drawTo,
+      ~selfDraw=false,
+      ~clearOnDraw,
+      ()
+    );
+  Scene.makeNode(
+    ~cls="cachedResult",
+    ~key="cachedResult",
+    ~vertShader=Shader.make(vertexSource),
+    ~fragShader=Shader.make(fragmentSource),
+    ~transparent?,
+    ~partialDraw?,
+    ~size?,
+    ~textures=[("tex", Scene.SceneTex.node(texNode))],
+    ~deps=[texNode],
+    ()
+  );
 };

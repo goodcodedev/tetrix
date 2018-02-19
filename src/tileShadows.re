@@ -36,23 +36,21 @@ let fragmentSource = {|
     }
 |};
 
-
 open Gpu;
 
-let makeNode = (tilesTex) => {
-    /* Use two textures */
-    let toTex = Gpu.Texture.makeEmptyRgb();
-    let tempTex = Gpu.Texture.makeEmptyRgb();
-    /* First draw unblurred */
-    let unblurred = Scene.makeNode(
-        ~key="unblurred",
-        ~vertShader=Shader.make(vertexSource),
-        ~fragShader=Shader.make(fragmentSource),
-        ~textures=[
-            ("tiles", tilesTex)
-        ],
-        ~drawTo=Scene.TextureItem(toTex),
-        ()
+let makeNode = tilesTex => {
+  /* Use two textures */
+  let toTex = Gpu.Texture.makeEmptyRgb();
+  let tempTex = Gpu.Texture.makeEmptyRgb();
+  /* First draw unblurred */
+  let unblurred =
+    Scene.makeNode(
+      ~key="unblurred",
+      ~vertShader=Shader.make(vertexSource),
+      ~fragShader=Shader.make(fragmentSource),
+      ~textures=[("tiles", tilesTex)],
+      ~drawTo=Scene.TextureItem(toTex),
+      ()
     );
-    Blur2.makeNode(unblurred, toTex, tempTex)
+  Blur2.makeNode(unblurred, toTex, tempTex);
 };

@@ -21,14 +21,13 @@ let fragmentSource = {|
 
 open Gpu;
 
-let makeNode = (vo) => {
-    Scene.makeNode(
-        ~key="beams",
-        ~vertShader=Shader.make(vertexSource),
-        ~fragShader=Shader.make(fragmentSource),
-        ~drawTo=Scene.TextureRGB,
-        ~clearOnDraw=true,
-        ~vo,
-        ()
-    )
-};
+let makeNode = vo =>
+  Scene.makeNode(
+    ~key="beams",
+    ~vertShader=Shader.make(vertexSource),
+    ~fragShader=Shader.make(fragmentSource),
+    ~drawTo=Scene.TextureRGB,
+    ~clearOnDraw=true,
+    ~vo,
+    ()
+  );

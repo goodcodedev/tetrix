@@ -50,19 +50,16 @@ let fragmentSource = {|
 
 open Gpu;
 
-let makeNode = (tilesTex, sdfTiles) => {
-    open Scene;
+let makeNode = (tilesTex, sdfTiles) =>
+  Scene.(
     Scene.makeNode(
-        ~key="tilesDraw",
-        ~vertShader=Shader.make(vertexSource),
-        ~fragShader=Shader.make(fragmentSource),
-        ~uniforms=[],
-        ~transparent=true,
-        ~partialDraw=true,
-        ~textures=[
-            ("tiles", tilesTex),
-            ("sdfTiles", SceneTex.node(sdfTiles))
-        ],
-        ()
+      ~key="tilesDraw",
+      ~vertShader=Shader.make(vertexSource),
+      ~fragShader=Shader.make(fragmentSource),
+      ~uniforms=[],
+      ~transparent=true,
+      ~partialDraw=true,
+      ~textures=[("tiles", tilesTex), ("sdfTiles", SceneTex.node(sdfTiles))],
+      ()
     )
-};
+  );

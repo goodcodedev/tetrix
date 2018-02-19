@@ -1,9 +1,13 @@
 let sdfDist = (cols, rows, tileSpace) => {
-    let colsGl = string_of_float(cols);
-    let rowsGl = string_of_float(rows);
-    {|
-        float cols = |} ++ colsGl ++ {|;
-        float rows = |} ++ rowsGl ++ {|;
+  let colsGl = string_of_float(cols);
+  let rowsGl = string_of_float(rows);
+  {|
+        float cols = |}
+  ++ colsGl
+  ++ {|;
+        float rows = |}
+  ++ rowsGl
+  ++ {|;
         float cols2 = cols * 2.0;
         float rows2 = rows * 2.0;
         point.x = mod(point.x, 1.0 / cols) - 1.0 / cols2;
@@ -31,47 +35,52 @@ let sdfDist = (cols, rows, tileSpace) => {
         d = max( d, abs( dot(point, vec3(  0, -octa.y, octa.z )) ));
         d = max( d, abs( dot(point, vec3(  0, octa.y, octa.z )) ));
         // Some spacing added, maybe this should be calibrated to a pixel
-        float o = d - octa.z / (rows + |} ++ string_of_float(tileSpace) ++ {|);
+        float o = d - octa.z / (rows + |}
+  ++ string_of_float(tileSpace)
+  ++ {|);
         // Intersection
         //return o;
         return max(o, box);
-    |}
+    |};
 };
 
-let makeNode = (
-    cols,
-    rows,
-    lighting,
-    ~drawTo=?,
-    ~vo=?,
-    ~color=?,
-    ~key=?,
-    ~model=?,
-    ~margin=?,
-    ~tileSpace=1.3,
-    ()
-) => {
-    let aspect = (cols /. rows);
-    let fragCoords = switch (model) {
+let makeNode =
+    (
+      cols,
+      rows,
+      lighting,
+      ~drawTo=?,
+      ~vo=?,
+      ~color=?,
+      ~key=?,
+      ~model=?,
+      ~margin=?,
+      ~tileSpace=1.3,
+      ()
+    ) => {
+  let aspect = cols /. rows;
+  let fragCoords =
+    switch model {
     | Some(_) => SdfNode.ByModel
     | None => SdfNode.ZeroToOne
     };
-    let sdfNode = SdfNode.make(
-        sdfDist(cols, rows, tileSpace),
-        fragCoords,
-        model,
-        lighting,
-        ~vo=?vo,
-        ~color=?color,
-        ()
+  let sdfNode =
+    SdfNode.make(
+      sdfDist(cols, rows, tileSpace),
+      fragCoords,
+      model,
+      lighting,
+      ~vo?,
+      ~color?,
+      ()
     );
-    SdfNode.makeNode(
-        sdfNode,
-        ~key=?key,
-        ~cls="sdfTiles",
-        ~aspect,
-        ~drawTo=?drawTo,
-        ~margin=?margin,
-        ()
-    )
+  SdfNode.makeNode(
+    sdfNode,
+    ~key?,
+    ~cls="sdfTiles",
+    ~aspect,
+    ~drawTo?,
+    ~margin?,
+    ()
+  );
 };

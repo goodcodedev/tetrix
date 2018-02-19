@@ -17,32 +17,26 @@ let fragmentSource = {|
 open Gpu;
 
 type t = {
-    canvas: Canvas.t,
-    program: Program.inited
+  canvas: Canvas.t,
+  program: Program.inited
 };
 
 let make = (canvas: Gpu.Canvas.t) => {
-    let programT = Program.make(
-        Shader.make(vertexSource),
-        Shader.make(fragmentSource),
-        [||]
-    );
-    let program = switch (Program.init(programT, canvas.context)) {
+  let programT =
+    Program.make(Shader.make(vertexSource), Shader.make(fragmentSource), [||]);
+  let program =
+    switch (Program.init(programT, canvas.context)) {
     | Some(program) => program
-    | None => failwith("Could not initialize stencilDraw");
+    | None => failwith("Could not initialize stencilDraw")
     };
-    {
-        canvas,
-        program
-    }
+  {canvas, program};
 };
 
-let draw = (self, vertexBuffer, indexBuffer) => {
-    Gpu.Canvas.drawIndexes(
-        self.canvas,
-        self.program,
-        vertexBuffer,
-        indexBuffer,
-        [||]
-    );
-};
+let draw = (self, vertexBuffer, indexBuffer) =>
+  Gpu.Canvas.drawIndexes(
+    self.canvas,
+    self.program,
+    vertexBuffer,
+    indexBuffer,
+    [||]
+  );

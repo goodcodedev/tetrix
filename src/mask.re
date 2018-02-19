@@ -5,6 +5,7 @@ let vertexSource = {|
         gl_Position = vec4(position, 0.0, 1.0);
     }
 |};
+
 let fragmentSource = {|
     precision mediump float;
     uniform float anim;
@@ -14,18 +15,16 @@ let fragmentSource = {|
     }
 |};
 
-let makeNode = () => {
-    open Scene;
+let makeNode = () =>
+  Scene.(
     Scene.makeNode(
-        ~key="mask",
-        ~vertShader=Gpu.Shader.make(vertexSource),
-        ~fragShader=Gpu.Shader.make(fragmentSource),
-        ~transparent=true,
-        ~hidden=true,
-        ~uniforms=[
-            ("anim", UFloat.make(0.0))
-        ],
-        ~size=Dimensions(Scale(1.0), Scale(1.0)),
-        ()
+      ~key="mask",
+      ~vertShader=Gpu.Shader.make(vertexSource),
+      ~fragShader=Gpu.Shader.make(fragmentSource),
+      ~transparent=true,
+      ~hidden=true,
+      ~uniforms=[("anim", UFloat.make(0.0))],
+      ~size=Dimensions(Scale(1.0), Scale(1.0)),
+      ()
     )
-};
+  );

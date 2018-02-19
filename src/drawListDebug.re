@@ -24,49 +24,46 @@ let fragmentSource = {|
 open Gpu;
 
 type t = {
-    canvas: Canvas.t,
-    program: Program.inited,
-    layout: Gpu.uniform,
-    elapsed: Gpu.uniform,
-    vertices: Gpu.VertexBuffer.inited,
-    indices: Gpu.IndexBuffer.inited,
+  canvas: Canvas.t,
+  program: Program.inited,
+  layout: Gpu.uniform,
+  elapsed: Gpu.uniform,
+  vertices: Gpu.VertexBuffer.inited,
+  indices: Gpu.IndexBuffer.inited
 };
 
 let make = (canvas: Gpu.Canvas.t) => {
-    let layout = Gpu.UniformMat3f(ref(Data.Mat3.id()));
-    let elapsed = Gpu.UniformFloat(ref(0.0));
-    let programT = Program.make(
-        Shader.make(vertexSource),
-        Shader.make(fragmentSource),
-        [|
-            Uniform.make("layout", layout),
-            Uniform.make("elapsed", elapsed)
-        |]
+  let layout = Gpu.UniformMat3f(ref(Data.Mat3.id()));
+  let elapsed = Gpu.UniformFloat(ref(0.0));
+  let programT =
+    Program.make(
+      Shader.make(vertexSource),
+      Shader.make(fragmentSource),
+      [|Uniform.make("layout", layout), Uniform.make("elapsed", elapsed)|]
     );
-    let program = switch (Program.init(programT, canvas.context)) {
+  let program =
+    switch (Program.init(programT, canvas.context)) {
     | Some(program) => program
-    | None => failwith("Could not initialize stencilDraw");
+    | None => failwith("Could not initialize stencilDraw")
     };
-    let vertices = VertexBuffer.init(VertexBuffer.makeQuad(()), canvas.context, program.programRef);
-    let indices = IndexBuffer.init(IndexBuffer.makeQuad(), canvas.context);
-    {
-        canvas,
-        program,
-        layout,
-        elapsed,
-        vertices,
-        indices
-    }
+  let vertices =
+    VertexBuffer.init(
+      VertexBuffer.makeQuad(),
+      canvas.context,
+      program.programRef
+    );
+  let indices = IndexBuffer.init(IndexBuffer.makeQuad(), canvas.context);
+  {canvas, program, layout, elapsed, vertices, indices};
 };
 
 let draw = (self, layoutMat, elapsed) => {
-    Gpu.Uniform.setMat3f(self.layout, layoutMat);
-    Gpu.Uniform.setFloat(self.elapsed, elapsed);
-    Gpu.Canvas.drawIndexes(
-        self.canvas,
-        self.program,
-        self.vertices,
-        self.indices,
-        [||]
-    );
+  Gpu.Uniform.setMat3f(self.layout, layoutMat);
+  Gpu.Uniform.setFloat(self.elapsed, elapsed);
+  Gpu.Canvas.drawIndexes(
+    self.canvas,
+    self.program,
+    self.vertices,
+    self.indices,
+    [||]
+  );
 };

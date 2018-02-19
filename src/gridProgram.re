@@ -14,7 +14,7 @@ let vertexSource = {|
     // Coords to take off lines on sides
     varying vec2 lineCoords;
     varying vec2 singlePixel;
-    
+
     varying vec2 coord;
     void main() {
         vPosition = position;
@@ -111,53 +111,50 @@ let fragmentSource = {|
 
 open Gpu;
 
-let makeNode = (
-    boardColor,
-    lineColor,
-    tilesTex,
-    tileShadows,
-    beamNode,
-    dropNode,
-    dropColor,
-    sdfTiles,
-    elState : SceneState.elState,
-    centerRadius
-) => {
-    open Scene;
+let makeNode =
+    (
+      boardColor,
+      lineColor,
+      tilesTex,
+      tileShadows,
+      beamNode,
+      dropNode,
+      dropColor,
+      sdfTiles,
+      elState: SceneState.elState,
+      centerRadius
+    ) =>
+  Scene.
     /*let bg = UVec3f.vals(0.08, 0.12, 0.22);*/
-    makeNode(
+    (
+      makeNode(
         ~key="grid",
         /*
-        ~margin=Scene.MarginRBLT(
-            Scale(0.01),
-            Scale(0.002),
-            Scale(0.01),
-            Scale(0.005)
-        ),
-        */
+         ~margin=Scene.MarginRBLT(
+             Scale(0.01),
+             Scale(0.002),
+             Scale(0.01),
+             Scale(0.005)
+         ),
+         */
         ~vertShader=Shader.make(vertexSource),
         ~fragShader=Shader.make(fragmentSource),
         ~uniforms=[
-            ("bg", boardColor),
-            ("lineColor", lineColor),
-            ("elPos", elState.pos),
-            ("elColor", elState.color),
-            ("dropColor", dropColor),
-            ("centerRadius", centerRadius)
+          ("bg", boardColor),
+          ("lineColor", lineColor),
+          ("elPos", elState.pos),
+          ("elColor", elState.color),
+          ("dropColor", dropColor),
+          ("centerRadius", centerRadius)
         ],
         ~pixelSizeUniform=true,
         ~textures=[
-            ("tiles", tilesTex),
-            ("tileShadows", SceneTex.node(tileShadows)),
-            ("beams", SceneTex.node(beamNode)),
-            ("drop", SceneTex.node(dropNode))
+          ("tiles", tilesTex),
+          ("tileShadows", SceneTex.node(tileShadows)),
+          ("beams", SceneTex.node(beamNode)),
+          ("drop", SceneTex.node(dropNode))
         ],
-        ~deps=[
-            sdfTiles,
-            beamNode,
-            tileShadows,
-            dropNode
-        ],
+        ~deps=[sdfTiles, beamNode, tileShadows, dropNode],
         ()
-    )
-};
+      )
+    );

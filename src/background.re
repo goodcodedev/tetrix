@@ -14,6 +14,7 @@ let vertexSource = {|
         gl_Position = vec4(position, 0.0, 1.0);
     }
 |};
+
 /* http://alex-charlton.com/posts/Dithering_on_the_GPU/ */
 let fragmentSource = {|
     precision mediump float;
@@ -50,7 +51,7 @@ let fragmentSource = {|
                 : (yMod == 1) ? indexMat[2][1]
                 : (yMod == 2) ? indexMat[2][2]
                 : indexMat[2][3]
-            : 
+            :
                 (yMod == 0) ? indexMat[3][0]
                 : (yMod == 1) ? indexMat[3][1]
                 : (yMod == 2) ? indexMat[3][2]
@@ -82,21 +83,18 @@ let fragmentSource = {|
 
 open Gpu;
 
-let makeNode = (color, children) => {
-    open Scene;
+let makeNode = (color, children) =>
+  Scene.(
     Scene.makeNode(
-        ~key="background",
-        ~vertShader=Shader.make(vertexSource),
-        ~fragShader=Shader.make(fragmentSource),
-        ~uniforms=[
-            ("color", color),
-            ("anim", UFloat.make(0.0))
-        ],
-        ~pixelSizeUniform=true,
-        ~size=Dimensions(Scale(1.0), Scale(1.0)),
-        ~padding=Scale(0.05),
-        ~vAlign=Scene.AlignMiddle,
-        ~children,
-        ()
+      ~key="background",
+      ~vertShader=Shader.make(vertexSource),
+      ~fragShader=Shader.make(fragmentSource),
+      ~uniforms=[("color", color), ("anim", UFloat.make(0.0))],
+      ~pixelSizeUniform=true,
+      ~size=Dimensions(Scale(1.0), Scale(1.0)),
+      ~padding=Scale(0.05),
+      ~vAlign=Scene.AlignMiddle,
+      ~children,
+      ()
     )
-};
+  );

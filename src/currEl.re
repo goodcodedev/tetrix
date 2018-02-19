@@ -13,6 +13,7 @@ let currElVertex = {|
         gl_Position = vec4(transformed.xy, 0.0, 1.0);
     }
 |};
+
 let currElFragment = {|
     precision mediump float;
     varying vec2 vPosition;
@@ -35,20 +36,14 @@ let currElFragment = {|
 
 open Gpu;
 
-let makeNode = (elState : SceneState.elState, sdfTiles) => {
-    Scene.makeNode(
-        ~key="currEl",
-        ~vertShader=Shader.make(currElVertex),
-        ~fragShader=Shader.make(currElFragment),
-        ~vo=elState.vo,
-        ~partialDraw=true,
-        ~uniforms=[
-            ("elColor", elState.color),
-            ("translation", elState.pos)
-        ],
-        ~textures=[
-            ("sdfTiles", Scene.SceneTex.node(sdfTiles))
-        ],
-        ()
-    )
-};
+let makeNode = (elState: SceneState.elState, sdfTiles) =>
+  Scene.makeNode(
+    ~key="currEl",
+    ~vertShader=Shader.make(currElVertex),
+    ~fragShader=Shader.make(currElFragment),
+    ~vo=elState.vo,
+    ~partialDraw=true,
+    ~uniforms=[("elColor", elState.color), ("translation", elState.pos)],
+    ~textures=[("sdfTiles", Scene.SceneTex.node(sdfTiles))],
+    ()
+  );
