@@ -82,35 +82,6 @@ let fragmentSource = {|
 
 open Gpu;
 
-type t = {
-    canvas: Canvas.t,
-    drawState: Gpu.DrawState.t
-};
-let init = (canvas : Gpu.Canvas.t) => {
-    let context = canvas.context;
-    let vertexQuad = VertexBuffer.makeQuad(());
-    let indexQuad = IndexBuffer.makeQuad();
-    let drawState = DrawState.init(
-        context,
-        Program.make(
-            Shader.make(vertexSource),
-            Shader.make(fragmentSource),
-            [||]
-        ),
-        vertexQuad,
-        Some(indexQuad),
-        [||]
-    );
-    {
-        canvas,
-        drawState
-    }
-};
-
-let draw = (self) => {
-    DrawState.draw(self.drawState, self.canvas);
-};
-
 let makeNode = (color, children) => {
     open Scene;
     Scene.makeNode(

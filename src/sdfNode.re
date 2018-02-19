@@ -191,40 +191,6 @@ let makeFragmentSource = (self) => {
     source
 };
 
-let makeProgram = (self) => {
-    let uniforms = switch(self.model) {
-    | Some(model) => [|Uniform.make("model", model.uniform)|]
-    | None => [||]
-    };
-    Program.make(
-        Shader.make(makeVertexSource(self)),
-        Shader.make(makeFragmentSource(self)),
-        uniforms
-    )
-};
-
-let makeDrawState = (self, canvas : Canvas.t) => {
-    DrawState.init(
-        canvas.context,
-        makeProgram(self),
-        VertexBuffer.makeQuad(()),
-        Some(IndexBuffer.makeQuad()),
-        [||]
-    )
-};
-
-let draw = (self : inited) => {
-    switch (self.self.opacity, self.self.alphaLimit) {
-    | (None, None) => DrawState.draw(self.drawState, self.canvas)
-    | _ =>
-        let context = self.canvas.context;
-        Gl.enable(~context, Constants.blend);
-        Gl.blendFunc(~context, Constants.src_alpha, Constants.one_minus_src_alpha);
-        DrawState.draw(self.drawState, self.canvas);
-        Gl.disable(~context, Constants.blend);
-    };
-};
-
 let make = (
     sdfDist,
     fragCoords,
@@ -251,14 +217,6 @@ let make = (
         opacity,
         alphaLimit,
         lighting
-    }
-};
-
-let init = (self, canvas : Canvas.t) => {
-    {
-        self,
-        canvas,
-        drawState: makeDrawState(self, canvas)
     }
 };
 

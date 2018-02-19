@@ -110,38 +110,6 @@ let fragmentSource = {|
 |};
 
 open Gpu;
-let createProgram = (boardCoords : Coords.boardCoords) => {
-    open Data;
-    Program.make(
-        Shader.make(vertexSource),
-        Shader.make(fragmentSource),
-        [|
-            Uniform.make("lineColor", UniformVec3f(ref(Vec3.zeros()))),
-            Uniform.make("elPos", UniformVec2f(ref(Vec2.zeros()))),
-            Uniform.make("elColor", UniformVec3f(ref(Vec3.zeros()))),
-            Uniform.make("screen", UniformVec2f(ref(Vec2.make(boardCoords.pixelWidth, boardCoords.pixelHeight)))),
-            Uniform.make("mat", UniformMat3f(ref(Mat3.fromArray(boardCoords.mat))))
-        |]
-    )
-};
-
-let createDrawState = (canvas : Canvas.t, boardCoords : Coords.boardCoords, tilesTexture, shadowTexture, beamTexture) => {
-    DrawState.init(
-        canvas.context,
-        createProgram(boardCoords),
-        VertexBuffer.makeQuad(()),
-        Some(IndexBuffer.makeQuad()),
-        [|
-            ProgramTexture.make("tiles", tilesTexture),
-            ProgramTexture.make("tileShadows", shadowTexture),
-            ProgramTexture.make("beams", beamTexture)
-        |]
-    )
-};
-
-let draw = (ds, canvas) => {
-    DrawState.draw(ds, canvas);
-};
 
 let makeNode = (
     boardColor,

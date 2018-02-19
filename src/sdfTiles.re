@@ -38,40 +38,6 @@ let sdfDist = (cols, rows, tileSpace) => {
     |}
 };
 
-open Gpu;
-
-type t = {
-    sdfProgram: SdfNode.inited,
-    texture: Texture.t,
-    fbuffer: FrameBuffer.inited,
-    canvas: Canvas.t
-};
-
-let make = (canvas: Canvas.t, lighting) => {
-    let sdfProgram = SdfNode.init(SdfNode.make(sdfDist(12.0, 26.0, 1.3), SdfNode.ZeroToOne, None, lighting, ()), canvas);
-    let texture = Texture.make(IntDataTexture(Some(Array.make(1024*1024*4, 0)), 1024, 1024), Texture.RGBA, Texture.LinearFilter);
-    let fbuffer = FrameBuffer.init(FrameBuffer.make(1024, 1024), canvas.context);
-    {
-        sdfProgram,
-        texture,
-        fbuffer,
-        canvas
-    }
-};
-
-let drawToTexture = (self) => {
-    FrameBuffer.bindTexture(self.fbuffer, self.canvas.context, self.texture);
-    Canvas.setFramebuffer(self.canvas, self.fbuffer);
-    SdfNode.draw(self.sdfProgram);
-    Canvas.clearFramebuffer(self.canvas);
-};
-
-let createCanvas = (lighting) => {
-    let canvas = Canvas.init(240, 580);
-    let p = make(canvas, lighting);
-    SdfNode.draw(p.sdfProgram);
-};
-
 let makeNode = (
     cols,
     rows,
