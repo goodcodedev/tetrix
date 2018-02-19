@@ -802,24 +802,29 @@ module Texture = {
                 let data = switch (data) {
                 | None =>
                     inited.data = IntDataTexture(None, dim, dim);
+                    self.data = inited.data;
                     Js.Nullable.null
                 | Some(intArray) =>
                     switch (self.format) {
                     | RGB =>
                         let data = resizeArr(intArray, dim * dim * 3);
                         inited.data = IntDataTexture(Some(data), dim, dim);
+                        self.data = inited.data;
                         Js.Nullable.return(Gl.Bigarray.of_array(Gl.Bigarray.Uint8, data))
                     | RGBA =>
                         let data = resizeArr(intArray, dim * dim * 4);
                         inited.data = IntDataTexture(Some(data), dim, dim);
+                        self.data = inited.data;
                         Js.Nullable.return(Gl.Bigarray.of_array(Gl.Bigarray.Uint8, data))
                     | Luminance =>
                         let data = resizeArr(intArray, dim * dim);
                         inited.data = IntDataTexture(Some(data), dim, dim);
+                        self.data = inited.data;
                         Js.Nullable.return(Gl.Bigarray.of_array(Gl.Bigarray.Uint8, data))
                     | Alpha =>
                         let data = resizeArr(intArray, dim * dim);
                         inited.data = IntDataTexture(Some(data), dim, dim);
+                        self.data = inited.data;
                         Js.Nullable.return(Gl.Bigarray.of_array(Gl.Bigarray.Uint8, data))
                     }
                 };

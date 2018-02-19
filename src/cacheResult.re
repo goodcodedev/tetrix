@@ -31,6 +31,8 @@ let makeNode = (
     ~size=?,
     ()
 ) => {
+    /* Not sure why, but texture doesn't show up when
+       dims are not 1024 */
     let (drawTo, clearOnDraw) = switch (transparent, partialDraw) {
     | (Some(true), _) => (Scene.TextureRGBADim(1024), true)
     | (_, Some(true)) => (Scene.TextureRGBADim(1024), true)

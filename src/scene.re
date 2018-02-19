@@ -1243,7 +1243,6 @@ let createDrawList = (scene, flags, updateNodes, updRoot) => {
                     /* Ensuring texture has size to hold result
                        Doing this elsewhere might be cleaner, but
                        performance is nice */
-                       [%debugger];
                        Js.log("Ensureing size for " ++ nodeDescrString(updNode.updNode));
                     Gpu.Texture.ensureSize(tex, scene.canvas.context, int_of_float(updNode.updNode.rect.w), int_of_float(updNode.updNode.rect.h));
                     ([BindDrawTexture(updNode.updNode), ...drawList], true)
@@ -1471,7 +1470,7 @@ let getFBuffer = (self, config : fbufferConfig) => {
     }
 };
 
-let debugNodes = ["cachedResult"];
+let debugNodes = [];
 
 let bindDrawTexture = (self, node) => {
     switch (node.drawToTexture) {
@@ -1496,9 +1495,10 @@ let bindDrawTexture = (self, node) => {
         if (node.clearOnDraw) {
             Gpu.Canvas.clear(self.canvas, 0.0, 0.0, 0.0, 0.0);
         };
-        let d = switch (node.key) {
-        | Some(k) when k == "cacheResultTex" =>
-            /*Gpu.Canvas.clearFramebuffer(self.canvas);*/
+        let debugBuffered = None;
+        switch (debugBuffered,node.key) {
+        | (Some(d), Some(k)) when k == d =>
+            Gpu.Canvas.clearFramebuffer(self.canvas);
             [%debugger];
         | _ => ()
         };

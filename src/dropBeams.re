@@ -32,7 +32,7 @@ let makeNode = (vo) => {
         ~uniforms=[
             ("sinceDrop", Scene.UFloat.zero())
         ],
-        ~drawTo=Scene.TextureRGB,
+        ~drawTo=Scene.TextureRGBDim(1024),
         ~clearOnDraw=true,
         ~vo,
         ()
