@@ -47,6 +47,7 @@ let makeNode = (node, ~transparent=?, ~partialDraw=?, ~size=?, ()) => {
     ~vertShader=Shader.make(vertexSource),
     ~fragShader=Shader.make(fragmentSource),
     ~transparent?,
+    ~blendFactor=Scene.BlendOne,
     ~partialDraw?,
     ~size?,
     ~textures=[("tex", Scene.SceneTex.node(texNode))],

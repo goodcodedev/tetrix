@@ -189,8 +189,8 @@ let createLeftRow = state => {
       ),
       Layout.vertical(
         ~margin=
-          Scene.(MarginRBLT(Scale(0.0), Scale(0.0), Scale(0.0), Scale(0.03))),
-        ~spacing=Scene.Scale(0.04),
+          Scene.(MarginRBLT(Scale(0.0), Scale(0.0), Scale(0.0), ScreenScale(0.028))),
+        ~spacing=Scene.ScreenScale(0.015),
         ~vAlign=Scene.AlignTop,
         [
           FontDraw.makeNode(
@@ -243,9 +243,9 @@ let createRightRow = state => {
           ~key="nextElements",
           ~margin=
             Scene.(
-              MarginRBLT(Scale(0.0), Scale(0.0), Scale(0.0), Scale(0.03))
+              MarginRBLT(Scale(0.0), Scale(0.0), Scale(0.0), ScreenScale(0.028))
             ),
-          ~spacing=Scene.Scale(0.04),
+          ~spacing=Scene.ScreenScale(0.015),
           ~vAlign=Scene.AlignTop,
           [
             FontDraw.makeNode(
@@ -455,7 +455,7 @@ let updateElTiles =
   Data.Vec2.set(elState.elPos, xPos, yPos);
   let elPos =
     if (isSideEl) {
-      Data.Mat3.scaleTrans(0.75, 0.75, xPos *. 0.375, yPos *. 0.375);
+      Data.Mat3.scaleTrans(0.65, 0.65, xPos *. 0.325, yPos *. 0.325);
     } else {
       Data.Mat3.trans(xPos, yPos);
     };

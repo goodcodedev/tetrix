@@ -22,6 +22,7 @@ type vAlign =
 /* Scale of available space, or pixel value */
 type dimension =
   | Scale(float)
+  | ScreenScale(float)
   | Pixel(float);
 
 type margin =
@@ -41,6 +42,12 @@ type easing =
   | SineOut
   | SineIn
   | SineInOut;
+
+/* todo: Does this make "transparent" redundant?
+   Are there other abstractions that are better fit? */
+type blendFactor =
+  | BlendAlpha
+  | BlendOne;
 
 let currNodeId = ref(0);
 
@@ -94,11 +101,13 @@ and node('s) = {
   calcLayout,
   /* Rect in pixels */
   rect: Geom2d.Rect.t,
+  outRect: Geom2d.Rect.t,
   scissorRect: Geom2d.Rect.t,
   /* Rect in screen -1.0 to 1.0 */
   screenRect: Geom2d.Rect.t,
   selfDraw: bool,
   transparent: bool,
+  blendFactor: blendFactor,
   partialDraw: bool,
   mutable hidden: bool,
   mutable loading: bool,
@@ -353,6 +362,7 @@ let makeNode =
       ~selfDraw=true,
       ~loading=false,
       ~transparent=false,
+      ~blendFactor=BlendAlpha,
       ~partialDraw=false,
       ~hidden=false,
       ~deps=[],
@@ -462,11 +472,13 @@ let makeNode =
       pYOffset: 0.0
     },
     rect: Geom2d.Rect.zeros(),
+    outRect: Geom2d.Rect.zeros(),
     scissorRect: Geom2d.Rect.zeros(),
     screenRect: Geom2d.Rect.zeros(),
     selfDraw,
     loading,
     transparent,
+    blendFactor,
     partialDraw,
     hidden,
     children,
@@ -1280,7 +1292,7 @@ let createDrawList = (scene, updateNodes, updRoot) => {
           };
         let (drawList, drawToTexture) =
           switch updNode.updNode.drawToTexture {
-          | Some(tex) =>
+          | Some(_tex) =>
             ([BindDrawTexture(updNode.updNode), ...drawList], true);
           | None => (drawList, false)
           };
@@ -1535,9 +1547,14 @@ let draw = (self, node) =>
     if (node.transparent) {
       let context = self.canvas.context;
       Gpu.glEnable(context, Gpu.Constants.blend);
+      let nodeFactor =
+        switch (node.blendFactor) {
+        | BlendAlpha => Gpu.Constants.src_alpha
+        | BlendOne => 1
+        };
       Gpu.glBlendFunc(
         context,
-        Gpu.Constants.src_alpha,
+        nodeFactor,
         Gpu.Constants.one_minus_src_alpha
       );
       Gpu.DrawState.draw(drawState, self.canvas);
@@ -1884,11 +1901,13 @@ let calcLayout = self => {
     let xdim = dim =>
       switch dim {
       | Scale(scale) => outerWidth *. scale
+      | ScreenScale(scale) => vpWidth *. scale
       | Pixel(pixels) => pixels
       };
     let ydim = dim =>
       switch dim {
       | Scale(scale) => outerHeight *. scale
+      | ScreenScale(scale) => vpHeight *. scale
       | Pixel(pixels) => pixels
       };
     switch node.layout.margin {
@@ -1900,6 +1919,13 @@ let calcLayout = self => {
         | Scale(scale) =>
           let scaledX = outerWidth *. scale;
           let scaledY = outerHeight *. scale;
+          cl.marginX1 = scaledX;
+          cl.marginX2 = scaledX;
+          cl.marginY1 = scaledY;
+          cl.marginY2 = scaledY;
+        | ScreenScale(scale) =>
+          let scaledX = vpWidth *. scale;
+          let scaledY = vpHeight *. scale;
           cl.marginX1 = scaledX;
           cl.marginX2 = scaledX;
           cl.marginY1 = scaledY;
@@ -1968,10 +1994,12 @@ let calcLayout = self => {
           switch dimX {
           | Pixel(pixels) => pixels
           | Scale(scale) => paddedWidth *. scale
+          | ScreenScale(scale) => vpWidth *. scale
           },
           switch dimY {
           | Pixel(pixels) => pixels
           | Scale(scale) => paddedHeight *. scale
+          | ScreenScale(scale) => vpWidth *. scale
           }
         )
       | WidthRatio(dimX, ratio) =>
@@ -1979,6 +2007,7 @@ let calcLayout = self => {
           switch dimX {
           | Pixel(pixels) => pixels
           | Scale(scale) => paddedWidth *. scale
+          | ScreenScale(scale) => vpWidth *. scale
           };
         (width, width /. ratio);
       | HeightRatio(dimY, ratio) =>
@@ -1986,6 +2015,7 @@ let calcLayout = self => {
           switch dimY {
           | Pixel(pixels) => pixels
           | Scale(scale) => paddedHeight *. scale
+          | ScreenScale(scale) => vpHeight *. scale
           };
         (height *. ratio, height);
       };
@@ -2012,6 +2042,15 @@ let calcLayout = self => {
           calcLayout.pXOffset +. padding,
           calcLayout.pYOffset +. padding
         )
+      | Some(ScreenScale(padding)) =>
+        let scaledXPadding = vpWidth *. padding;
+        let scaledYPadding = vpHeight *. padding;
+        (
+          calcLayout.pWidth -. scaledXPadding *. 2.0,
+          calcLayout.pHeight -. scaledYPadding *. 2.0,
+          calcLayout.pXOffset +. scaledXPadding,
+          calcLayout.pYOffset +. scaledYPadding
+        );
       | Some(Scale(padding)) =>
         let scaledXPadding = calcLayout.pWidth *. padding;
         let scaledYPadding = calcLayout.pHeight *. padding;
@@ -2023,12 +2062,14 @@ let calcLayout = self => {
         );
       };
     /* Set width/height of children and deps */
+    let childWidth = paddedWidth -. calcLayout.marginX1 -. calcLayout.marginX2;
+    let childHeight = paddedHeight -. calcLayout.marginY1 -. calcLayout.marginY2;
     List.iter(
-      dep => calcNodeDimensions(dep, paddedWidth, paddedHeight),
+      dep => calcNodeDimensions(dep, childWidth, childHeight),
       node.deps
     );
     List.iter(
-      child => calcNodeDimensions(child, paddedWidth, paddedHeight),
+      child => calcNodeDimensions(child, childWidth, childHeight),
       node.children
     );
     /* Set x and y offset for deps */
@@ -2105,6 +2146,7 @@ let calcLayout = self => {
         switch layout.spacing {
         | Some(Pixel(pixel)) => pixel
         | Some(Scale(scale)) => paddedWidth *. scale
+        | Some(ScreenScale(scale)) => vpWidth *. scale
         | None => 0.0
         };
       /* Set xoffset */
@@ -2188,6 +2230,7 @@ let calcLayout = self => {
         switch layout.spacing {
         | Some(Pixel(pixel)) => pixel
         | Some(Scale(scale)) => paddedHeight *. scale
+        | Some(ScreenScale(scale)) => vpHeight *. scale
         | None => 0.0
         };
       switch layout.hAlign {
@@ -2280,6 +2323,10 @@ let calcLayout = self => {
     node.rect.y = pYOff;
     node.rect.w = inW;
     node.rect.h = inH;
+    node.outRect.x = floor(calcLayout.pXOffset -. calcLayout.marginX1 +. 0.5);
+    node.outRect.y = floor(calcLayout.pYOffset -. calcLayout.marginY1 +. 0.5);
+    node.outRect.w = pW;
+    node.outRect.h = pH;
     node.scissorRect.x = pXOff;
     node.scissorRect.y = vpHeight -. pYOff -. inH;
     node.scissorRect.w = inW;
@@ -2372,7 +2419,6 @@ let calcLayout = self => {
           /* texTransUniform */
           let texTrans = Data.Mat3.scaleTrans(1.0, 1.0, 0.0, 0.0);
           Gpu.Uniform.setMat3f(texTransUniform, texTrans);
-          Js.log3("Textrans", layoutMat, texTrans);
           /* Initiate parent tex transform */
           Some({nOffX: pXOff, nOffY: pYOff, texVpWidth: inW, texVpHeight: inH});
         };
@@ -2382,7 +2428,9 @@ let calcLayout = self => {
     | Some(pixelSizeUniform) =>
       Gpu.Uniform.setVec2f(pixelSizeUniform, Data.Vec2.make(inW, inH))
     };
+    /* Iter deps */
     List.iter(dep => calcNodeLayout(dep, None), node.deps);
+    /* Iter children */
     List.iter(child => calcNodeLayout(child, parentDrawToTex), node.children);
     /* After deps and children have been processed, set texture matrices */
     Hashtbl.iter(
@@ -2409,13 +2457,8 @@ let calcLayout = self => {
             | Some(wh) => wh
             | None => failwith("Could not get size of texture")
             };
-          let scaleX = texNode.rect.w /. vpWidth /. 2.0;
-          let scaleY = texNode.rect.h /. vpHeight /. 2.0;
-          let scale = Data.Mat3.scale(scaleX, scaleY);
-          let translate = Data.Mat3.trans(scaleX, 1.0 -. scaleY);
-          let texMat = Data.Mat3.matmul(translate, scale);
-          let scaleX = texNode.rect.w /. float_of_int(texW) /. 2.0;
-          let scaleY = texNode.rect.h /. float_of_int(texH) /. 2.0;
+          let scaleX = texNode.rect.w /. float_of_int(texW) /. 2.0 *. (texNode.rect.w /. node.rect.w);
+          let scaleY = texNode.rect.h /. float_of_int(texH) /. 2.0 *. (texNode.rect.h /. node.rect.h);
           let texMat = Data.Mat3.scaleTrans(scaleX, scaleY, scaleX, scaleY);
           Gpu.Uniform.setMat3f(uniform, texMat);
         | _ => ()
@@ -2449,6 +2492,8 @@ let collectDeps = (scene, nodeIds, hiddenNodes) => {
       /* Traverse children */
       List.fold_left((list, child) => loop(child, list), list, node.children);
     };
+  /* Reversing so deps are processesed in the
+     order they are listed */
   List.rev(List.fold_left(
     (list, nodeId) => {
       let node =

@@ -43,15 +43,15 @@ let fragmentSource = {|
 
     void main() {
       vec4 elColor = texture2D(el, elUV);
-      float light = texture2D(light, lightUV).x;
-      gl_FragColor = mix(vec4(color, light * 0.4), elColor, step(0.01, elColor.a));
+      vec4 light = texture2D(light, lightUV);
+      gl_FragColor = mix(vec4(color, light.x * 0.3), elColor, step(0.01, elColor.a));
     }
 |};
 
 let makeNode = (elState: SceneState.elState, lighting) => {
     let cols = 2.0;
     let rows = 1.5;
-    let margin = Scene.MarginXY(Scale(0.25), Scale(0.05));
+    let margin = Scene.MarginXY(Scale(0.22), Scale(0.0));
     let toTex = Gpu.Texture.makeEmptyRgb();
     let tempTex = Gpu.Texture.makeEmptyRgb();
     let size = Scene.Aspect(cols /. rows);
@@ -72,8 +72,8 @@ let makeNode = (elState: SceneState.elState, lighting) => {
         lightBaseNode,
         toTex,
         tempTex,
-        4.0,
-        4.0
+        10.0,
+        10.0
     );
     let elNode = SdfTiles.makeNode
     (
@@ -89,6 +89,7 @@ let makeNode = (elState: SceneState.elState, lighting) => {
     );
     /*DrawTex.makeNode(lightNode, ())*/
     Scene.makeNode(
+        ~cls="drawElement",
         ~vertShader=Gpu.Shader.make(vertexSource),
         ~fragShader=Gpu.Shader.make(fragmentSource),
         ~transparent=true,

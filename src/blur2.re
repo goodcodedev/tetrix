@@ -18,7 +18,7 @@ let blurVertex = {|
         // Min left and top
         texMin = (vec3(-1.0, 1.0, 1.0) * origMat).xy;
         float aspect = pixelSize.x / pixelSize.y;
-        pSize = vec2(texMax.x / 200.0 * aspect, texMin.y / 200.0);
+        pSize = vec2(texMax.x / 300.0, texMin.y / 300.0 * aspect);
         gl_Position = vec4(pos, 0.0, 1.0);
     }
 |};
