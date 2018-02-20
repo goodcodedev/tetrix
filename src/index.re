@@ -187,22 +187,28 @@ let createLeftRow = state => {
         ~light=state.sceneAndElLight,
         ()
       ),
-      Layout.vertical(
-        ~margin=
-          Scene.(MarginRBLT(Scale(0.0), Scale(0.0), Scale(0.0), ScreenScale(0.028))),
-        ~spacing=Scene.ScreenScale(0.015),
-        ~vAlign=Scene.AlignTop,
-        [
-          FontDraw.makeNode(
-            "HOLD",
-            "digitalt",
-            ~opacity=0.7,
-            ~height=0.27,
-            ~align=SdfFont.TextLayout.AlignCenter,
-            ()
-          ),
-          DrawElement.makeNode(state.holdingEl, state.sceneLight)
-        ]
+      CacheResult.makeNode(
+        ~transparent=true,
+        ~partialDraw=true,
+        ~size=Scene.(Dimensions(Scale(1.0), Scale(0.6))),
+        Layout.vertical(
+          ~margin=
+            Scene.(MarginRBLT(Scale(0.0), Scale(0.0), Scale(0.0), ScreenScale(0.028))),
+          ~spacing=Scene.ScreenScale(0.015),
+          ~vAlign=Scene.AlignTop,
+          [
+            FontDraw.makeNode(
+              "HOLD",
+              "digitalt",
+              ~opacity=0.7,
+              ~height=0.27,
+              ~align=SdfFont.TextLayout.AlignCenter,
+              ()
+            ),
+            DrawElement.makeNode(state.holdingEl, state.sceneLight)
+          ]
+        ),
+        ()
       )
     ]
   );

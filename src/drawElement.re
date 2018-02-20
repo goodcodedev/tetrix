@@ -5,6 +5,7 @@ let lightBaseVert = {|
     uniform mat3 model;
     void main() {
         vec2 pos = (vec3(position, 1.0) * model * layout).xy;
+        pos = pos + vec2(0.01, 0.02);
         gl_Position = vec4(pos.xy, 0.0, 1.0);
     }
 |};
@@ -44,7 +45,7 @@ let fragmentSource = {|
     void main() {
       vec4 elColor = texture2D(el, elUV);
       vec4 light = texture2D(light, lightUV);
-      gl_FragColor = mix(vec4(color, light.x * 0.3), elColor, step(0.01, elColor.a));
+      gl_FragColor = mix(vec4(0.0, 0.0, 0.0, light.x * 0.8), elColor, step(0.01, elColor.a));
     }
 |};
 

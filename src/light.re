@@ -267,9 +267,9 @@ module ProgramLight = {
       );
     "vec3 lighting(vec3 localP, vec3 screenP, vec3 normal) {\n"
     ++ statements
-    ++ "return "
+    ++ "return pow("
     ++ String.concat(" + ", addends)
-    ++ ";\n"
+    ++ ", vec3(1.0/2.2));\n"
     ++ "}\n";
   };
 };

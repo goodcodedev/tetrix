@@ -211,7 +211,7 @@ let makeFragmentSource = self => {
             // todo: Adjust estimateNormal?
             N.y = N.y * -1.0;
             float light = (lighting(p, vec3(vScreenPos.xy, p.z), N)).x;
-            color = mix(mix(color, vec3(1.0, 1.0, 1.0), max(light - 0.5, 0.0)) * 0.9, vec3(0.0, 0.0, 0.0), max(0.5 + light * -1.0, 0.0) * 1.5);
+            color = color * light;
             float alpha = |}
     ++ glAlpha
     ++ {|;

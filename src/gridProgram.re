@@ -66,6 +66,10 @@ let fragmentSource = {|
     const float tileWidth = 1.0 / numCols;
     const float tileHeight = 1.0 / numRows;
 
+    float random(vec2 st) {
+        return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+    }
+
     void main() {
         // todo: Calculate in vertex shader?
         vec2 elVec = vPosition - centerRadius.xy;
@@ -76,7 +80,19 @@ let fragmentSource = {|
 
         // Roughly light a triangle below element
         float triangleDir = dot(elVecNorm, vec2(0.0, -1.0));
-        float triangleLight = smoothstep(-0.3, 0.5, triangleDir) * lengthCoef * 0.05;
+        float noiseFactor = random(vPosition) * 0.3 + 0.7;
+        float triangleLight = smoothstep(0.0, 0.2, triangleDir) * 0.02;
+        vec3 lPos = vec3(centerRadius.x, centerRadius.y + 0.1, 0.5);
+        vec3 surfaceToLight = lPos - vec3(vPosition.xy, 0.0);
+        vec3 lVec = normalize(surfaceToLight);
+
+        vec3 coneDir = normalize(vec3(0.0, -0.8, 0.2));
+        float lightToSurfaceAngle = degrees(acos(dot(-lVec, coneDir)));
+
+        float aoi = dot(vec3(0.0, 0.0, 1.0), lVec);
+        float attenuation = 1.0 / (1.0 + 100.0 * pow(length(surfaceToLight), 2.0));
+        attenuation = attenuation * (1.0 - smoothstep(75.0, 78.0, lightToSurfaceAngle));
+        triangleLight = aoi * attenuation;
 
         // Shadow
         float shadow = texture2D(tileShadows, tileShadowsPos).x;
@@ -105,7 +121,12 @@ let fragmentSource = {|
         float dropBeam = texture2D(drop, dropPos).x;
         color = mix(color, dropColor, dropBeam * 0.2);
 
-        gl_FragColor = vec4(color + triangleLight, 1.0);
+        // Color + triangleLight
+        vec3 tLight = triangleLight * bg * elColor;
+        tLight = pow(tLight, vec3(1.0/2.2));
+        color = color + tLight;
+        // Gamma correction
+        gl_FragColor = vec4(color, 1.0);
     }
 |};
 

@@ -173,6 +173,37 @@ let addCenterRadius = (el, rot) => {
   let centerX = float_of_int(left^) +. radiusX /. 2.0;
   let radiusY = float_of_int(height) *. (-1.0);
   let centerY = float_of_int(top^ * (-1)) -. radiusY /. 2.0;
+  let (centerX, centerY) =
+    {
+      /* Center positions of width, height */
+      let y = float_of_int(top^ * (-1)) -. radiusY /. 2.0;
+      let x = float_of_int(left^) +. radiusX /. 2.0;
+      switch (el, rot) {
+      | (LeftTurn, 0) | (LeftTurn, 2) => (x, y +. 0.5)
+      | (LeftTurn, 1) | (LeftTurn, 3) => (x +. 0.5, y +. 0.5)
+      | (RightTurn, 0) | (RightTurn, 2) => (x, y +. 0.5)
+      | (RightTurn, 1) | (RightTurn, 3) => (x -. 0.5, y +. 0.5)
+      | (Triangle, 2) => (x, y +. 0.5)
+      | (Triangle, 1) => (x -. 0.5, y +. 0.5)
+      | (Triangle, 3) => (x +. 0.5, y +. 0.5)
+      | (Cube, _) => (x, y +. 0.5)
+      | (LeftL, 2) => (x, y +. 0.5)
+      | (LeftL, 1) => (x, y +. 1.0)
+      | (RightL, 2) => (x, y +. 0.5)
+      | (RightL, 3) => (x, y +. 1.0)
+      | (Line, 1) | (Line, 3) => (x, y +. 1.0)
+      | _ => (x, y)
+      }
+    };
+    /*
+type element =
+  | Cube
+  | Line
+  | Triangle
+  | RightTurn
+  | LeftTurn
+  | LeftL
+  | RightL;*/
   let offsetX = left^;
   Hashtbl.add(
     centerRadius,
