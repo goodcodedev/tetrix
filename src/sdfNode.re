@@ -50,6 +50,7 @@ let makeVertexSource = self =>
             // side elements though
             vec2 pos = (vec3(toModel.xy, 1.0) * layout).xy;
             vScreenPos = vec3((vec3(position, 1.0) * layout).xy, 0.0);
+            pos = (vec3(toModel.xy, 1.0) * texTrans).xy;
             gl_Position = vec4(pos, 0.0, 1.0);
         }
     |}
@@ -62,11 +63,12 @@ let makeVertexSource = self =>
         varying vec2 vPosition;
         varying vec3 vScreenPos;
         void main() {
-            vec2 pos = (vec3(position, 1.0) * (layout * model)).xy;
+            vec3 toModel = vec3(position, 1.0) * model;
+            vec2 pos = (vec3(toModel.xy, 1.0) * layout).xy;
             vScreenPos = vec3(pos, 0.0);
             vPosition = position;
             // texTrans
-            pos = (vec3(pos, 1.0) * texTrans).xy;
+            pos = (vec3(position, 1.0) * texTrans).xy;
             gl_Position = vec4(pos, 0.0, 1.0);
         }
     |}
@@ -82,7 +84,7 @@ let makeVertexSource = self =>
             vec2 pos = (vec3(position, 1.0) * layout).xy;
             vScreenPos = vec3(pos, 0.0);
             // texTrans
-            pos = (vec3(pos, 1.0) * texTrans).xy;
+            pos = (vec3(position, 1.0) * texTrans).xy;
             gl_Position = vec4(pos, 0.0, 1.0);
         }
     |}
@@ -298,6 +300,7 @@ let makeNode =
     ~children,
     ~vo=?self.vo,
     ~partialDraw,
+    ~clearOnDraw=partialDraw,
     ~drawTo?,
     ~texTransUniform=true,
     ()

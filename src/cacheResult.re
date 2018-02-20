@@ -17,8 +17,8 @@ let fragmentSource = {|
     uniform sampler2D tex;
 
     void main() {
-        vec4 texColor = texture2D(tex, texUV);
-        gl_FragColor = vec4(texColor);
+      vec4 texColor = texture2D(tex, texUV);
+      gl_FragColor = vec4(texColor);
     }
 |};
 
@@ -29,14 +29,13 @@ let makeNode = (node, ~transparent=?, ~partialDraw=?, ~size=?, ()) => {
      dims are not 1024 */
   let (drawTo, clearOnDraw) =
     switch (transparent, partialDraw) {
-    | (Some(true), _) => (Scene.TextureRGBADim(1024), true)
-    | (_, Some(true)) => (Scene.TextureRGBADim(1024), true)
-    | (_, _) => (Scene.TextureRGBDim(1024), false)
+    | (Some(true), _) => (Scene.TextureRGBA, true)
+    | (_, Some(true)) => (Scene.TextureRGBA, true)
+    | (_, _) => (Scene.TextureRGB, false)
     };
   let texNode =
     Scene.makeNode(
       ~cls="cacheResultTex",
-      ~key="cacheResultTex",
       ~children=[node],
       ~drawTo,
       ~selfDraw=false,
@@ -45,7 +44,6 @@ let makeNode = (node, ~transparent=?, ~partialDraw=?, ~size=?, ()) => {
     );
   Scene.makeNode(
     ~cls="cachedResult",
-    ~key="cachedResult",
     ~vertShader=Shader.make(vertexSource),
     ~fragShader=Shader.make(fragmentSource),
     ~transparent?,

@@ -2,18 +2,7 @@
    uniforms and textures.
    They also provide layout capabilities.
 
-   A scene allows scene nodes to share resources between them.
-   By using keys/refs for resources, the system searches upwards
-   in the tree by the nodes parents, as well as the dependencies
-   on each step.
-
    The nodes will have some layout uniforms available.
-   By specifying a uniform name corresponding to a provided
-   value, the system will set values when calculating the layout.
-
-   Each update/draw of the scene will have provided a list of
-   user defined "flags". These are meant to signal which part
-   of the scene needs to be redrawn.
    */
 type childLayout =
   | Horizontal
@@ -150,13 +139,6 @@ and sceneTexture = {
   offsetX: dimension,
   offsetY: dimension
 }
-and nodeTex('s) = {
-  texture: Gpu.Texture.t,
-  texNode: option(node('s)),
-  uniformMat: option(Gpu.uniform),
-  offsetX: dimension,
-  offsetY: dimension
-}
 and layout = {
   size: blockSize,
   padding: option(dimension),
@@ -192,44 +174,25 @@ and updateStencil = {
   mutable rect: Geom2d.Rect.t,
   mutable active: bool
 }
-/* A caching strategy could be to keep a list of
-   whether to update, rects etc based on a easily indexable key/int
-   derived from flags and animations (+ other factors).
-   It would also be nice to know where the rects
-   come from, and whether that thing is visible
-   currently.
-   At some point, I guess rects should be reconciliated,
-   for example if there is intersection, it might be better
-   to draw a bounding box, there may be several instances
-   of the same rectangle.
-   There are advantages to doing this as early as possible
-   in the algorithm to avoid propagation of equal/overlapping
-   rects, but this hampers caching.
-   The better solution might be dependant on the dynamicism
-   of the scene. Many dynamic objects would benefit
-   from caching of intermediary results, while a static
-   scene wouldn't require this and could be somewhat better
-   of with a quick algorithm */
 and updateListNode('s) = {
   /* Whether there is a full update triggered
-     on the node, currently through flag or animation */
+     on the node */
   mutable update: bool,
   /* Whether any child is registered for update,
      to help traversal */
   mutable childUpdate: bool,
   /* Whether this is part of a dependency node */
   isDep: bool,
-  /* Whether this is a node in the deps list */
+  /* Whether this is a node directly in the deps list aka dep root */
   isDepRoot: bool,
-  /* Whether this is part of a stacked layout,
-     then placed as a child */
+  /* If node is part of a stacked layout, previous stacked nodes */
   prevStacked: list(updateListNode('s)),
   /* Partitioned to prev and next stacked */
   mutable nextStacked: list(updateListNode('s)),
   /* Reference to the node */
   updNode: node('s),
   /* Rectangle of the node, this is referenced in
-     updateRects and stencils, and the data may
+     updateRects and stencils, and the data may possibly
      be updated on resize
      todo: Not sure whether this should be option or
      not, maybe not. If checks are maybe a little more
@@ -358,30 +321,6 @@ module SceneTex = {
   };
   let tex = (~offsetX=Scale(0.0), ~offsetY=Scale(0.0), texture) => {
     nodes: [],
-    texture,
-    texNode: None,
-    uniformMat: None,
-    offsetX,
-    offsetY
-  };
-};
-
-module NodeTex = {
-  let node = (~offsetX=Scale(0.0), ~offsetY=Scale(0.0), node) => {
-    let texture =
-      switch node.drawToTexture {
-      | Some(texture) => texture
-      | None => failwith("Provided node does not draw to texture")
-      };
-    {
-      texture,
-      texNode: Some(node),
-      uniformMat: Some(UniformMat3f(ref(Data.Mat3.id()))),
-      offsetX,
-      offsetY
-    };
-  };
-  let tex = (~offsetX=Scale(0.0), ~offsetY=Scale(0.0), texture) => {
     texture,
     texNode: None,
     uniformMat: None,
@@ -649,10 +588,7 @@ let clearAnim = (scene, animKey) =>
    Possibly we could use an array sized for all
    nodes in the three and jump for children
    and deps.
-   Use new collections from bucklescript.
-   Consider making one version for root without
-   parent, and children (loopChild),
-   .. just handle root in body of function */
+   Use new collections from bucklescript. */
 let buildUpdateTree = (scene, root) => {
   /* Also adds nodes to uniforms, vertexobjects and textures objects */
   let rec loop = (node, parent, isDep, isDepRoot, prevStacked) => {
@@ -802,6 +738,12 @@ let nodeDescrString = node =>
     | Some(cls) => "cls: " ++ cls ++ " id:" ++ string_of_int(node.id)
     | None => "id:" ++ string_of_int(node.id)
     }
+  };
+
+let nodeIdDescr = (scene, nodeId) =>
+  switch scene.updateNodes.data[nodeId] {
+  | Some(n) => nodeDescrString(n.updNode)
+  | None => failwith("Could not find node with id: " ++ string_of_int(nodeId))
   };
 
 let rec setDepParentToUpdate = updNode =>
@@ -1187,17 +1129,7 @@ let createDrawList = (scene, updateNodes, updRoot) => {
         if (updNode.update) {
           updNode.update = false;
           switch updNode.updNode.drawToTexture {
-          | Some(tex) =>
-            /* Ensuring texture has size to hold result
-               Doing this elsewhere might be cleaner, but
-               performance is nice */
-            Js.log("Ensureing size for " ++ nodeDescrString(updNode.updNode));
-            Gpu.Texture.ensureSize(
-              tex,
-              scene.canvas.context,
-              int_of_float(updNode.updNode.rect.w),
-              int_of_float(updNode.updNode.rect.h)
-            );
+          | Some(_tex) =>
             ([BindDrawTexture(updNode.updNode), ...drawList], true);
           | None => (drawList, false)
           };
@@ -1349,13 +1281,6 @@ let createDrawList = (scene, updateNodes, updRoot) => {
         let (drawList, drawToTexture) =
           switch updNode.updNode.drawToTexture {
           | Some(tex) =>
-            Js.log("Ensureing size for " ++ nodeDescrString(updNode.updNode));
-            Gpu.Texture.ensureSize(
-              tex,
-              scene.canvas.context,
-              int_of_float(updNode.updNode.rect.w),
-              int_of_float(updNode.updNode.rect.h)
-            );
             ([BindDrawTexture(updNode.updNode), ...drawList], true);
           | None => (drawList, false)
           };
@@ -1497,50 +1422,100 @@ let getFBuffer = (self, config: fbufferConfig) =>
 
 let debugNodes = [];
 
-let bindDrawTexture = (self, node) =>
+type drawListDrawTo = {
+    dtFbuffer: Gpu.FrameBuffer.inited,
+    dtTexture: Gpu.Texture.t,
+    dtWidth: int,
+    dtHeight: int
+};
+
+type drawListState = {
+    mutable activeDrawTo: option(drawListDrawTo),
+    mutable drawToStack: list(drawListDrawTo)
+};
+
+let bindDrawTexture = (self, node, dlState) =>
   switch node.drawToTexture {
   | Some(texture) =>
-    /* Let pixels go from offset of node */
-    /* Possibly use for this, would need to adjust layouts */
-    /*
-     Reasongl.Gl.viewport(
-         ~context=self.canvas.context,
-         ~x=int_of_float(node.rect.x),
-         ~y=int_of_float(node.rect.y),
-         ~width=int_of_float(node.rect.w),
-         ~height=int_of_float(node.rect.h)
-     );*/
+    /* If any active drawTo, put in stack */
+    switch dlState.activeDrawTo {
+    | None => ()
+    | Some(drawTo) =>
+        dlState.drawToStack = [drawTo, ...dlState.drawToStack];
+    };
     let config = {width: 1024, height: 1024};
     let fbuffer = getFBuffer(self, config);
+    Gpu.FrameBuffer._bindFramebuffer(
+      ~context=self.canvas.context,
+      Gpu.FrameBuffer.frameBufferC,
+      Js.Nullable.return(fbuffer.frameBufferRef)
+    );
+    /* Let pixels go from offset of node */
+    /* Possibly use for this, would need to adjust layouts */
+    let dtWidth = int_of_float(node.rect.w);
+    let dtHeight = int_of_float(node.rect.h);
+     Reasongl.Gl.viewport(
+         ~context=self.canvas.context,
+         ~x=0,
+         ~y=0,
+         ~width=dtWidth,
+         ~height=dtHeight
+     );
     Gpu.FrameBuffer.bindTexture(fbuffer, self.canvas.context, texture);
-    Gpu.Canvas.setFramebuffer(self.canvas, fbuffer);
     if (node.clearOnDraw) {
+      /* Alpha channel should maybe only cleared on rgba */
       Gpu.Canvas.clear(self.canvas, 0.0, 0.0, 0.0, 0.0);
     };
+    dlState.activeDrawTo = Some({
+        dtFbuffer: fbuffer,
+        dtTexture: texture,
+        dtWidth,
+        dtHeight
+    });
+    let debugBuffered = Some("lightBase");
     let debugBuffered = None;
-    switch (debugBuffered, node.key) {
-    | (Some(d), Some(k)) when k == d =>
-      Gpu.Canvas.clearFramebuffer(self.canvas);
+    switch (debugBuffered, node.key, node.cls) {
+    | (Some(d), Some(k), _) when k == d =>
       [%debugger];
+      Gpu.Canvas.clearFramebuffer(self.canvas);
+    | (Some(d), _, Some(k)) when k == d =>
+      [%debugger];
+      Gpu.Canvas.clearFramebuffer(self.canvas);
     | _ => ()
     };
   | None => failwith("Node is not drawToTexture")
   };
 
-let unbindDrawTexture = self =>
-  Gpu.Canvas.clearFramebuffer
-    (self.canvas);
-    /*
-     Reasongl.Gl.viewport(
-         ~context=self.canvas.context,
-         ~x=0,
-         ~y=0,
-         ~width=self.canvas.width,
-         ~height=self.canvas.height
-     );*/
+let unbindDrawTexture = (self, dlState) => {
+  switch dlState.drawToStack {
+  | [] =>
+    dlState.activeDrawTo = None;
+    Gpu.Canvas.clearFramebuffer
+      (self.canvas);
+    /* Possibly unneccesary */
+    Reasongl.Gl.viewport(
+        ~context=self.canvas.context,
+        ~x=0,
+        ~y=0,
+        ~width=self.canvas.width,
+        ~height=self.canvas.height
+    );
+  | [{dtFbuffer, dtTexture, dtWidth, dtHeight} as prevActive, ...rest] =>
+    Gpu.FrameBuffer.bindTexture(dtFbuffer, self.canvas.context, dtTexture);
+    Gpu.Canvas.setFramebuffer(self.canvas, dtFbuffer);
+    dlState.drawToStack = rest;
+    dlState.activeDrawTo = Some(prevActive);
+    Reasongl.Gl.viewport(
+        ~context=self.canvas.context,
+        ~x=0,
+        ~y=0,
+        ~width=dtWidth,
+        ~height=dtHeight
+    );
+  };
+};
 
 let draw = (self, node) =>
-  /*Js.log("Drawing " ++ node.key);*/
   switch node.drawState {
   | Some(drawState) =>
     switch node.elapsedUniform {
@@ -1549,9 +1524,10 @@ let draw = (self, node) =>
     | None => ()
     };
     let isDebug =
-      switch node.key {
-      | Some(key) => List.exists(debug => key == debug, debugNodes)
-      | None => false
+      switch (node.key, node.cls) {
+      | (Some(key), _) => List.exists(debug => key == debug, debugNodes)
+      | (_, Some(cls)) => List.exists(debug => cls == debug, debugNodes)
+      | _ => false
       };
     if (isDebug) {
       [%debugger];
@@ -1583,6 +1559,10 @@ module Gl = Reasongl.Gl;
 let processDrawList = (scene, drawList, debug) => {
   let context = scene.canvas.context;
   let elapsed = scene.canvas.elapsed;
+  let dlState = {
+    activeDrawTo: None,
+    drawToStack: []
+  };
   open Gpu;
   module Gl = Reasongl.Gl;
   let rec processDrawEl = list =>
@@ -1653,11 +1633,11 @@ let processDrawList = (scene, drawList, debug) => {
       | ClearRect => glDisable(context, Scissor.scissorTest)
       | BindDrawTexture(n) =>
         if (! debug) {
-          bindDrawTexture(scene, n);
+          bindDrawTexture(scene, n, dlState);
         }
       | UnBindDrawTexture =>
         if (! debug) {
-          unbindDrawTexture(scene);
+          unbindDrawTexture(scene, dlState);
         }
       };
       processDrawEl(rest);
@@ -1883,10 +1863,11 @@ let showNodeByKey = (scene, nodeKey) =>
 type parentDrawToTex = {
   nOffX: float,
   nOffY: float,
-  texOffX: float,
-  texOffY: float
+  texVpWidth: float,
+  texVpHeight: float
 };
 
+/* Todo: More just in time, and fine grained updates */
 let calcLayout = self => {
   let debug = false;
   /* These are assumed "ints"/rounded */
@@ -2291,6 +2272,10 @@ let calcLayout = self => {
       floor(calcLayout.inWidth +. (calcLayout.pXOffset -. pXOff) +. 0.5);
     let inH =
       floor(calcLayout.inHeight +. (calcLayout.pYOffset -. pYOff) +. 0.5);
+    let pW =
+      floor(calcLayout.pWidth +. (calcLayout.pXOffset -. pXOff) +. 0.5);
+    let pH =
+      floor(calcLayout.pHeight +. (calcLayout.pYOffset -. pYOff) +. 0.5);
     node.rect.x = pXOff;
     node.rect.y = pYOff;
     node.rect.w = inW;
@@ -2324,7 +2309,14 @@ let calcLayout = self => {
         let scaleY = inH /. vpHeight;
         let scale = Data.Mat3.scale(scaleX, scaleY);
         switch (node.drawToTexture, node.texTransUniform) {
-        | (Some(_texture), None) =>
+        | (Some(texture), None) =>
+          /* Ensuring texture has size to hold result */
+          Gpu.Texture.ensureSize(
+            texture,
+            self.canvas.context,
+            int_of_float(node.rect.w),
+            int_of_float(node.rect.h)
+          );
           /* Translate texture to begin from 0,0.
              The important thing is correspondance with texture
              uniforms below */
@@ -2337,19 +2329,15 @@ let calcLayout = self => {
            | None => failwith("Could not find texture size");
            };
            */
-          let texOffX = (-1.0) +. scaleX;
-          let texOffY = 1.0 -. scaleY;
-          let translate = Data.Mat3.trans(texOffX, texOffY);
-          let layoutMat = Data.Mat3.matmul(translate, scale);
+          let layoutMat = Data.Mat3.scaleTrans(1.0, 1.0, 0.0, 0.0);
           Gpu.Uniform.setMat3f(layoutUniform, layoutMat);
           if (debug) {
             Js.log2("Layout: ", layoutMat);
           };
-          let transX = (pXOff *. 2.0 +. inW) /. vpWidth -. 1.0;
-          let transY = (pYOff *. (-2.0) -. inH) /. vpHeight +. 1.0;
           /* Initiate parentTexTrans */
-          Some({nOffX: transX, nOffY: transY, texOffX, texOffY});
+          Some({nOffX: pXOff, nOffY: pYOff, texVpWidth: inW, texVpHeight: inH});
         | (None, _) =>
+          /* todo: case of None + texTransform */
           let transX = (pXOff *. 2.0 +. inW) /. vpWidth -. 1.0;
           let transY = (pYOff *. (-2.0) -. inH) /. vpHeight +. 1.0;
           let layoutMat =
@@ -2357,10 +2345,10 @@ let calcLayout = self => {
             | None => Data.Mat3.scaleTrans(scaleX, scaleY, transX, transY)
             | Some(pt) =>
               Data.Mat3.scaleTrans(
-                scaleX,
-                scaleY,
-                pt.texOffX +. transX -. pt.nOffX,
-                pt.texOffY +. transY -. pt.nOffY
+                inW /. pt.texVpWidth,
+                inH /. pt.texVpHeight,
+                ((pXOff -. pt.nOffX) *. 2.0 +. inW) /. pt.texVpWidth -. 1.0,
+                ((pYOff -. pt.nOffY) *. (-2.0) -. inH) /. pt.texVpHeight +. 1.0
               )
             };
           Gpu.Uniform.setMat3f(layoutUniform, layoutMat);
@@ -2368,21 +2356,25 @@ let calcLayout = self => {
             Js.log2("Layout: ", layoutMat);
           };
           parentDrawToTex;
-        | (Some(_texture), Some(texTransUniform)) =>
+        | (Some(texture), Some(texTransUniform)) =>
+          /* Ensuring texture has size to hold result */
+          Gpu.Texture.ensureSize(
+            texture,
+            self.canvas.context,
+            int_of_float(node.rect.w),
+            int_of_float(node.rect.h)
+          );
           /* First regular layout uniform */
           let transX = (pXOff *. 2.0 +. inW) /. vpWidth -. 1.0;
           let transY = (pYOff *. (-2.0) -. inH) /. vpHeight +. 1.0;
-          let translate = Data.Mat3.trans(transX, transY);
-          let layoutMat = Data.Mat3.matmul(translate, scale);
+          let layoutMat = Data.Mat3.scaleTrans(scaleX, scaleY, transX, transY);
           Gpu.Uniform.setMat3f(layoutUniform, layoutMat);
           /* texTransUniform */
-          let texOffX = (-1.0) +. scaleX;
-          let texOffY = 1.0 -. scaleY;
-          let translate =
-            Data.Mat3.trans(texOffX -. transX, texOffY -. transY);
-          Gpu.Uniform.setMat3f(texTransUniform, translate);
+          let texTrans = Data.Mat3.scaleTrans(1.0, 1.0, 0.0, 0.0);
+          Gpu.Uniform.setMat3f(texTransUniform, texTrans);
+          Js.log3("Textrans", layoutMat, texTrans);
           /* Initiate parent tex transform */
-          Some({nOffX: transX, nOffY: transY, texOffX, texOffY});
+          Some({nOffX: pXOff, nOffY: pYOff, texVpWidth: inW, texVpHeight: inH});
         };
       };
     switch node.pixelSizeUniform {
@@ -2408,11 +2400,23 @@ let calcLayout = self => {
             | Some(texNode) => texNode.updNode
             | None => failwith("Could not find texNode")
             };
+          /* todo: Can we be sure this is available?
+             It is currently resized in this traversal.
+             Alternatively loop through these
+             after layout + ensure layout is done */
+          let (texW, texH) =
+            switch (Gpu.Texture.getSize(nodeTex.texture)) {
+            | Some(wh) => wh
+            | None => failwith("Could not get size of texture")
+            };
           let scaleX = texNode.rect.w /. vpWidth /. 2.0;
           let scaleY = texNode.rect.h /. vpHeight /. 2.0;
           let scale = Data.Mat3.scale(scaleX, scaleY);
           let translate = Data.Mat3.trans(scaleX, 1.0 -. scaleY);
           let texMat = Data.Mat3.matmul(translate, scale);
+          let scaleX = texNode.rect.w /. float_of_int(texW) /. 2.0;
+          let scaleY = texNode.rect.h /. float_of_int(texH) /. 2.0;
+          let texMat = Data.Mat3.scaleTrans(scaleX, scaleY, scaleX, scaleY);
           Gpu.Uniform.setMat3f(uniform, texMat);
         | _ => ()
         },
@@ -2435,17 +2439,17 @@ let collectDeps = (scene, nodeIds, hiddenNodes) => {
     if (List.exists(hiddenId => hiddenId == node.id, hiddenNodes)) {
       list;
     } else {
-      /* Add deps and loop them */
+      /* Add deps */
       let list =
         List.fold_left(
-          (list, dep) => loop(dep, [dep.id, ...list]),
+          (list, dep) => [dep.id, ...list],
           list,
           node.deps
         );
       /* Traverse children */
       List.fold_left((list, child) => loop(child, list), list, node.children);
     };
-  List.fold_left(
+  List.rev(List.fold_left(
     (list, nodeId) => {
       let node =
         switch scene.updateNodes.data[nodeId] {
@@ -2456,7 +2460,7 @@ let collectDeps = (scene, nodeIds, hiddenNodes) => {
     },
     [],
     nodeIds
-  );
+  ))
 };
 
 /* Checks node and parents for hidden flag
@@ -2536,6 +2540,41 @@ let update = self => {
     List.iter(child => checkForCleanState(child), updNode.updChildren);
   };
   /* Ensure state is inited */
+  let rec initDeps = (nodeId, blackList) => {
+    let depIds = collectDeps(self, [nodeId], self.hiddenNodes);
+    List.iter(
+    depId =>
+        if (! Hashtbl.mem(self.initedDeps, depId)) {
+            Hashtbl.add(self.initedDeps, depId, true);
+            /* Recurse for deps of this dep */
+            initDeps(depId, []);
+            /* If dep is in list of update nodes, let other
+                drawlist include dep.
+                However, this will not work for deps of deps,
+                as they need to be loaded first */
+            if (! List.exists(nodeId => nodeId == depId, blackList)) {
+                switch self.updateNodes.data[depId] {
+                | Some(depNode) =>
+                let depDraws =
+                    createDrawList(self, [depId], depNode.updNode);
+                processDrawList(self, depDraws, false);
+                switch self.drawListsDebug {
+                | None => ()
+                | Some(_listsDebug) =>
+                    Js.log(
+                    "==\nDep drawlist: "
+                    ++ nodeDescrString(depNode.updNode)
+                    );
+                    logDrawList(self, updateState, depDraws);
+                    checkForCleanState(depNode);
+                };
+                | None => failwith("Could not find dep node")
+                };
+            };
+        },
+    depIds
+    );
+  };
   /* Both here and when creating drawList, we could
      use filtered list of visible nodes,
      but this is called 60 times a second so we don't want to
@@ -2545,40 +2584,7 @@ let update = self => {
       let visibleNodes =
         List.filter(nodeId => ! isNodeHidden(self, nodeId), updateNodes);
       Hashtbl.add(self.initedLists, updateState, true);
-      List.iter(
-        nodeId => {
-          let depIds = collectDeps(self, [nodeId], self.hiddenNodes);
-          List.iter(
-            depId =>
-              if (! Hashtbl.mem(self.initedDeps, depId)) {
-                Hashtbl.add(self.initedDeps, depId, true);
-                /* If dep is in list of update nodes, let other
-                   drawlist include dep */
-                if (! List.exists(nodeId => nodeId == depId, updateNodes)) {
-                  switch self.updateNodes.data[depId] {
-                  | Some(depNode) =>
-                    let depDraws =
-                      createDrawList(self, [depId], depNode.updNode);
-                    processDrawList(self, depDraws, false);
-                    switch self.drawListsDebug {
-                    | None => ()
-                    | Some(_listsDebug) =>
-                      Js.log(
-                        "==\nDep drawlist: "
-                        ++ nodeDescrString(depNode.updNode)
-                      );
-                      logDrawList(self, updateState, depDraws);
-                      checkForCleanState(depNode);
-                    };
-                  | None => failwith("Could not find dep node")
-                  };
-                };
-              },
-            depIds
-          );
-        },
-        visibleNodes
-      );
+      List.iter(nodeId => initDeps(nodeId, updateNodes), visibleNodes);
       Some(visibleNodes);
     } else {
       None;
@@ -2683,8 +2689,6 @@ let cleanUpDrawList = (scene, drawList) => {
 
 let doResize = scene => {
   let (width, height) = Gpu.Canvas.getViewportSize();
-  /* Todo: There is some bugs here, maybe we need some time after resize
-     before we should redraw background */
   Gpu.Canvas.resize(scene.canvas, width, height);
   /* Although rects are updated through calcLayout, we
      simply reset the drawList cache for some time.

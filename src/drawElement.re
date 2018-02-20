@@ -1,45 +1,108 @@
-let currElVertex = {|
+let lightBaseVert = {|
     precision mediump float;
     attribute vec2 position;
-    uniform vec2 translation;
     uniform mat3 layout;
-    varying vec2 vPosition;
+    uniform mat3 model;
     void main() {
-        // Doubled translation here for better precision
-        // Calibrated to not extend outside -1 to 1,
-        // it uses same code as board elements, just
-        // doing quick fix atleast for now.
-        vPosition = (position + translation / 2.0) * 0.75;
-        vec3 transformed = vec3(vPosition, 1.0) * layout;
-        gl_Position = vec4(transformed.xy, 0.0, 1.0);
+        vec2 pos = (vec3(position, 1.0) * model * layout).xy;
+        gl_Position = vec4(pos.xy, 0.0, 1.0);
     }
 |};
 
-let currElFragment = {|
+let lightBaseFrag = {|
     precision mediump float;
-    varying vec2 vPosition;
-
-    uniform vec3 elColor;
 
     void main() {
-        vec3 color = elColor * 0.8 + vec3(0.0, 0.0, 0.0) * 0.2;
-        gl_FragColor = vec4(color, 1.0);
+        gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
     }
 |};
 
-let makeNode = (elState: SceneState.elState, lighting) =>
-  SdfTiles.makeNode
-    (
-      2.0,
-      1.5,
-      lighting,
-      ~vo=elState.vo,
-      ~color=SdfNode.SdfDynColor(elState.color),
-      ~model=elState.pos,
-      ~margin=MarginXY(Scale(0.25), Scale(0.05)),
-      ~tileSpace=0.25,
-      ()
+let vertexSource = {|
+    precision mediump float;
+    attribute vec2 position;
+    uniform mat3 layout;
+    uniform mat3 lightMat;
+    varying vec2 lightUV;
+    uniform mat3 elMat;
+    varying vec2 elUV;
+    void main() {
+        lightUV = (vec3(position, 1.0) * lightMat).xy;
+        elUV = (vec3(position, 1.0) * elMat).xy;
+        vec2 pos = (vec3(position, 1.0) * layout).xy;
+        gl_Position = vec4(pos, 0.0, 1.0);
+    }
+|};
+
+let fragmentSource = {|
+    precision mediump float;
+    varying vec2 lightUV;
+    varying vec2 elUV;
+    uniform sampler2D light;
+    uniform sampler2D el;
+    uniform vec3 color;
+
+    void main() {
+      vec4 elColor = texture2D(el, elUV);
+      float light = texture2D(light, lightUV).x;
+      gl_FragColor = mix(vec4(color, light * 0.4), elColor, step(0.01, elColor.a));
+    }
+|};
+
+let makeNode = (elState: SceneState.elState, lighting) => {
+    let cols = 2.0;
+    let rows = 1.5;
+    let margin = Scene.MarginXY(Scale(0.25), Scale(0.05));
+    let toTex = Gpu.Texture.makeEmptyRgb();
+    let tempTex = Gpu.Texture.makeEmptyRgb();
+    let size = Scene.Aspect(cols /. rows);
+    let lightBaseNode = Scene.makeNode(
+        ~cls="lightBase",
+        ~vertShader=Gpu.Shader.make(lightBaseVert),
+        ~fragShader=Gpu.Shader.make(lightBaseFrag),
+        ~uniforms=[
+            ("model", elState.pos)
+        ],
+        ~vo=elState.vo,
+        ~partialDraw=true,
+        ~drawTo=Scene.TextureItem(toTex),
+        ~clearOnDraw=true,
+        ()
     );
+    let lightNode = Blur2.makeNode(
+        lightBaseNode,
+        toTex,
+        tempTex,
+        4.0,
+        4.0
+    );
+    let elNode = SdfTiles.makeNode
+    (
+        cols,
+        rows,
+        lighting,
+        ~vo=elState.vo,
+        ~color=SdfNode.SdfDynColor(elState.color),
+        ~model=elState.pos,
+        ~tileSpace=0.25,
+        ~drawTo=Scene.TextureRGBA,
+        ()
+    );
+    /*DrawTex.makeNode(lightNode, ())*/
+    Scene.makeNode(
+        ~vertShader=Gpu.Shader.make(vertexSource),
+        ~fragShader=Gpu.Shader.make(fragmentSource),
+        ~transparent=true,
+        ~size,
+        ~margin,
+        ~uniforms=[("color", elState.color)],
+        ~deps=[lightNode, elNode],
+        ~textures=[
+            ("light", Scene.SceneTex.node(lightNode)),
+            ("el", Scene.SceneTex.node(elNode)),
+        ],
+        ()
+    )
+};
     /*
      Scene.makeNode(
          ~cls="element",

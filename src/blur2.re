@@ -7,6 +7,8 @@ let blurVertex = {|
     varying vec2 origPos;
     varying vec2 texMax;
     varying vec2 texMin;
+    uniform vec2 pixelSize;
+    varying vec2 pSize;
     void main() {
         vPosition = position;
         vec2 pos = (vec3(position, 1.0) * layout).xy;
@@ -15,6 +17,8 @@ let blurVertex = {|
         texMax = (vec3(1.0, -1.0, 1.0) * origMat).xy;
         // Min left and top
         texMin = (vec3(-1.0, 1.0, 1.0) * origMat).xy;
+        float aspect = pixelSize.x / pixelSize.y;
+        pSize = vec2(texMax.x / 200.0 * aspect, texMin.y / 200.0);
         gl_Position = vec4(pos, 0.0, 1.0);
     }
 |};
@@ -28,6 +32,7 @@ let blurFragment = {|
 
     uniform float pDistance;
     uniform vec2 pixelSize;
+    varying vec2 pSize;
 
     uniform sampler2D orig;
 
@@ -74,9 +79,8 @@ let blurFragment = {|
     }
 
     void main() {
-        float aspect = pixelSize.x / pixelSize.y;
-        float pHeight = 0.002 * pDistance;
-        float pWidth = 0.002 * aspect * pDistance;
+        float pHeight = pSize.y * pDistance;
+        float pWidth = pSize.x * pDistance;
         float b = blurred(origPos, pHeight, pWidth);
         gl_FragColor = vec4(b, b, b, 1.0);
 
@@ -85,21 +89,22 @@ let blurFragment = {|
         float maxBottom = texMax.y - origPos.y;
         float maxRight = texMax.x - origPos.x;
         float maxTop = texMin.y - origPos.y;
-        gl_FragColor = vec4(maxLeft, maxBottom*-1., maxRight, 1.0);*/
+        gl_FragColor = vec4(maxLeft, maxBottom*-1., maxRight, 1.0);
+        */
         //gl_FragColor = vec4(texture2D(orig, origPos).x, 1.0, 0.0, 1.0);
     }
 |};
 
 open Gpu;
 
-let makeNode = (origNode, toTex, tempTex) => {
+let makeNode = (origNode, toTex, tempTex, step1, step2) => {
   /* First blur */
   let blur1 =
     Scene.makeNode(
-      ~key="blur1",
+      ~cls="blur1",
       ~vertShader=Shader.make(blurVertex),
       ~fragShader=Shader.make(blurFragment),
-      ~uniforms=[("pDistance", Scene.UFloat.make(4.0))],
+      ~uniforms=[("pDistance", Scene.UFloat.make(step1))],
       ~pixelSizeUniform=true,
       ~textures=[("orig", Scene.SceneTex.node(origNode))],
       ~drawTo=Scene.TextureItem(tempTex),
@@ -108,10 +113,10 @@ let makeNode = (origNode, toTex, tempTex) => {
     );
   /* Second blur */
   Scene.makeNode(
-    ~key="blur2",
+    ~cls="blur2",
     ~vertShader=Shader.make(blurVertex),
     ~fragShader=Shader.make(blurFragment),
-    ~uniforms=[("pDistance", Scene.UFloat.make(1.0))],
+    ~uniforms=[("pDistance", Scene.UFloat.make(step2))],
     ~pixelSizeUniform=true,
     ~textures=[("orig", Scene.SceneTex.node(blur1))],
     ~drawTo=Scene.TextureItem(toTex),

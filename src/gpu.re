@@ -1246,7 +1246,7 @@ module Canvas = {
             };
             Texture.updateGpuData(pInit.texture);
           };
-          pInit;
+          pInit
         },
         textures
       );

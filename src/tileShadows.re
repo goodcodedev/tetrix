@@ -52,5 +52,5 @@ let makeNode = tilesTex => {
       ~drawTo=Scene.TextureItem(toTex),
       ()
     );
-  Blur2.makeNode(unblurred, toTex, tempTex);
+  Blur2.makeNode(unblurred, toTex, tempTex, 4.0, 4.0);
 };

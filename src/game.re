@@ -282,12 +282,12 @@ module ElQueue = {
     let (posX, posY) =
       switch elData.el {
       | Cube => (middleX + 1, 3)
-      | Line => (middleX + 1, 2)
-      | Triangle => (middleX, 3)
+      | Line => (middleX + 1, 3)
+      | Triangle => (middleX, 4)
       | RightTurn => (middleX, 4)
       | LeftTurn => (middleX, 4)
-      | LeftL => (middleX, 3)
-      | RightL => (middleX, 3)
+      | LeftL => (middleX, 4)
+      | RightL => (middleX, 4)
       };
     {...elData, posX, posY};
   };
@@ -331,6 +331,7 @@ let nextEl = state => {
     holdingEl: None,
     elChanged: true,
     elMoved: true,
+    lastTick: state.curTime,
     curEl: ElQueue.setBoardInitPos(next)
   };
 };
