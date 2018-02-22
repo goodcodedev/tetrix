@@ -89,7 +89,8 @@ type t('s) = {
      requested to be precreated
      todo: Consider frame interval
      (look at benchmarks for creation) */
-  mutable queuedDrawStates: list(node('s))
+  mutable queuedDrawStates: list(node('s)),
+  initQueuedDrawState: bool
 }
 and drawListDebug('s) = {draw: DrawListDebug.t}
 and updateState = {
@@ -704,36 +705,36 @@ let makeNode =
   };
 };
 
-let setNodeParentsSceneKeyCls = self => {
+let setNodeParentsSceneKeyCls = scene => {
   let rec loop = (node, parent) => {
     node.parent = parent;
-    node.scene = Some(self);
+    node.scene = Some(scene);
     switch node.key {
     | None => ()
     | Some(key) =>
-      if (Hashtbl.mem(self.nodesByKey, key)) {
+      if (Hashtbl.mem(scene.nodesByKey, key)) {
         failwith("Node with key already exist: " ++ key);
       } else {
-        Hashtbl.add(self.nodesByKey, key, node);
+        Hashtbl.add(scene.nodesByKey, key, node);
       }
     };
     switch node.cls {
     | None => ()
     | Some(cls) =>
-      if (Hashtbl.mem(self.nodesByCls, cls)) {
-        let current = Hashtbl.find(self.nodesByCls, cls);
-        Hashtbl.replace(self.nodesByCls, cls, [node, ...current]);
+      if (Hashtbl.mem(scene.nodesByCls, cls)) {
+        let current = Hashtbl.find(scene.nodesByCls, cls);
+        Hashtbl.replace(scene.nodesByCls, cls, [node, ...current]);
       } else {
-        Hashtbl.add(self.nodesByCls, cls, [node]);
+        Hashtbl.add(scene.nodesByCls, cls, [node]);
       }
     };
     List.iter(dep => loop(dep, Some(node)), node.deps);
     List.iter(child => loop(child, Some(node)), node.children);
   };
-  loop(self.root, None);
+  loop(scene.root, None);
 };
 
-let make = (canvas, state, root, ~drawListDebug=false, ()) => {
+let make = (canvas, state, root, ~drawListDebug=false, ~initQueuedDrawState=true, ()) => {
   let drawListsDebug =
     switch drawListDebug {
     | false => None
@@ -758,7 +759,8 @@ let make = (canvas, state, root, ~drawListDebug=false, ()) => {
     updateNodes: ArrayB.make(None),
     updateRoot: None,
     hiddenNodes: [],
-    queuedDrawStates: []
+    queuedDrawStates: [],
+    initQueuedDrawState
   };
   setNodeParentsSceneKeyCls(scene);
   scene;
@@ -997,9 +999,9 @@ let initSceneProgram = (scene, sceneP : sceneProgram) => {
    sceneProgram, and some from the node. This
    is implemented by weaving some resources from
    sceneProgramInited into uniforms etc here */
-let createProgramDrawState = (self, node, program : sceneProgram) => {
-    let pInited = initSceneProgram(self, program);
-    let context = self.canvas.context;
+let createProgramDrawState = (scene, node, program : sceneProgram) => {
+    let pInited = initSceneProgram(scene, program);
+    let context = scene.canvas.context;
     /* List of regular/custom uniforms */
     /* todo: decouple program from uniforms? */
     let (_, uniforms) = 
@@ -1108,7 +1110,7 @@ let createProgramDrawState = (self, node, program : sceneProgram) => {
       );
 };
 
-let createNodeDrawState = (self, node) => {
+let createNodeDrawState = (scene, node) => {
     let texNames = List.fold_left(
       (texNames, name) => {
         let nodeTex = Hashtbl.find(node.textures, name);
@@ -1168,7 +1170,7 @@ let createNodeDrawState = (self, node) => {
   node.drawState =
     Some(
       Gpu.DrawState.init(
-        self.canvas.context,
+        scene.canvas.context,
         Gpu.Program.make(vertShader, fragShader, uniforms),
         vBuffer,
         iBuffer,
@@ -1191,7 +1193,7 @@ let createDrawState = (scene, node) => {
    Consider heuristics for what is
    likely to be needed next. Probably the lowest
    level nodes are likely to be needed */
-let queueDrawStates = self => {
+let queueDrawStates = scene => {
   let rec loop = (node, list) => {
     let list = List.fold_left((list, child) => loop(child, list), list, node.children);
     let list = List.fold_left((list, dep) => loop(dep, list), list, node.deps);
@@ -1201,7 +1203,7 @@ let queueDrawStates = self => {
         list
     }
   };
-  self.queuedDrawStates = loop(self.root, []);
+  scene.queuedDrawStates = loop(scene.root, []);
 };
 
 let queueUpdates = (scene, nodes) =>
@@ -2063,16 +2065,16 @@ let createDrawList = (scene, updateNodes, updRoot) => {
   List.rev(drawList);
 };
 
-let getFBuffer = (self, config: fbufferConfig) =>
-  if (Hashtbl.mem(self.fbuffer, config)) {
-    Hashtbl.find(self.fbuffer, config);
+let getFBuffer = (scene, config: fbufferConfig) =>
+  if (Hashtbl.mem(scene.fbuffer, config)) {
+    Hashtbl.find(scene.fbuffer, config);
   } else {
     let fbuffer =
       Gpu.FrameBuffer.init(
         Gpu.FrameBuffer.make(config.width, config.height),
-        self.canvas.context
+        scene.canvas.context
       );
-    Hashtbl.add(self.fbuffer, config, fbuffer);
+    Hashtbl.add(scene.fbuffer, config, fbuffer);
     fbuffer;
   };
 
@@ -2090,7 +2092,7 @@ type drawListState = {
     mutable drawToStack: list(drawListDrawTo)
 };
 
-let bindDrawTexture = (self, node, dlState) =>
+let bindDrawTexture = (scene, node, dlState) =>
   switch node.drawToTexture {
   | Some(texture) =>
     /* If any active drawTo, put in stack */
@@ -2100,9 +2102,9 @@ let bindDrawTexture = (self, node, dlState) =>
         dlState.drawToStack = [drawTo, ...dlState.drawToStack];
     };
     let config = {width: 1024, height: 1024};
-    let fbuffer = getFBuffer(self, config);
+    let fbuffer = getFBuffer(scene, config);
     Gpu.FrameBuffer._bindFramebuffer(
-      ~context=self.canvas.context,
+      ~context=scene.canvas.context,
       Gpu.FrameBuffer.frameBufferC,
       Js.Nullable.return(fbuffer.frameBufferRef)
     );
@@ -2111,16 +2113,16 @@ let bindDrawTexture = (self, node, dlState) =>
     let dtWidth = int_of_float(node.rect.w);
     let dtHeight = int_of_float(node.rect.h);
      Reasongl.Gl.viewport(
-         ~context=self.canvas.context,
+         ~context=scene.canvas.context,
          ~x=0,
          ~y=0,
          ~width=dtWidth,
          ~height=dtHeight
      );
-    Gpu.FrameBuffer.bindTexture(fbuffer, self.canvas.context, texture);
+    Gpu.FrameBuffer.bindTexture(fbuffer, scene.canvas.context, texture);
     if (node.clearOnDraw) {
       /* Alpha channel should maybe only cleared on rgba */
-      Gpu.Canvas.clear(self.canvas, 0.0, 0.0, 0.0, 0.0);
+      Gpu.Canvas.clear(scene.canvas, 0.0, 0.0, 0.0, 0.0);
     };
     dlState.activeDrawTo = Some({
         dtFbuffer: fbuffer,
@@ -2133,36 +2135,36 @@ let bindDrawTexture = (self, node, dlState) =>
     switch (debugBuffered, node.key, node.cls) {
     | (Some(d), Some(k), _) when k == d =>
       [%debugger];
-      Gpu.Canvas.clearFramebuffer(self.canvas);
+      Gpu.Canvas.clearFramebuffer(scene.canvas);
     | (Some(d), _, Some(k)) when k == d =>
       [%debugger];
-      Gpu.Canvas.clearFramebuffer(self.canvas);
+      Gpu.Canvas.clearFramebuffer(scene.canvas);
     | _ => ()
     };
   | None => failwith("Node is not drawToTexture")
   };
 
-let unbindDrawTexture = (self, dlState) => {
+let unbindDrawTexture = (scene, dlState) => {
   switch dlState.drawToStack {
   | [] =>
     dlState.activeDrawTo = None;
     Gpu.Canvas.clearFramebuffer
-      (self.canvas);
+      (scene.canvas);
     /* Possibly unneccesary */
     Reasongl.Gl.viewport(
-        ~context=self.canvas.context,
+        ~context=scene.canvas.context,
         ~x=0,
         ~y=0,
-        ~width=self.canvas.width,
-        ~height=self.canvas.height
+        ~width=scene.canvas.width,
+        ~height=scene.canvas.height
     );
   | [{dtFbuffer, dtTexture, dtWidth, dtHeight} as prevActive, ...rest] =>
-    Gpu.FrameBuffer.bindTexture(dtFbuffer, self.canvas.context, dtTexture);
-    Gpu.Canvas.setFramebuffer(self.canvas, dtFbuffer);
+    Gpu.FrameBuffer.bindTexture(dtFbuffer, scene.canvas.context, dtTexture);
+    Gpu.Canvas.setFramebuffer(scene.canvas, dtFbuffer);
     dlState.drawToStack = rest;
     dlState.activeDrawTo = Some(prevActive);
     Reasongl.Gl.viewport(
-        ~context=self.canvas.context,
+        ~context=scene.canvas.context,
         ~x=0,
         ~y=0,
         ~width=dtWidth,
@@ -2171,12 +2173,12 @@ let unbindDrawTexture = (self, dlState) => {
   };
 };
 
-let draw = (self, node) =>
+let draw = (scene, node) =>
   switch node.drawState {
   | Some(drawState) =>
     switch node.elapsedUniform {
     | Some(elapsedUniform) =>
-      Gpu.Uniform.setFloat(elapsedUniform, self.canvas.elapsed)
+      Gpu.Uniform.setFloat(elapsedUniform, scene.canvas.elapsed)
     | None => ()
     };
     let isDebug =
@@ -2189,7 +2191,7 @@ let draw = (self, node) =>
       [%debugger];
     };
     if (node.transparent) {
-      let context = self.canvas.context;
+      let context = scene.canvas.context;
       Gpu.glEnable(context, Gpu.Constants.blend);
       let nodeFactor =
         switch (node.blendFactor) {
@@ -2201,14 +2203,14 @@ let draw = (self, node) =>
         nodeFactor,
         Gpu.Constants.one_minus_src_alpha
       );
-      Gpu.DrawState.draw(drawState, self.canvas);
+      Gpu.DrawState.draw(drawState, scene.canvas);
       Gpu.glDisable(context, Gpu.Constants.blend);
     } else if (isDebug) {
-      Gpu.DrawState.draw(drawState, self.canvas);
-      Gpu.Canvas.clearFramebuffer(self.canvas);
-      Gpu.DrawState.draw(drawState, self.canvas);
+      Gpu.DrawState.draw(drawState, scene.canvas);
+      Gpu.Canvas.clearFramebuffer(scene.canvas);
+      Gpu.DrawState.draw(drawState, scene.canvas);
     } else {
-      Gpu.DrawState.draw(drawState, self.canvas);
+      Gpu.DrawState.draw(drawState, scene.canvas);
     };
   | None => failwith("Drawstate not found")
   };
@@ -2367,9 +2369,9 @@ let getSceneNodesToUpdate = (animIds, root) => {
   loop(root, [], false);
 };
 
-let getNode = (self, key) =>
-  if (Hashtbl.mem(self.nodesByKey, key)) {
-    Some(Hashtbl.find(self.nodesByKey, key));
+let getNode = (scene, key) =>
+  if (Hashtbl.mem(scene.nodesByKey, key)) {
+    Some(Hashtbl.find(scene.nodesByKey, key));
   } else {
     None;
   };
@@ -2419,11 +2421,11 @@ type parentDrawToTex = {
 };
 
 /* Todo: More just in time, and fine grained updates */
-let calcLayout = self => {
+let calcLayout = scene => {
   let debug = false;
   /* These are assumed "ints"/rounded */
-  let vpWidth = float_of_int(self.canvas.width);
-  let vpHeight = float_of_int(self.canvas.height);
+  let vpWidth = float_of_int(scene.canvas.width);
+  let vpHeight = float_of_int(scene.canvas.height);
   let calcMargins = (node, outerWidth, outerHeight) => {
     /* Calc margins. Not sure how best to handle
        all cases. Aspect I guess should be kept
@@ -2894,7 +2896,7 @@ let calcLayout = self => {
           /* Ensuring texture has size to hold result */
           Gpu.Texture.ensureSize(
             texture,
-            self.canvas.context,
+            scene.canvas.context,
             int_of_float(node.rect.w),
             int_of_float(node.rect.h)
           );
@@ -2941,7 +2943,7 @@ let calcLayout = self => {
           /* Ensuring texture has size to hold result */
           Gpu.Texture.ensureSize(
             texture,
-            self.canvas.context,
+            scene.canvas.context,
             int_of_float(node.rect.w),
             int_of_float(node.rect.h)
           );
@@ -2978,7 +2980,7 @@ let calcLayout = self => {
         switch nodeTex.texNode {
         | Some(texNode) =>
           let texNode =
-            switch self.updateNodes.data[texNode] {
+            switch scene.updateNodes.data[texNode] {
             | Some(texNode) => texNode.updNode
             | None => failwith("Could not find texNode")
             };
@@ -3004,10 +3006,10 @@ let calcLayout = self => {
     Js.log2("vpWidth", vpWidth);
     Js.log2("vpHeight", vpHeight);
   };
-  calcNodeDimensions(self.root, vpWidth, vpHeight);
-  self.root.calcLayout.pXOffset = 0.0;
-  self.root.calcLayout.pYOffset = 0.0;
-  calcNodeLayout(self.root, None);
+  calcNodeDimensions(scene.root, vpWidth, vpHeight);
+  scene.root.calcLayout.pXOffset = 0.0;
+  scene.root.calcLayout.pYOffset = 0.0;
+  calcNodeLayout(scene.root, None);
 };
 
 /* Returns list of dep node ids */
@@ -3064,43 +3066,43 @@ let isNodeHidden = (scene, nodeId) => {
 
 /* Creates a drawList that shows which
    areas are updating */
-let update = self => {
+let update = scene => {
   /* Anims */
   let rec doAnims = anims =>
     switch anims {
     | [] => []
     | [anim, ...rest] =>
-      anim.elapsed = anim.elapsed +. self.canvas.deltaTime;
+      anim.elapsed = anim.elapsed +. scene.canvas.deltaTime;
       if (anim.frameInterval == 1) {
-        [@bs] anim.onFrame(self, anim);
+        [@bs] anim.onFrame(scene, anim);
       } else if (anim.numFrames mod anim.frameInterval == 0) {
-        [@bs] anim.onFrame(self, anim);
+        [@bs] anim.onFrame(scene, anim);
       };
       anim.numFrames = anim.numFrames + 1;
       if (anim.elapsed >= anim.duration) {
-        [@bs] anim.setLast(self);
+        [@bs] anim.setLast(scene);
         /* Probably this should be done after update, between frames */
         switch (anim.onDone) {
         | None => ()
-        | Some(onDone) => onDone(self);
+        | Some(onDone) => onDone(scene);
         };
         doAnims(rest);
       } else {
         [anim, ...doAnims(rest)];
       };
     };
-  self.anims = doAnims(self.anims);
+  scene.anims = doAnims(scene.anims);
   /* Queued nodes, these are queued because of
      updates in uniforms, vertices or textures */
   let updateNodes =
-    List.sort_uniq((a, b) => a < b ? (-1) : a > b ? 1 : 0, self.queuedUpdates);
+    List.sort_uniq((a, b) => a < b ? (-1) : a > b ? 1 : 0, scene.queuedUpdates);
   /* todo: Consider filtering hidden node ids.
      Those hidden may be hidden below another hidden node,
      requiring some traversal. Maybe a cache could be used,
      maybe it's not so bad as the list should be similar
      when things update anyway, and drawlist is cached */
-  self.queuedUpdates = [];
-  let updateState = {updateNodes, hiddenNodes: self.hiddenNodes};
+  scene.queuedUpdates = [];
+  let updateState = {updateNodes, hiddenNodes: scene.hiddenNodes};
   /* Debug function to ensure state is reset after processing of tree */
   let rec checkForCleanState = updNode => {
     if (updNode.update || updNode.childUpdate) {
@@ -3125,11 +3127,11 @@ let update = self => {
   };
   /* Ensure state is inited */
   let rec initDeps = (nodeId, blackList) => {
-    let depIds = collectDeps(self, [nodeId], self.hiddenNodes);
+    let depIds = collectDeps(scene, [nodeId], scene.hiddenNodes);
     List.iter(
     depId =>
-        if (! Hashtbl.mem(self.initedDeps, depId)) {
-            Hashtbl.add(self.initedDeps, depId, true);
+        if (! Hashtbl.mem(scene.initedDeps, depId)) {
+            Hashtbl.add(scene.initedDeps, depId, true);
             /* Recurse for deps of this dep */
             initDeps(depId, []);
             /* If dep is in list of update nodes, let other
@@ -3137,19 +3139,19 @@ let update = self => {
                 However, this will not work for deps of deps,
                 as they need to be loaded first */
             if (! List.exists(nodeId => nodeId == depId, blackList)) {
-                switch self.updateNodes.data[depId] {
+                switch scene.updateNodes.data[depId] {
                 | Some(depNode) =>
                 let depDraws =
-                    createDrawList(self, [depId], depNode.updNode);
-                processDrawList(self, depDraws, false);
-                switch self.drawListsDebug {
+                    createDrawList(scene, [depId], depNode.updNode);
+                processDrawList(scene, depDraws, false);
+                switch scene.drawListsDebug {
                 | None => ()
                 | Some(_listsDebug) =>
                     Js.log(
                     "==\nDep drawlist: "
                     ++ nodeDescr(depNode.updNode)
                     );
-                    logDrawList(self, updateState, depDraws);
+                    logDrawList(scene, updateState, depDraws);
                     checkForCleanState(depNode);
                 };
                 | None => failwith("Could not find dep node")
@@ -3164,10 +3166,10 @@ let update = self => {
      but this is called 60 times a second so we don't want to
      do it when uneccesary, so we keep an option around */
   let visibleNodes =
-    if (! Hashtbl.mem(self.initedLists, updateState)) {
+    if (! Hashtbl.mem(scene.initedLists, updateState)) {
       let visibleNodes =
-        List.filter(nodeId => ! isNodeHidden(self, nodeId), updateNodes);
-      Hashtbl.add(self.initedLists, updateState, true);
+        List.filter(nodeId => ! isNodeHidden(scene, nodeId), updateNodes);
+      Hashtbl.add(scene.initedLists, updateState, true);
       List.iter(nodeId => initDeps(nodeId, updateNodes), visibleNodes);
       Some(visibleNodes);
     } else {
@@ -3175,55 +3177,55 @@ let update = self => {
     };
   /*
    Js.log2("== Drawing", List.fold_left((str, id) => {
-       switch (self.updateNodes.data[id]) {
+       switch (scene.updateNodes.data[id]) {
        | Some(node) => str ++ ", " ++ node.updNode.key
        | None => str
        }
    }, "", updateState.updateNodes));*/
-  if (! Hashtbl.mem(self.drawLists, updateState)) {
+  if (! Hashtbl.mem(scene.drawLists, updateState)) {
     let visibleNodes =
       switch visibleNodes {
       | None =>
-        List.filter(nodeId => ! isNodeHidden(self, nodeId), updateNodes)
+        List.filter(nodeId => ! isNodeHidden(scene, nodeId), updateNodes)
       | Some(visibleNodes) => visibleNodes
       };
-    let drawList = createDrawList(self, visibleNodes, self.root);
-    Hashtbl.add(self.drawLists, updateState, drawList);
-    switch self.drawListsDebug {
+    let drawList = createDrawList(scene, visibleNodes, scene.root);
+    Hashtbl.add(scene.drawLists, updateState, drawList);
+    switch scene.drawListsDebug {
     | None => ()
     | Some(_listsDebug) =>
-      logDrawList(self, updateState, Hashtbl.find(self.drawLists, updateState))
+      logDrawList(scene, updateState, Hashtbl.find(scene.drawLists, updateState))
     };
   };
   /* Check if any node in loadingNodes is loaded */
   let (newList, loaded) =
-    List.partition(node => node.loading, self.loadingNodes);
-  self.loadingNodes = newList;
+    List.partition(node => node.loading, scene.loadingNodes);
+  scene.loadingNodes = newList;
   if (List.length(loaded) > 0) {
     let loadedIds =
       List.map(
         node => {
           switch node.onUpdate {
-          | Some(update) => [@bs] update(node, self.state)
+          | Some(update) => [@bs] update(node, scene.state)
           | None => ()
           };
           node.id;
         },
         loaded
       );
-    let drawList = createDrawList(self, loadedIds, self.root);
+    let drawList = createDrawList(scene, loadedIds, scene.root);
     /* Drawing loaded nodes in a special drawlist
        The loaded node will redraw if they are
        in the main drawlist anyway, todo */
-    processDrawList(self, drawList, false);
+    processDrawList(scene, drawList, false);
   };
   /* todo: possibly optimize with a second transformed data structure
      so the drawstate etc is readily available */
-  processDrawList(self, Hashtbl.find(self.drawLists, updateState), false);
-  switch self.drawListsDebug {
+  processDrawList(scene, Hashtbl.find(scene.drawLists, updateState), false);
+  switch scene.drawListsDebug {
   | None => ()
   | Some(_) =>
-    switch self.updateNodes.data[self.root.id] {
+    switch scene.updateNodes.data[scene.root.id] {
     | None => ()
     | Some(updRoot) => checkForCleanState(updRoot)
     };
@@ -3231,23 +3233,22 @@ let update = self => {
        draws and repaint with each debugNode knowing how long
        since last paint, and maybe setting alpha
        based on it */
-    let context = self.canvas.context;
+    let context = scene.canvas.context;
     Gpu.glEnable(context, Gpu.Constants.blend);
     Gpu.glBlendFunc(
       context,
       Gpu.Constants.src_alpha,
       Gpu.Constants.one_minus_src_alpha
     );
-    processDrawList(self, Hashtbl.find(self.drawLists, updateState), true);
+    processDrawList(scene, Hashtbl.find(scene.drawLists, updateState), true);
     Gpu.glDisable(context, Gpu.Constants.blend);
   };
   /* Check for queued drawStates and process if there are */
-  switch self.queuedDrawStates {
+  switch scene.queuedDrawStates {
   | [] => ()
   | [next, ...rest] =>
-    Js.log("Creating for " ++ nodeDescr(next));
-    self.queuedDrawStates = rest;
-    createDrawState(self, next);
+    scene.queuedDrawStates = rest;
+    createDrawState(scene, next);
   };
 };
 
@@ -3325,6 +3326,9 @@ let run =
           /* Create updateNodes */
           queueUpdates(scene, [scene.root.id]);
           update(scene);
+          if (scene.initQueuedDrawState) {
+            queueDrawStates(scene);
+          };
           scene.inited = true;
         };
         userState := draw(userState^, scene, canvas);
