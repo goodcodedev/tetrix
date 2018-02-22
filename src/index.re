@@ -438,6 +438,7 @@ let createScene = (canvas, state) => {
       ()
     );
   Scene.doAnim(scene, anim);
+  Scene.queueDrawStates(scene);
   scene;
 };
 

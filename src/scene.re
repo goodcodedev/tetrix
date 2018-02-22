@@ -84,7 +84,12 @@ type t('s) = {
      array is sized to cover all nodes */
   updateNodes: ArrayB.t(option(updateListNode('s))),
   mutable updateRoot: option(updateListNode('s)),
-  mutable hiddenNodes: list(int)
+  mutable hiddenNodes: list(int),
+  /* Queue for uncreated drawstates that are
+     requested to be precreated
+     todo: Consider frame interval
+     (look at benchmarks for creation) */
+  mutable queuedDrawStates: list(node('s))
 }
 and drawListDebug('s) = {draw: DrawListDebug.t}
 and updateState = {
@@ -236,6 +241,7 @@ and anim('s) = {
   animKey: option(string),
   onFrame: [@bs] ((t('s), anim('s)) => unit),
   setLast: [@bs] (t('s) => unit),
+  onDone: option(t('s) => unit),
   duration: float,
   mutable elapsed: float,
   frameInterval: int,
@@ -751,10 +757,451 @@ let make = (canvas, state, root, ~drawListDebug=false, ()) => {
     stencilDraw: StencilDraw.make(canvas),
     updateNodes: ArrayB.make(None),
     updateRoot: None,
-    hiddenNodes: []
+    hiddenNodes: [],
+    queuedDrawStates: []
   };
   setNodeParentsSceneKeyCls(scene);
   scene;
+};
+
+let nodeDescr = node =>
+  switch node.key {
+  | Some(key) => key ++ " id:" ++ string_of_int(node.id)
+  | None =>
+    switch node.cls {
+    | Some(cls) => "cls: " ++ cls ++ " id:" ++ string_of_int(node.id)
+    | None => "id:" ++ string_of_int(node.id)
+    }
+  };
+
+let nodeIdDescr = (scene, nodeId) =>
+  switch scene.updateNodes.data[nodeId] {
+  | Some(n) => nodeDescr(n.updNode)
+  | None => failwith("Could not find node with id: " ++ string_of_int(nodeId))
+  };
+
+let createDrawStateUniforms =
+    (
+        texMats,
+        elapsedUniform,
+        pixelSizeUniform,
+        layoutUniform,
+        texTransUniform,
+        customUniforms
+    ) => {
+  /* Texture uniforms */
+  let uniforms =
+    List.fold_left(
+      (uniforms, (name, uniform)) => {
+          [
+            Gpu.Uniform.make(name ++ "Mat", uniform),
+            ...uniforms
+          ]
+      },
+      [],
+      texMats
+    );
+  /* Elapsed uniform */
+  let uniforms =
+    switch elapsedUniform {
+    | Some(elapsedUniform) => [
+        Gpu.Uniform.make("elapsedScene", elapsedUniform),
+        ...uniforms
+      ]
+    | None => uniforms
+    };
+  /* PixelSize uniform */
+  let uniforms =
+    switch pixelSizeUniform {
+    | Some(pixelSizeUniform) => [
+        Gpu.Uniform.make("pixelSize", pixelSizeUniform),
+        ...uniforms
+      ]
+    | None => uniforms
+    };
+  /* Layout uniform */
+  let uniforms =
+    switch layoutUniform {
+    | Some(layoutUniform) => [
+        Gpu.Uniform.make("layout", layoutUniform),
+        ...uniforms
+      ]
+    | None => uniforms
+    };
+  /* TexTrans uniform */
+  let uniforms =
+    switch texTransUniform {
+    | Some(texTransUniform) => [
+        Gpu.Uniform.make("texTrans", texTransUniform),
+        ...uniforms
+      ]
+    | None => uniforms
+    };
+  let uniforms =
+    Array.of_list(List.append(uniforms, customUniforms));
+    uniforms
+};
+
+let initSceneProgram = (scene, sceneP : sceneProgram) => {
+    switch sceneP.inited {
+    | Some(inited) => inited
+    | None =>
+        let context = scene.canvas.context;
+        /* Custom uniforms */
+        let uniforms =
+          List.map(
+            (key) => {
+                if (Hashtbl.mem(sceneP.defaultUniforms, key)) {
+                    let sceneU = Hashtbl.find(sceneP.defaultUniforms, key);
+                    Gpu.Uniform.make(key, sceneU.uniform)
+                } else if (Hashtbl.mem(sceneP.requiredUniforms, key)) {
+                    /* Locs from these will be weaved into uniforms
+                       provided by nodes */
+                    /* Slightly uneccesary to wrap this in Uniform.t */
+                    let reqType = Hashtbl.find(sceneP.requiredUniforms, key);
+                    Gpu.Uniform.make(key, Gpu.Uniform.makeValRefFromType(reqType))
+                } else {
+                    failwith("Could not find uniform from list key")
+                }
+            },
+            sceneP.uniformList
+          );
+        let program =
+            Gpu.Program.make(
+                sceneP.vertShader,
+                sceneP.fragShader,
+                Array.of_list(uniforms)
+            );
+        let iProgram =
+          switch (Gpu.Program.init(
+                program,
+                context
+            )) {
+            | Some(iProgram) => iProgram
+            | None => failwith("Could not init program")
+        };
+        /* Texture uniform locations of all, both default and required, textures */
+        let iTextureU = Hashtbl.create(List.length(sceneP.textureList));
+        /* Initialized default textures */
+        let iTexture = Hashtbl.create(Hashtbl.length(sceneP.defaultTextures));
+        /* Texture mat uniforms
+           (has some redundant space since some dont have mat
+           Could maybe collect list, then create hashtbl,
+           not sure if it's worth it) */
+        let iTextureMat = Hashtbl.create(List.length(sceneP.textureList));
+        Hashtbl.iter(
+            (key, (sceneTex, progTex)) => {
+                let iTex = Gpu.ProgramTexture.init(progTex, context, iProgram.programRef);
+                Hashtbl.add(
+                    iTexture,
+                    key,
+                    iTex
+                );
+                Hashtbl.add(
+                    iTextureU,
+                    key,
+                    iTex.uniformRef
+                );
+                switch (sceneTex.uniformMat) {
+                | None => ()
+                | Some(_) =>
+                    Hashtbl.add(
+                        iTextureMat,
+                        key,
+                        Gpu.Uniform.initLoc(
+                            context,
+                            iProgram.programRef,
+                            key ++ "Mat"
+                        )
+                    );
+                };
+            },
+            sceneP.defaultTextures
+        );
+        Hashtbl.iter(
+            (key, requireMat) => {
+                Hashtbl.add(
+                    iTextureU,
+                    key,
+                    Gpu.ProgramTexture.initRef(key, context, iProgram.programRef)
+                );
+                if (requireMat) {
+                    Hashtbl.add(
+                        iTextureMat,
+                        key,
+                        Gpu.Uniform.initLoc(
+                            context,
+                            iProgram.programRef,
+                            key ++ "Mat"
+                        )
+                    );
+                };
+            },
+            sceneP.requiredTextures
+        );
+        let layoutUniform =
+            if (sceneP.layoutUniform) {
+                Some(Gpu.Uniform.initLoc(context, iProgram.programRef, "layout"))
+            } else {
+                None
+            };
+        let pixelSizeUniform =
+            if (sceneP.layoutUniform) {
+                Some(Gpu.Uniform.initLoc(context, iProgram.programRef, "pixelSize"))
+            } else {
+                None
+            };
+        let elapsedUniform =
+            if (sceneP.layoutUniform) {
+                Some(Gpu.Uniform.initLoc(context, iProgram.programRef, "elapsed"))
+            } else {
+                None
+            };
+        let texTransUniform =
+            if (sceneP.layoutUniform) {
+                Some(Gpu.Uniform.initLoc(context, iProgram.programRef, "texTrans"))
+            } else {
+                None
+            };
+        let (iAttribs, iVo) = switch (sceneP.vo, sceneP.attribs) {
+        | (Some(vo), None) =>
+            let iVertices = Gpu.VertexBuffer.init(vo.vertexBuffer, context, iProgram.programRef);
+            let iIndices = switch (vo.indexBuffer) {
+            | Some(indices) => Some(Gpu.IndexBuffer.init(indices, context))
+            | None => None
+            };
+            (iVertices.attribs, Some((iVertices, iIndices)))
+        | (None, Some(attribs)) =>
+            (Gpu.VertexBuffer.initAttribs(Array.of_list(attribs), context, iProgram.programRef), None)
+        | (Some(_), Some(_)) => failwith("Both vo and attribs provided to program")
+        | (None, None) => failwith("Neither vo nor attribs provided to program")
+        };
+        {
+            iProgram,
+            iTexture,
+            iTextureU,
+            iTextureMat,
+            iAttribs,
+            iVo,
+            layoutUniform,
+            pixelSizeUniform,
+            elapsedUniform,
+            texTransUniform
+        }
+    }
+};
+
+/* Creates a drawState for a node which has a sceneProgram,
+   the drawState contains uniform refs from sceneProgram,
+   may have some resources, textures and buffers, from 
+   sceneProgram, and some from the node. This
+   is implemented by weaving some resources from
+   sceneProgramInited into uniforms etc here */
+let createProgramDrawState = (self, node, program : sceneProgram) => {
+    let pInited = initSceneProgram(self, program);
+    let context = self.canvas.context;
+    /* List of regular/custom uniforms */
+    /* todo: decouple program from uniforms? */
+    let (_, uniforms) = 
+        List.fold_left(
+          ((i, uniforms), key) => {
+            if (Hashtbl.mem(node.uniforms, key)) {
+                let sUniform = Hashtbl.find(node.uniforms, key);
+                (
+                    i + 1,
+                    [Gpu.Uniform.initedFromLoc(
+                        Gpu.Uniform.getUniformGlType(sUniform.uniform),
+                        sUniform.uniform,
+                        pInited.iProgram.uniforms[i].loc
+                    ), ...uniforms]
+                )
+            } else if (Hashtbl.mem(program.defaultUniforms, key)) {
+                (i + 1, [pInited.iProgram.uniforms[i], ...uniforms])
+            } else {
+                failwith("Could not find uniform by name: " ++ key)
+            }
+          },
+          (0, []),
+          program.uniformList
+        );
+    let uniforms =
+      switch (node.texTransUniform, pInited.texTransUniform) {
+      | (Some(u), Some(l)) => [Gpu.Uniform.initedFromLoc(Gpu.GlType.Mat3f, u, l), ...uniforms]
+      | (_, _) => uniforms
+      };
+    let uniforms =
+      switch (node.elapsedUniform, pInited.elapsedUniform) {
+      | (Some(u), Some(l)) => [Gpu.Uniform.initedFromLoc(Gpu.GlType.Float, u, l), ...uniforms]
+      | (_, _) => uniforms
+      };
+    let uniforms =
+      switch (node.pixelSizeUniform, pInited.pixelSizeUniform) {
+      | (Some(u), Some(l)) => [Gpu.Uniform.initedFromLoc(Gpu.GlType.Vec2f, u, l), ...uniforms]
+      | (_, _) => uniforms
+      };
+    let uniforms =
+      switch (node.layoutUniform, pInited.layoutUniform) {
+      | (Some(u), Some(l)) => [Gpu.Uniform.initedFromLoc(Gpu.GlType.Mat3f, u, l), ...uniforms]
+      | (_, _) => uniforms
+      };
+    /* Texture mats */
+    let uniforms = List.fold_left(
+      (uniforms, name) => {
+          if (Hashtbl.mem(node.texMats, name)) {
+              let (_, matUniform) = Hashtbl.find(node.texMats, name);
+              [
+                  Gpu.Uniform.initedFromLoc(
+                      Gpu.GlType.Mat3f,
+                      matUniform,
+                      Hashtbl.find(pInited.iTextureMat, name)
+                  ),
+                  ...uniforms
+              ]
+          } else {
+              uniforms
+          }
+      },
+      uniforms,
+      program.textureList
+    );
+    let textures = List.map(
+      name => {
+        if (Hashtbl.mem(node.textures, name)) {
+            let tex = Hashtbl.find(node.textures, name);
+            Gpu.ProgramTexture.initFromRef(
+                Gpu.ProgramTexture.make(name, tex.texture),
+                context,
+                Hashtbl.find(pInited.iTextureU, name)
+            )
+        } else if (Hashtbl.mem(pInited.iTexture, name)) {
+            Hashtbl.find(pInited.iTexture, name)
+        } else {
+            failwith("Could not find texture");
+        }
+      },
+      program.textureList
+    );
+    let (vertexBuffer, indexBuffer) =
+        switch node.vo {
+        | Some(vo) =>
+          (
+              Gpu.VertexBuffer.initFromAttribs(vo.vertexBuffer, context, pInited.iAttribs),
+              switch vo.indexBuffer {
+              | Some(i) => Some(Gpu.IndexBuffer.init(i, context))
+              | None => None
+              }
+          )
+        | None =>
+            switch pInited.iVo {
+            | Some(iVo) => iVo
+            | None => failwith("Neither node nor program has vertexobject");
+            }
+        };
+    node.drawState =
+      Some(
+          Gpu.DrawState.fromInited(
+              Gpu.Program.initedWithUniforms(pInited.iProgram, Array.of_list(List.rev(uniforms))),
+              vertexBuffer,
+              indexBuffer,
+              Array.of_list(textures)
+          )
+      );
+};
+
+let createNodeDrawState = (self, node) => {
+    let texNames = List.fold_left(
+      (texNames, name) => {
+        let nodeTex = Hashtbl.find(node.textures, name);
+        switch nodeTex.uniformMat {
+        | Some(u) => [
+            (name, u),
+            ...texNames
+          ]
+        | None => texNames
+        };
+      },
+      [],
+      node.textureList
+    );
+    let nodeUniforms = 
+        List.map(
+          key => {
+            let sUniform = Hashtbl.find(node.uniforms, key);
+            Gpu.Uniform.make(key, sUniform.uniform);
+          },
+          node.uniformList
+        );
+    let uniforms = createDrawStateUniforms(
+          texNames,
+          node.elapsedUniform,
+          node.pixelSizeUniform,
+          node.layoutUniform,
+          node.texTransUniform,
+          nodeUniforms
+    );
+  let textures =
+    Array.of_list(
+      List.map(
+        key => {
+          let nodeTex = Hashtbl.find(node.textures, key);
+          Gpu.ProgramTexture.make(key, nodeTex.texture);
+        },
+        node.textureList
+      )
+    );
+  let vertShader =
+    switch node.vertShader {
+    | Some(vertShader) => vertShader
+    | None => failwith("Vertex shader not found on: " ++ nodeDescr(node))
+    };
+  let fragShader =
+    switch node.fragShader {
+    | Some(fragShader) => fragShader
+    | None =>
+      failwith("Fragment shader not found on: " ++ nodeDescr(node))
+    };
+  let (vBuffer, iBuffer) =
+    switch node.vo {
+    | Some(vo) => (vo.vertexBuffer, vo.indexBuffer)
+    | None => failwith("Could not find vo")
+    };
+  node.drawState =
+    Some(
+      Gpu.DrawState.init(
+        self.canvas.context,
+        Gpu.Program.make(vertShader, fragShader, uniforms),
+        vBuffer,
+        iBuffer,
+        textures
+      )
+    );
+};
+
+let createDrawState = (scene, node) => {
+    if (node.selfDraw) {
+      switch node.program {
+      | None => createNodeDrawState(scene, node);
+      | Some(p) => createProgramDrawState(scene, node, p);
+      };
+    };
+};
+
+/* Queues uncreated drawstates so they are
+   created between frames forward from then.
+   Consider heuristics for what is
+   likely to be needed next. Probably the lowest
+   level nodes are likely to be needed */
+let queueDrawStates = self => {
+  let rec loop = (node, list) => {
+    let list = List.fold_left((list, child) => loop(child, list), list, node.children);
+    let list = List.fold_left((list, dep) => loop(dep, list), list, node.deps);
+    if (node.selfDraw && node.drawState == None) {
+        [node, ...list]
+    } else {
+        list
+    }
+  };
+  self.queuedDrawStates = loop(self.root, []);
 };
 
 let queueUpdates = (scene, nodes) =>
@@ -766,10 +1213,11 @@ let queueUpdates = (scene, nodes) =>
     );
 
 let makeAnim =
-    (onFrame, setLast, duration, ~key=?, ~next=?, ~frameInterval=1, ()) => {
+    (onFrame, setLast, duration, ~key=?, ~next=?, ~frameInterval=1, ~onDone=?, ()) => {
   animKey: key,
   onFrame,
   setLast,
+  onDone,
   duration,
   elapsed: 0.0,
   frameInterval,
@@ -948,22 +1396,6 @@ let rec setChildToUpdate = updNode =>
         },
       updNode.updChildren
     );
-  };
-
-let nodeDescr = node =>
-  switch node.key {
-  | Some(key) => key ++ " id:" ++ string_of_int(node.id)
-  | None =>
-    switch node.cls {
-    | Some(cls) => "cls: " ++ cls ++ " id:" ++ string_of_int(node.id)
-    | None => "id:" ++ string_of_int(node.id)
-    }
-  };
-
-let nodeIdDescr = (scene, nodeId) =>
-  switch scene.updateNodes.data[nodeId] {
-  | Some(n) => nodeDescr(n.updNode)
-  | None => failwith("Could not find node with id: " ++ string_of_int(nodeId))
   };
 
 let rec setDepParentToUpdate = updNode =>
@@ -1490,6 +1922,10 @@ let createDrawList = (scene, updateNodes, updRoot) => {
       if (updNode.update) {
         /* Clean up update flag */
         updNode.update = false;
+        /* Ensure node has drawState */
+        if (updNode.updNode.drawState == None) {
+            createDrawState(scene, updNode.updNode);
+        };
         /* Clear active rect if any */
         let drawList =
           if (activeRect^ != None) {
@@ -1929,417 +2365,6 @@ let getSceneNodesToUpdate = (animIds, root) => {
     List.fold_left((list, dep) => [dep, ...list], list, depsToUpdate);
   };
   loop(root, [], false);
-};
-
-let createDrawStateUniforms =
-    (
-        texMats,
-        elapsedUniform,
-        pixelSizeUniform,
-        layoutUniform,
-        texTransUniform,
-        customUniforms
-    ) => {
-  /* Texture uniforms */
-  let uniforms =
-    List.fold_left(
-      (uniforms, (name, uniform)) => {
-          [
-            Gpu.Uniform.make(name ++ "Mat", uniform),
-            ...uniforms
-          ]
-      },
-      [],
-      texMats
-    );
-  /* Elapsed uniform */
-  let uniforms =
-    switch elapsedUniform {
-    | Some(elapsedUniform) => [
-        Gpu.Uniform.make("elapsedScene", elapsedUniform),
-        ...uniforms
-      ]
-    | None => uniforms
-    };
-  /* PixelSize uniform */
-  let uniforms =
-    switch pixelSizeUniform {
-    | Some(pixelSizeUniform) => [
-        Gpu.Uniform.make("pixelSize", pixelSizeUniform),
-        ...uniforms
-      ]
-    | None => uniforms
-    };
-  /* Layout uniform */
-  let uniforms =
-    switch layoutUniform {
-    | Some(layoutUniform) => [
-        Gpu.Uniform.make("layout", layoutUniform),
-        ...uniforms
-      ]
-    | None => uniforms
-    };
-  /* TexTrans uniform */
-  let uniforms =
-    switch texTransUniform {
-    | Some(texTransUniform) => [
-        Gpu.Uniform.make("texTrans", texTransUniform),
-        ...uniforms
-      ]
-    | None => uniforms
-    };
-  let uniforms =
-    Array.of_list(List.append(uniforms, customUniforms));
-    uniforms
-};
-
-let initSceneProgram = (scene, sceneP : sceneProgram) => {
-    switch sceneP.inited {
-    | Some(inited) => inited
-    | None =>
-        let context = scene.canvas.context;
-        /* Custom uniforms */
-        let uniforms =
-          List.map(
-            (key) => {
-                if (Hashtbl.mem(sceneP.defaultUniforms, key)) {
-                    let sceneU = Hashtbl.find(sceneP.defaultUniforms, key);
-                    Gpu.Uniform.make(key, sceneU.uniform)
-                } else if (Hashtbl.mem(sceneP.requiredUniforms, key)) {
-                    /* Locs from these will be weaved into uniforms
-                       provided by nodes */
-                    /* Slightly uneccesary to wrap this in Uniform.t */
-                    let reqType = Hashtbl.find(sceneP.requiredUniforms, key);
-                    Gpu.Uniform.make(key, Gpu.Uniform.makeValRefFromType(reqType))
-                } else {
-                    failwith("Could not find uniform from list key")
-                }
-            },
-            sceneP.uniformList
-          );
-        let program =
-            Gpu.Program.make(
-                sceneP.vertShader,
-                sceneP.fragShader,
-                Array.of_list(uniforms)
-            );
-        let iProgram =
-          switch (Gpu.Program.init(
-                program,
-                context
-            )) {
-            | Some(iProgram) => iProgram
-            | None => failwith("Could not init program")
-        };
-        /* Texture uniform locations of all, both default and required, textures */
-        let iTextureU = Hashtbl.create(List.length(sceneP.textureList));
-        /* Initialized default textures */
-        let iTexture = Hashtbl.create(Hashtbl.length(sceneP.defaultTextures));
-        /* Texture mat uniforms
-           (has some redundant space since some dont have mat
-           Could maybe collect list, then create hashtbl,
-           not sure if it's worth it) */
-        let iTextureMat = Hashtbl.create(List.length(sceneP.textureList));
-        Hashtbl.iter(
-            (key, (sceneTex, progTex)) => {
-                let iTex = Gpu.ProgramTexture.init(progTex, context, iProgram.programRef);
-                Hashtbl.add(
-                    iTexture,
-                    key,
-                    iTex
-                );
-                Hashtbl.add(
-                    iTextureU,
-                    key,
-                    iTex.uniformRef
-                );
-                switch (sceneTex.uniformMat) {
-                | None => ()
-                | Some(_) =>
-                    Hashtbl.add(
-                        iTextureMat,
-                        key,
-                        Gpu.Uniform.initLoc(
-                            context,
-                            iProgram.programRef,
-                            key ++ "Mat"
-                        )
-                    );
-                };
-            },
-            sceneP.defaultTextures
-        );
-        Hashtbl.iter(
-            (key, requireMat) => {
-                Hashtbl.add(
-                    iTextureU,
-                    key,
-                    Gpu.ProgramTexture.initRef(key, context, iProgram.programRef)
-                );
-                if (requireMat) {
-                    Hashtbl.add(
-                        iTextureMat,
-                        key,
-                        Gpu.Uniform.initLoc(
-                            context,
-                            iProgram.programRef,
-                            key ++ "Mat"
-                        )
-                    );
-                };
-            },
-            sceneP.requiredTextures
-        );
-        let layoutUniform =
-            if (sceneP.layoutUniform) {
-                Some(Gpu.Uniform.initLoc(context, iProgram.programRef, "layout"))
-            } else {
-                None
-            };
-        let pixelSizeUniform =
-            if (sceneP.layoutUniform) {
-                Some(Gpu.Uniform.initLoc(context, iProgram.programRef, "pixelSize"))
-            } else {
-                None
-            };
-        let elapsedUniform =
-            if (sceneP.layoutUniform) {
-                Some(Gpu.Uniform.initLoc(context, iProgram.programRef, "elapsed"))
-            } else {
-                None
-            };
-        let texTransUniform =
-            if (sceneP.layoutUniform) {
-                Some(Gpu.Uniform.initLoc(context, iProgram.programRef, "texTrans"))
-            } else {
-                None
-            };
-        let (iAttribs, iVo) = switch (sceneP.vo, sceneP.attribs) {
-        | (Some(vo), None) =>
-            let iVertices = Gpu.VertexBuffer.init(vo.vertexBuffer, context, iProgram.programRef);
-            let iIndices = switch (vo.indexBuffer) {
-            | Some(indices) => Some(Gpu.IndexBuffer.init(indices, context))
-            | None => None
-            };
-            (iVertices.attribs, Some((iVertices, iIndices)))
-        | (None, Some(attribs)) =>
-            (Gpu.VertexBuffer.initAttribs(Array.of_list(attribs), context, iProgram.programRef), None)
-        | (Some(_), Some(_)) => failwith("Both vo and attribs provided to program")
-        | (None, None) => failwith("Neither vo nor attribs provided to program")
-        };
-        {
-            iProgram,
-            iTexture,
-            iTextureU,
-            iTextureMat,
-            iAttribs,
-            iVo,
-            layoutUniform,
-            pixelSizeUniform,
-            elapsedUniform,
-            texTransUniform
-        }
-    }
-};
-
-/* Creates a drawState for a node which has a sceneProgram,
-   the drawState contains uniform refs from sceneProgram,
-   may have some resources, textures and buffers, from 
-   sceneProgram, and some from the node. This
-   is implemented by weaving some resources from
-   sceneProgramInited into uniforms etc here */
-let createProgramDrawState = (self, node, program : sceneProgram) => {
-    let pInited = initSceneProgram(self, program);
-    let context = self.canvas.context;
-    /* List of regular/custom uniforms */
-    /* todo: decouple program from uniforms? */
-    let (_, uniforms) = 
-        List.fold_left(
-          ((i, uniforms), key) => {
-            if (Hashtbl.mem(node.uniforms, key)) {
-                let sUniform = Hashtbl.find(node.uniforms, key);
-                (
-                    i + 1,
-                    [Gpu.Uniform.initedFromLoc(
-                        Gpu.Uniform.getUniformGlType(sUniform.uniform),
-                        sUniform.uniform,
-                        pInited.iProgram.uniforms[i].loc
-                    ), ...uniforms]
-                )
-            } else if (Hashtbl.mem(program.defaultUniforms, key)) {
-                (i + 1, [pInited.iProgram.uniforms[i], ...uniforms])
-            } else {
-                failwith("Could not find uniform by name: " ++ key)
-            }
-          },
-          (0, []),
-          program.uniformList
-        );
-    let uniforms =
-      switch (node.texTransUniform, pInited.texTransUniform) {
-      | (Some(u), Some(l)) => [Gpu.Uniform.initedFromLoc(Gpu.GlType.Mat3f, u, l), ...uniforms]
-      | (_, _) => uniforms
-      };
-    let uniforms =
-      switch (node.elapsedUniform, pInited.elapsedUniform) {
-      | (Some(u), Some(l)) => [Gpu.Uniform.initedFromLoc(Gpu.GlType.Float, u, l), ...uniforms]
-      | (_, _) => uniforms
-      };
-    let uniforms =
-      switch (node.pixelSizeUniform, pInited.pixelSizeUniform) {
-      | (Some(u), Some(l)) => [Gpu.Uniform.initedFromLoc(Gpu.GlType.Vec2f, u, l), ...uniforms]
-      | (_, _) => uniforms
-      };
-    let uniforms =
-      switch (node.layoutUniform, pInited.layoutUniform) {
-      | (Some(u), Some(l)) => [Gpu.Uniform.initedFromLoc(Gpu.GlType.Mat3f, u, l), ...uniforms]
-      | (_, _) => uniforms
-      };
-    /* Texture mats */
-    let uniforms = List.fold_left(
-      (uniforms, name) => {
-          if (Hashtbl.mem(node.texMats, name)) {
-              let (_, matUniform) = Hashtbl.find(node.texMats, name);
-              [
-                  Gpu.Uniform.initedFromLoc(
-                      Gpu.GlType.Mat3f,
-                      matUniform,
-                      Hashtbl.find(pInited.iTextureMat, name)
-                  ),
-                  ...uniforms
-              ]
-          } else {
-              uniforms
-          }
-      },
-      uniforms,
-      program.textureList
-    );
-    let textures = List.map(
-      name => {
-        if (Hashtbl.mem(node.textures, name)) {
-            let tex = Hashtbl.find(node.textures, name);
-            Gpu.ProgramTexture.initFromRef(
-                Gpu.ProgramTexture.make(name, tex.texture),
-                context,
-                Hashtbl.find(pInited.iTextureU, name)
-            )
-        } else if (Hashtbl.mem(pInited.iTexture, name)) {
-            Hashtbl.find(pInited.iTexture, name)
-        } else {
-            failwith("Could not find texture");
-        }
-      },
-      program.textureList
-    );
-    let (vertexBuffer, indexBuffer) =
-        switch node.vo {
-        | Some(vo) =>
-          (
-              Gpu.VertexBuffer.initFromAttribs(vo.vertexBuffer, context, pInited.iAttribs),
-              switch vo.indexBuffer {
-              | Some(i) => Some(Gpu.IndexBuffer.init(i, context))
-              | None => None
-              }
-          )
-        | None =>
-            switch pInited.iVo {
-            | Some(iVo) => iVo
-            | None => failwith("Neither node nor program has vertexobject");
-            }
-        };
-    node.drawState =
-      Some(
-          Gpu.DrawState.fromInited(
-              Gpu.Program.initedWithUniforms(pInited.iProgram, Array.of_list(List.rev(uniforms))),
-              vertexBuffer,
-              indexBuffer,
-              Array.of_list(textures)
-          )
-      );
-};
-
-let createNodeDrawState = (self, node) => {
-    let texNames = List.fold_left(
-      (texNames, name) => {
-        let nodeTex = Hashtbl.find(node.textures, name);
-        switch nodeTex.uniformMat {
-        | Some(u) => [
-            (name, u),
-            ...texNames
-          ]
-        | None => texNames
-        };
-      },
-      [],
-      node.textureList
-    );
-    let nodeUniforms = 
-        List.map(
-          key => {
-            let sUniform = Hashtbl.find(node.uniforms, key);
-            Gpu.Uniform.make(key, sUniform.uniform);
-          },
-          node.uniformList
-        );
-    let uniforms = createDrawStateUniforms(
-          texNames,
-          node.elapsedUniform,
-          node.pixelSizeUniform,
-          node.layoutUniform,
-          node.texTransUniform,
-          nodeUniforms
-    );
-  let textures =
-    Array.of_list(
-      List.map(
-        key => {
-          let nodeTex = Hashtbl.find(node.textures, key);
-          Gpu.ProgramTexture.make(key, nodeTex.texture);
-        },
-        node.textureList
-      )
-    );
-  let vertShader =
-    switch node.vertShader {
-    | Some(vertShader) => vertShader
-    | None => failwith("Vertex shader not found on: " ++ nodeDescr(node))
-    };
-  let fragShader =
-    switch node.fragShader {
-    | Some(fragShader) => fragShader
-    | None =>
-      failwith("Fragment shader not found on: " ++ nodeDescr(node))
-    };
-  let (vBuffer, iBuffer) =
-    switch node.vo {
-    | Some(vo) => (vo.vertexBuffer, vo.indexBuffer)
-    | None => failwith("Could not find vo")
-    };
-  node.drawState =
-    Some(
-      Gpu.DrawState.init(
-        self.canvas.context,
-        Gpu.Program.make(vertShader, fragShader, uniforms),
-        vBuffer,
-        iBuffer,
-        textures
-      )
-    );
-};
-
-let createDrawStates = self => {
-  let rec loop = node => {
-    if (node.selfDraw) {
-      switch node.program {
-      | None => createNodeDrawState(self, node);
-      | Some(p) => createProgramDrawState(self, node, p);
-      };
-    };
-    List.iter(dep => loop(dep), node.deps);
-    List.iter(child => loop(child), node.children);
-  };
-  loop(self.root);
 };
 
 let getNode = (self, key) =>
@@ -3054,6 +3079,11 @@ let update = self => {
       anim.numFrames = anim.numFrames + 1;
       if (anim.elapsed >= anim.duration) {
         [@bs] anim.setLast(self);
+        /* Probably this should be done after update, between frames */
+        switch (anim.onDone) {
+        | None => ()
+        | Some(onDone) => onDone(self);
+        };
         doAnims(rest);
       } else {
         [anim, ...doAnims(rest)];
@@ -3211,6 +3241,14 @@ let update = self => {
     processDrawList(self, Hashtbl.find(self.drawLists, updateState), true);
     Gpu.glDisable(context, Gpu.Constants.blend);
   };
+  /* Check for queued drawStates and process if there are */
+  switch self.queuedDrawStates {
+  | [] => ()
+  | [next, ...rest] =>
+    Js.log("Creating for " ++ nodeDescr(next));
+    self.queuedDrawStates = rest;
+    createDrawState(self, next);
+  };
 };
 
 let cleanUpDrawList = (scene, drawList) => {
@@ -3273,7 +3311,6 @@ let run =
      if there is any need for stuff earlier, like scenes make() */
   scene.updateRoot = Some(buildUpdateTree(scene, scene.root));
   calcLayout(scene);
-  createDrawStates(scene);
   /* Time for resize requested, this is throttled */
   let resizeRequested = ref(None);
   let resizeThrottle = 0.7;

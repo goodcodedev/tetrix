@@ -34,6 +34,7 @@ let anim =
       ~duration=2.0,
       ~frameInterval=1,
       ~next=?,
+      ~onDone=?,
       ()
     ) => {
   let easingFunc = getEasingFunction(easing, duration);
@@ -164,6 +165,7 @@ let anim =
     ~key?,
     ~next?,
     ~frameInterval,
+    ~onDone=?onDone,
     ()
   );
 };
