@@ -97,15 +97,31 @@ let blurFragment = {|
 
 open Gpu;
 
+let blurProgram = ref(None);
+
 let makeNode = (origNode, toTex, tempTex, step1, step2) => {
+  let blurProgram =
+    switch (blurProgram^) {
+    | Some(program) => program
+    | None =>
+      let program = Scene.makeProgram(
+        ~vertShader=Shader.make(blurVertex),
+        ~fragShader=Shader.make(blurFragment),
+        ~requiredUniforms=[("pDistance", GlType.Float)],
+        ~requiredTextures=[("orig", true)],
+        ~pixelSizeUniform=true,
+        ~vo=Scene.defaultVo(),
+        ()
+      );
+      blurProgram := Some(program);
+      program
+    };
   /* First blur */
   let blur1 =
     Scene.makeNode(
       ~cls="blur1",
-      ~vertShader=Shader.make(blurVertex),
-      ~fragShader=Shader.make(blurFragment),
+      ~program=blurProgram,
       ~uniforms=[("pDistance", Scene.UFloat.make(step1))],
-      ~pixelSizeUniform=true,
       ~textures=[("orig", Scene.SceneTex.node(origNode))],
       ~drawTo=Scene.TextureItem(tempTex),
       ~deps=[origNode],
@@ -114,10 +130,8 @@ let makeNode = (origNode, toTex, tempTex, step1, step2) => {
   /* Second blur */
   Scene.makeNode(
     ~cls="blur2",
-    ~vertShader=Shader.make(blurVertex),
-    ~fragShader=Shader.make(blurFragment),
+    ~program=blurProgram,
     ~uniforms=[("pDistance", Scene.UFloat.make(step2))],
-    ~pixelSizeUniform=true,
     ~textures=[("orig", Scene.SceneTex.node(blur1))],
     ~drawTo=Scene.TextureItem(toTex),
     ~deps=[blur1],

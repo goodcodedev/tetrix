@@ -1,3 +1,10 @@
+let listToTbl = list => {
+  let listLen = List.length(list);
+  let tbl = Hashtbl.create(listLen > 0 ? listLen : 1);
+  List.iter(((key, item)) => Hashtbl.add(tbl, key, item), list);
+  tbl;
+};
+
 let listRange = countDown => {
   let rec addToList = (list, countDown) =>
     if (countDown <= 0) {
@@ -7,3 +14,9 @@ let listRange = countDown => {
     };
   addToList([], countDown);
 };
+
+let isSome = (o : option('a)) =>
+  switch o {
+  | Some(_) => true
+  | None => false
+  };

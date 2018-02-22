@@ -69,7 +69,8 @@ type uniform =
   | UniformVec2f(ref(Vec2.t))
   | UniformVec3f(ref(Vec3.t))
   | UniformVec4f(ref(Vec4.t))
-  | UniformMat3f(ref(Mat3.t));
+  | UniformMat3f(ref(Mat3.t))
+  | UniformMat4f(ref(Mat4.t));
 
 module Uniform = {
   type inited = {
@@ -91,6 +92,20 @@ module Uniform = {
     | UniformVec3f(_) => GlType.Vec3f
     | UniformVec4f(_) => GlType.Vec4f
     | UniformMat3f(_) => GlType.Mat3f
+    | UniformMat4f(_) => GlType.Mat4f
+    };
+  /* Todo: Maybe a different name for this type
+     to avoid confusion with Uniform.t? Like
+     uniformValue(Holder) */
+  let makeValRefFromType = glType =>
+    switch glType {
+    | GlType.Float => UniformFloat(ref(0.0))
+    | GlType.Vec2f => UniformVec2f(ref(Data.Vec2.zeros()))
+    | GlType.Vec3f => UniformVec3f(ref(Data.Vec3.zeros()))
+    | GlType.Vec4f => UniformVec4f(ref(Data.Vec4.zeros()))
+    | GlType.Mat3f => UniformMat3f(ref(Data.Mat3.id()))
+    | GlType.Mat4f => UniformMat4f(ref(Data.Mat4.id()))
+    | GlType.Int => UniformInt(ref(0))
     };
   let make = (name, uniform) => {
     name,
@@ -106,6 +121,16 @@ module Uniform = {
     };
     uniform.inited = Some(inited);
     inited;
+  };
+  let initLoc = (context, program, name) => {
+    Gl.getUniformLocation(~context, ~program, ~name)
+  };
+  let initedFromLoc = (glType, uniform, loc) : inited => {
+    {
+      glType: glType,
+      uniform: uniform,
+      loc
+    }
   };
   let setFloat = (uniform, value) =>
     switch uniform {
@@ -136,6 +161,10 @@ module Uniform = {
   external uniformMatrix3fv :
     (Gl.contextT, Gl.uniformT, Js.boolean, array(float)) => unit =
     "uniformMatrix3fv";
+  [@bs.send]
+  external uniformMatrix4fv :
+    (Gl.contextT, Gl.uniformT, Js.boolean, array(float)) => unit =
+    "uniformMatrix4fv";
   /* Put here to avoid currying while bucklescript doesnt yet optimize labelled arguments */
   [@bs.send]
   external uniform1i : (Gl.contextT, Gl.uniformT, int) => unit = "uniform1i";
@@ -167,7 +196,10 @@ module Uniform = {
     | UniformMat3f(values) =>
       let values = values^;
       uniformMatrix3fv(context, uniform.loc, Js.false_, values);
-    };
+    | UniformMat4f(values) =>
+      let values = values^;
+      uniformMatrix4fv(context, uniform.loc, Js.false_, values);
+};
 };
 
 module VertexAttrib = {
@@ -288,6 +320,12 @@ module Program = {
       Some({programRef, uniforms});
     | None => None
     };
+  let initedWithUniforms = (iProgram : inited, uniforms) => {
+    {
+      programRef: iProgram.programRef,
+      uniforms
+    }
+  };
 };
 
 [@bs.send]
@@ -369,6 +407,38 @@ module VertexBuffer = {
       }
     );
   };
+
+  let initAttribs = (attribs, context, program) => {
+    let stride =
+      Array.fold_left(
+        (size, attrib: VertexAttrib.t) =>
+          size
+          + GlType.getSize(attrib.glType)
+          * GlType.getBytes(attrib.glType),
+        0,
+        attribs
+      );
+    let offset = ref(0);
+    Array.map(
+      (attrib: VertexAttrib.t) => {
+        let size = GlType.getSize(attrib.glType);
+        let attrSize = size * GlType.getBytes(attrib.glType);
+        let loc =
+          VertexAttrib.init(
+            attrib,
+            context,
+            program,
+            size,
+            stride,
+            offset^
+          );
+        offset := offset^ + attrSize;
+        loc;
+      },
+      attribs
+    )
+  };
+
   let init = (buffer, context, program) =>
     switch buffer.inited {
     | Some(inited) => inited
@@ -385,38 +455,10 @@ module VertexBuffer = {
         | StreamingDraw => Constants.stream_draw
         }
       );
-      let stride =
-        Array.fold_left(
-          (size, attrib: VertexAttrib.t) =>
-            size
-            + GlType.getSize(attrib.glType)
-            * GlType.getBytes(attrib.glType),
-          0,
-          buffer.attributes
-        );
-      let offset = ref(0);
-      let locs =
-        Array.map(
-          (attrib: VertexAttrib.t) => {
-            let size = GlType.getSize(attrib.glType);
-            let attrSize = size * GlType.getBytes(attrib.glType);
-            let loc =
-              VertexAttrib.init(
-                attrib,
-                context,
-                program,
-                size,
-                stride,
-                offset^
-              );
-            offset := offset^ + attrSize;
-            loc;
-          },
-          buffer.attributes
-        );
+      let attribs = initAttribs(buffer.attributes, context, program);
       let inited = {
         bufferRef: vertexBuffer,
-        attribs: locs,
+        attribs,
         perElement: buffer.perElement,
         data: buffer.data,
         update: false,
@@ -426,6 +468,37 @@ module VertexBuffer = {
       buffer.inited = Some(inited);
       inited;
     };
+  /* Init with attribs already inited
+     Todo: Probably decouple attribs */
+  let initFromAttribs = (buffer, context, attribs) => {
+    switch buffer.inited {
+    | Some(inited) => inited
+    | None =>
+      let vertexBuffer = Gl.createBuffer(~context);
+      glBindBuffer(context, Constants.array_buffer, vertexBuffer);
+      _bufferData(
+        context,
+        Constants.array_buffer,
+        Gl.Bigarray.of_array(Gl.Bigarray.Float32, buffer.data),
+        switch buffer.usage {
+        | StaticDraw => Constants.static_draw
+        | DynamicDraw => Constants.dynamic_draw
+        | StreamingDraw => Constants.stream_draw
+        }
+      );
+      let inited = {
+        bufferRef: vertexBuffer,
+        attribs,
+        perElement: buffer.perElement,
+        data: buffer.data,
+        update: false,
+        count: Array.length(buffer.data),
+        usage: buffer.usage
+      };
+      buffer.inited = Some(inited);
+      inited;
+    };
+  };
   let deleteBuffer = (context, buf) => _deleteBuffer(context, buf.bufferRef);
 };
 
@@ -867,6 +940,26 @@ module ProgramTexture = {
       programTexture.inited = Some(inited);
       inited;
     };
+  /* Just a call to getUniformLocation. This way can
+     be used to get a uniform location, then connect
+     it with a texture at a later time (as in sceneProgram) */
+  let initRef = (uniformName, context, program) =>
+    Gl.getUniformLocation(
+      ~context,
+      ~program,
+      ~name=uniformName
+    );
+
+  let initFromRef = (programTexture, context, uRef) => {
+    switch programTexture.inited {
+    | Some(inited) => inited
+    | None =>
+      let tInit = Texture.init(programTexture.texture, context);
+      let inited = {texture: tInit, uniformRef: uRef};
+      programTexture.inited = Some(inited);
+      inited;
+    };
+  };
 };
 
 module FrameBuffer = {
@@ -1301,6 +1394,14 @@ module DrawState = {
       };
     | None => failwith("Program creation failed")
     };
+  };
+  let fromInited = (program, vertexBuffer, indexBuffer, textures) => {
+    {
+      program,
+      vertexBuffer,
+      indexBuffer,
+      textures
+    }
   };
   let draw = (drawState, canvas) =>
     switch drawState.indexBuffer {
