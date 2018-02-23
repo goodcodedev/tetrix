@@ -198,7 +198,7 @@ let createLeftRow = state => {
           ~spacing=Scene.ScreenScale(0.015),
           ~vAlign=Scene.AlignTop,
           [
-            FontDraw.makeNode(
+            FontDraw.makeSimpleNode(
               "HOLD",
               "digitalt",
               state.fontStore,
@@ -256,7 +256,7 @@ let createRightRow = state => {
           ~spacing=Scene.ScreenScale(0.015),
           ~vAlign=Scene.AlignTop,
           [
-            FontDraw.makeNode(
+            FontDraw.makeSimpleNode(
               "NEXT",
               "digitalt",
               state.fontStore,
@@ -281,7 +281,7 @@ let createStartScreen = state =>
   Layout.vertical(
     ~key="startScreen",
     [
-      FontDraw.makeNode(
+      FontDraw.makeSimpleNode(
         "Vimtris",
         "digitalt",
         state.fontStore,
@@ -290,7 +290,7 @@ let createStartScreen = state =>
         ~align=SdfFont.TextLayout.AlignCenter,
         ()
       ),
-      FontDraw.makeNode(
+      FontDraw.makeSimpleNode(
         "Press N to play",
         "digitalt",
         state.fontStore,
@@ -308,7 +308,7 @@ let createPauseScreen = state =>
     ~hidden=true,
     [
       Layout.vertical([
-        FontDraw.makeNode(
+        FontDraw.makeSimpleNode(
           "Pause",
           "digitalt",
           state.fontStore,
@@ -317,7 +317,7 @@ let createPauseScreen = state =>
           ~align=SdfFont.TextLayout.AlignCenter,
           ()
         ),
-        FontDraw.makeNode(
+        FontDraw.makeSimpleNode(
           "Press Space to continue",
           "digitalt",
           state.fontStore,
@@ -331,7 +331,7 @@ let createPauseScreen = state =>
 
 let createGameOverScreen = state =>
   Layout.vertical([
-    FontDraw.makeNode(
+    FontDraw.makeSimpleNode(
       "Game over",
       "digitalt",
       state.fontStore,
@@ -340,7 +340,7 @@ let createGameOverScreen = state =>
       ~align=SdfFont.TextLayout.AlignCenter,
       ()
     ),
-    FontDraw.makeNode(
+    FontDraw.makeSimpleNode(
       "Press N to start new game",
       "digitalt",
       state.fontStore,
@@ -368,7 +368,7 @@ let createHelpScreen = state => {
   Layout.vertical(
     ~margin=Scene.MarginXY(Scene.Scale(0.12), Scene.Scale(0.0)),
     [
-      FontDraw.makeNode(
+      FontDraw.makeSimpleNode(
         "Help",
         "digitalt",
         state.fontStore,
@@ -377,7 +377,7 @@ let createHelpScreen = state => {
         ~align=SdfFont.TextLayout.AlignLeft,
         ()
       ),
-      FontDraw.makeNode(
+      FontDraw.makeSimpleNode(
         String.concat("\n", helpLines),
         "digitalt",
         state.fontStore,
@@ -392,7 +392,7 @@ let createHelpScreen = state => {
 
 let createNextLevelScreen = state =>
   Layout.vertical([
-    FontDraw.makeNode(
+    FontDraw.makeSimpleNode(
       "Level complete",
       "digitalt",
       state.fontStore,
@@ -401,7 +401,7 @@ let createNextLevelScreen = state =>
       ~align=SdfFont.TextLayout.AlignCenter,
       ()
     ),
-    FontDraw.makeNode(
+    FontDraw.makeSimpleNode(
       "Press N to start new level",
       "digitalt",
       state.fontStore,

@@ -470,34 +470,32 @@ module VertexBuffer = {
     };
   /* Init with attribs already inited
      Todo: Probably decouple attribs */
+  /* Dont think this can be cached in .inited,
+     another reason to decouple */
   let initFromAttribs = (buffer, context, attribs) => {
-    switch buffer.inited {
-    | Some(inited) => inited
-    | None =>
-      let vertexBuffer = Gl.createBuffer(~context);
-      glBindBuffer(context, Constants.array_buffer, vertexBuffer);
-      _bufferData(
-        context,
-        Constants.array_buffer,
-        Gl.Bigarray.of_array(Gl.Bigarray.Float32, buffer.data),
-        switch buffer.usage {
-        | StaticDraw => Constants.static_draw
-        | DynamicDraw => Constants.dynamic_draw
-        | StreamingDraw => Constants.stream_draw
-        }
-      );
-      let inited = {
-        bufferRef: vertexBuffer,
-        attribs,
-        perElement: buffer.perElement,
-        data: buffer.data,
-        update: false,
-        count: Array.length(buffer.data),
-        usage: buffer.usage
-      };
-      buffer.inited = Some(inited);
-      inited;
+    let vertexBuffer = Gl.createBuffer(~context);
+    glBindBuffer(context, Constants.array_buffer, vertexBuffer);
+    _bufferData(
+      context,
+      Constants.array_buffer,
+      Gl.Bigarray.of_array(Gl.Bigarray.Float32, buffer.data),
+      switch buffer.usage {
+      | StaticDraw => Constants.static_draw
+      | DynamicDraw => Constants.dynamic_draw
+      | StreamingDraw => Constants.stream_draw
+      }
+    );
+    let inited = {
+      bufferRef: vertexBuffer,
+      attribs,
+      perElement: buffer.perElement,
+      data: buffer.data,
+      update: false,
+      count: Array.length(buffer.data),
+      usage: buffer.usage
     };
+    buffer.inited = Some(inited);
+    inited
   };
   let deleteBuffer = (context, buf) => _deleteBuffer(context, buf.bufferRef);
 };
