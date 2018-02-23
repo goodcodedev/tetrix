@@ -28,5 +28,6 @@ type sceneState = {
   bgColor: Scene.sceneUniform,
   boardColor: Scene.sceneUniform,
   lineColor: Scene.sceneUniform,
-  mutable gameState: Game.stateT
+  mutable gameState: Game.stateT,
+  fontStore: FontStore.t
 };

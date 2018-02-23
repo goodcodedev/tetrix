@@ -114,6 +114,7 @@ let makeNode =
     (
       text,
       font,
+      fontStore,
       ~key=?,
       ~cls="fontDraw",
       ~height=0.2,
@@ -124,8 +125,7 @@ let makeNode =
       ~hidden=false,
       ()
     ) => {
-  let fontTexture =
-    Texture.make(Texture.EmptyTexture, Texture.RGBA, Texture.LinearFilter);
+  let fontTexture = FontStore.getTexture(fontStore, font);
   let vertexBuffer =
     VertexBuffer.make(
       [||],
@@ -159,11 +159,11 @@ let makeNode =
       ~hidden,
       ()
     );
-  FontFiles.request(
+  FontStore.request(
+    fontStore,
     font,
-    "sheet0",
-    fontFiles => {
-      let font = SdfFont.BMFont.parse(fontFiles.bin);
+    fontData => {
+      let font = fontData.bmFont;
       let scale = 2.0 /. float_of_int(font.common.lineHeight) *. height;
       let width = 2.0 /. scale;
       /* todo: move to nodes update function */
@@ -176,7 +176,6 @@ let makeNode =
         indexBuffer,
         IndexBuffer.makeQuadsData(Array.length(vertices) / 16)
       );
-      Texture.setDataT(fontTexture, Texture.ImageTexture(fontFiles.image));
       /* Update model matrix value */
       let xTrans =
         switch align {

@@ -3247,9 +3247,7 @@ let update = scene => {
   | [] => ()
   | [next, ...rest] =>
     scene.queuedDrawStates = rest;
-    let start = Util.Timer.start();
     createDrawState(scene, next);
-    Util.Timer.endPrint(~label="Drawstate", start);
   };
 };
 
@@ -3312,9 +3310,7 @@ let run =
   /* There are possibly other options for where to put this,
      if there is any need for stuff earlier, like scenes make() */
   scene.updateRoot = Some(buildUpdateTree(scene, scene.root));
-  let start = Util.Timer.start();
   calcLayout(scene);
-  Util.Timer.endPrint(start);
   /* Time for resize requested, this is throttled */
   let resizeRequested = ref(None);
   let resizeThrottle = 0.7;

@@ -108,7 +108,8 @@ let setup = _canvas => {
     bgColor,
     boardColor,
     lineColor,
-    gameState
+    gameState,
+    fontStore: FontStore.make(~initSize=1, ())
   };
   setBg(state);
 };
@@ -200,6 +201,7 @@ let createLeftRow = state => {
             FontDraw.makeNode(
               "HOLD",
               "digitalt",
+              state.fontStore,
               ~opacity=0.7,
               ~height=0.27,
               ~align=SdfFont.TextLayout.AlignCenter,
@@ -257,6 +259,7 @@ let createRightRow = state => {
             FontDraw.makeNode(
               "NEXT",
               "digitalt",
+              state.fontStore,
               ~key="next",
               ~opacity=0.7,
               ~height=0.27,
@@ -274,13 +277,14 @@ let createRightRow = state => {
   );
 };
 
-let createStartScreen = () =>
+let createStartScreen = state =>
   Layout.vertical(
     ~key="startScreen",
     [
       FontDraw.makeNode(
         "Vimtris",
         "digitalt",
+        state.fontStore,
         ~key="heading",
         ~height=0.25,
         ~align=SdfFont.TextLayout.AlignCenter,
@@ -289,6 +293,7 @@ let createStartScreen = () =>
       FontDraw.makeNode(
         "Press N to play",
         "digitalt",
+        state.fontStore,
         ~key="startText",
         ~height=0.08,
         ~align=SdfFont.TextLayout.AlignCenter,
@@ -297,7 +302,7 @@ let createStartScreen = () =>
     ]
   );
 
-let createPauseScreen = () =>
+let createPauseScreen = state =>
   Layout.stacked(
     ~key="pauseScreen",
     ~hidden=true,
@@ -306,6 +311,7 @@ let createPauseScreen = () =>
         FontDraw.makeNode(
           "Pause",
           "digitalt",
+          state.fontStore,
           ~key="paused",
           ~height=0.26,
           ~align=SdfFont.TextLayout.AlignCenter,
@@ -314,6 +320,7 @@ let createPauseScreen = () =>
         FontDraw.makeNode(
           "Press Space to continue",
           "digitalt",
+          state.fontStore,
           ~height=0.06,
           ~align=SdfFont.TextLayout.AlignCenter,
           ()
@@ -322,11 +329,12 @@ let createPauseScreen = () =>
     ]
   );
 
-let createGameOverScreen = () =>
+let createGameOverScreen = state =>
   Layout.vertical([
     FontDraw.makeNode(
       "Game over",
       "digitalt",
+      state.fontStore,
       ~key="gameOver",
       ~height=0.25,
       ~align=SdfFont.TextLayout.AlignCenter,
@@ -335,13 +343,14 @@ let createGameOverScreen = () =>
     FontDraw.makeNode(
       "Press N to start new game",
       "digitalt",
+      state.fontStore,
       ~height=0.08,
       ~align=SdfFont.TextLayout.AlignCenter,
       ()
     )
   ]);
 
-let createHelpScreen = () => {
+let createHelpScreen = state => {
   let helpLines = [
     "Space - pause",
     "H - move left",
@@ -362,6 +371,7 @@ let createHelpScreen = () => {
       FontDraw.makeNode(
         "Help",
         "digitalt",
+        state.fontStore,
         ~key="gameOver",
         ~height=0.12,
         ~align=SdfFont.TextLayout.AlignLeft,
@@ -370,6 +380,7 @@ let createHelpScreen = () => {
       FontDraw.makeNode(
         String.concat("\n", helpLines),
         "digitalt",
+        state.fontStore,
         ~height=0.07,
         ~numLines=List.length(helpLines),
         ~align=SdfFont.TextLayout.AlignLeft,
@@ -379,11 +390,12 @@ let createHelpScreen = () => {
   );
 };
 
-let createNextLevelScreen = () =>
+let createNextLevelScreen = state =>
   Layout.vertical([
     FontDraw.makeNode(
       "Level complete",
       "digitalt",
+      state.fontStore,
       ~key="gameOver",
       ~height=0.25,
       ~align=SdfFont.TextLayout.AlignCenter,
@@ -392,6 +404,7 @@ let createNextLevelScreen = () =>
     FontDraw.makeNode(
       "Press N to start new level",
       "digitalt",
+      state.fontStore,
       ~height=0.08,
       ~align=SdfFont.TextLayout.AlignCenter,
       ()
@@ -420,8 +433,8 @@ let createRootNode = state => {
         ]
       ),
       Mask.makeNode(),
-      createStartScreen(),
-      createPauseScreen()
+      createStartScreen(state),
+      createPauseScreen(state)
     ]
   );
 };
