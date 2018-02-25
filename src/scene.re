@@ -82,7 +82,7 @@ type t('s) = {
   stencilDraw: StencilDraw.t,
   /* Update nodes keyed by node id/number,
      array is sized to cover all nodes */
-  updateNodes: ArrayB.t(option(updateListNode('s))),
+  mutable updateNodes: array(option(updateListNode('s))),
   mutable updateRoot: option(updateListNode('s)),
   mutable hiddenNodes: list(int),
   /* Queue for uncreated drawstates that are
@@ -756,7 +756,7 @@ let make = (canvas, state, root, ~drawListDebug=false, ~initQueuedDrawState=true
     anims: [],
     fbuffer: Hashtbl.create(1),
     stencilDraw: StencilDraw.make(canvas),
-    updateNodes: ArrayB.make(None),
+    updateNodes: [||],
     updateRoot: None,
     hiddenNodes: [],
     queuedDrawStates: [],
@@ -777,7 +777,7 @@ let nodeDescr = node =>
   };
 
 let nodeIdDescr = (scene, nodeId) =>
-  switch scene.updateNodes.data[nodeId] {
+  switch scene.updateNodes[nodeId] {
   | Some(n) => nodeDescr(n.updNode)
   | None => failwith("Could not find node with id: " ++ string_of_int(nodeId))
   };
@@ -1317,7 +1317,7 @@ let buildUpdateTree = (scene, root) => {
       nextStacked: []
     };
     /* Add to indexes for node id/number and flag */
-    scene.updateNodes.data[node.id] = Some(updateNode);
+    scene.updateNodes[node.id] = Some(updateNode);
     updateNode.updDeps =
       List.map(dep => loop(dep, Some(updateNode), true, true, []), node.deps);
     switch node.layout.childLayout {
@@ -1381,7 +1381,7 @@ let buildUpdateTree = (scene, root) => {
     };
     updateNode;
   };
-  ArrayB.ensureSize(scene.updateNodes, currNodeId^);
+  scene.updateNodes = Array.make(currNodeId^, None);
   let tree = loop(root, None, false, false, []);
   /* Sort added hidden nodes */
   scene.hiddenNodes = List.sort((a, b) => a > b ? 1 : (-1), scene.hiddenNodes);
@@ -1665,7 +1665,7 @@ let rec setAdjecentStackedToUpdate = (updNode: option(updateListNode('s))) =>
 /* UpdateNodes should be checked for visibility up front */
 let createDrawList = (scene, updateNodes, updRoot) => {
   let updRoot =
-    switch scene.updateNodes.data[updRoot.id] {
+    switch scene.updateNodes[updRoot.id] {
     | Some(updRoot) => updRoot
     | None => failwith("Root update node not found")
     };
@@ -1673,7 +1673,7 @@ let createDrawList = (scene, updateNodes, updRoot) => {
   let updNodes = [
     List.fold_left(
       (nodes, nodeId) =>
-        switch scene.updateNodes.data[nodeId] {
+        switch scene.updateNodes[nodeId] {
         | Some(updNode) =>
           setToUpdate(updNode);
           [updNode, ...nodes];
@@ -2314,7 +2314,7 @@ let logDrawList = (scene, updateState: updateState, drawList) => {
     "====\nDrawlist",
     List.fold_left(
       (str, id) =>
-        switch scene.updateNodes.data[id] {
+        switch scene.updateNodes[id] {
         | Some(node) => str ++ ", " ++ nodeDescr(node.updNode)
         | None => str
         },
@@ -2979,7 +2979,7 @@ let calcLayout = scene => {
         switch nodeTex.texNode {
         | Some(texNode) =>
           let texNode =
-            switch scene.updateNodes.data[texNode] {
+            switch scene.updateNodes[texNode] {
             | Some(texNode) => texNode.updNode
             | None => failwith("Could not find texNode")
             };
@@ -3032,7 +3032,7 @@ let collectDeps = (scene, nodeIds, hiddenNodes) => {
   List.rev(List.fold_left(
     (list, nodeId) => {
       let node =
-        switch scene.updateNodes.data[nodeId] {
+        switch scene.updateNodes[nodeId] {
         | Some(updNode) => updNode.updNode
         | None => failwith("Could not find node")
         };
@@ -3057,7 +3057,7 @@ let isNodeHidden = (scene, nodeId) => {
       | None => false
       };
     };
-  switch scene.updateNodes.data[nodeId] {
+  switch scene.updateNodes[nodeId] {
   | Some(node) => loop(node.updNode)
   | None => failwith("Could not find node")
   };
@@ -3138,7 +3138,7 @@ let update = scene => {
                 However, this will not work for deps of deps,
                 as they need to be loaded first */
             if (! List.exists(nodeId => nodeId == depId, blackList)) {
-                switch scene.updateNodes.data[depId] {
+                switch scene.updateNodes[depId] {
                 | Some(depNode) =>
                 let depDraws =
                     createDrawList(scene, [depId], depNode.updNode);
@@ -3176,7 +3176,7 @@ let update = scene => {
     };
   /*
    Js.log2("== Drawing", List.fold_left((str, id) => {
-       switch (scene.updateNodes.data[id]) {
+       switch (scene.updateNodes[id]) {
        | Some(node) => str ++ ", " ++ node.updNode.key
        | None => str
        }
@@ -3224,7 +3224,7 @@ let update = scene => {
   switch scene.drawListsDebug {
   | None => ()
   | Some(_) =>
-    switch scene.updateNodes.data[scene.root.id] {
+    switch scene.updateNodes[scene.root.id] {
     | None => ()
     | Some(updRoot) => checkForCleanState(updRoot)
     };

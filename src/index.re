@@ -277,7 +277,15 @@ let createRightRow = state => {
   );
 };
 
-let createStartScreen = state =>
+let createStartScreen = state => {
+  open FontText;
+  let vimtrisText = block(
+    ~font="digitalt",
+    ~children=[
+      text("Vimtris")
+    ],
+    ()
+  );
   Layout.vertical(
     ~key="startScreen",
     [
@@ -300,7 +308,8 @@ let createStartScreen = state =>
         ()
       )
     ]
-  );
+  )
+};
 
 let createPauseScreen = state =>
   Layout.stacked(

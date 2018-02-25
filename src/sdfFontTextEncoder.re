@@ -7,12 +7,14 @@ let decr = (units, count) => {
   units.counter;
 };
 
+module ArrayBInt = ArrayB.ArrayBInt;
+
 let utf8ToBytes = string => {
   let length = String.length(string);
   let units = {counter: length * 6};
   let leadSurrogate = ref(0);
   let codePoint = ref(0);
-  let bytes = ArrayB.make(0);
+  let bytes = ArrayBInt.make(length + (length / 8));
   /* Not sure if continue is redundant */
   let continue = ref(false);
   let break = ref(false);
@@ -26,7 +28,7 @@ let utf8ToBytes = string => {
           if (codePoint^ < 0xDC00) {
             /* 2 leads in a row */
             if (decr(units, 3) > (-1)) {
-              ArrayB.push3(bytes, 0xEF, 0xBF, 0xBD);
+              ArrayBInt.push3(bytes, 0xEF, 0xBF, 0xBD);
             };
             leadSurrogate := codePoint^;
             continue := true;
@@ -44,13 +46,13 @@ let utf8ToBytes = string => {
           (codePoint^ > 0xDBFF) {
           /* Unexpected trail */
           if (decr(units, 3) > (-1)) {
-            ArrayB.push3(bytes, 0xEF, 0xBF, 0xBD);
+            ArrayBInt.push3(bytes, 0xEF, 0xBF, 0xBD);
           };
           continue := true;
         } else if (i + 1 == length) {
           /* Unpaired lead */
           if (decr(units, 3) > (-1)) {
-            ArrayB.push3(bytes, 0xEF, 0xBF, 0xBD);
+            ArrayBInt.push3(bytes, 0xEF, 0xBF, 0xBD);
             continue := true;
           } else {
             /* Valid lead */
@@ -61,7 +63,7 @@ let utf8ToBytes = string => {
       } else if (leadSurrogate^ != 0) {
         /* Valid bmp char, but last char was a lead */
         if (decr(units, 3) > (-1)) {
-          ArrayB.push3(bytes, 0xEF, 0xBF, 0xBD);
+          ArrayBInt.push3(bytes, 0xEF, 0xBF, 0xBD);
           leadSurrogate := 0;
         };
       };
@@ -71,13 +73,13 @@ let utf8ToBytes = string => {
           if (decr(units, 1) < 0) {
             break := true;
           } else {
-            ArrayB.push(bytes, codePoint^);
+            ArrayBInt.push(bytes, codePoint^);
           };
         } else if (codePoint^ < 0x800) {
           if (decr(units, 2) < 0) {
             break := true;
           } else {
-            ArrayB.push2(
+            ArrayBInt.push2(
               bytes,
               codePoint^ asr 0x6 lor 0xC0,
               codePoint^ land 0x3F lor 0x80
@@ -87,7 +89,7 @@ let utf8ToBytes = string => {
           if (decr(units, 3) < 0) {
             break := true;
           } else {
-            ArrayB.push3(
+            ArrayBInt.push3(
               bytes,
               codePoint^ asr 0xC lor 0xE0,
               codePoint^ asr 0x6 land 0x3F lor 0x80,
@@ -98,7 +100,7 @@ let utf8ToBytes = string => {
           if (decr(units, 4) < 0) {
             break := true;
           } else {
-            ArrayB.push4(
+            ArrayBInt.push4(
               bytes,
               codePoint^ asr 0x12 lor 0xF0,
               codePoint^ asr 0xC land 0x3F lor 0x80,
@@ -115,5 +117,5 @@ let utf8ToBytes = string => {
       };
     };
   processChars(0);
-  ArrayB.toArray(bytes);
+  ArrayBInt.toArray(bytes);
 };

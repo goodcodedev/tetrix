@@ -1,18 +1,15 @@
-type fontData = {
-    bmFont: SdfFont.BMFont.bmFont,
-    image: Reasongl.Gl.imageT
-};
-
 type t = {
-    fonts: Hashtbl.t(string, fontData),
+    fonts: Hashtbl.t(string, SdfFont.BMFont.bmFont),
+    images: Hashtbl.t(string, Reasongl.Gl.imageT),
     textures: Hashtbl.t(string, Gpu.Texture.t),
     loading: Hashtbl.t(string, bool),
-    onLoads: Hashtbl.t(string, list((fontData) => unit))
+    onLoads: Hashtbl.t(string, list((SdfFont.BMFont.bmFont, Reasongl.Gl.imageT) => unit))
 };
 
 let make = (~initSize=2, ()) => {
     {
         fonts: Hashtbl.create(initSize),
+        images: Hashtbl.create(initSize),
         textures: Hashtbl.create(initSize),
         loading: Hashtbl.create(initSize),
         onLoads: Hashtbl.create(initSize)
@@ -33,7 +30,7 @@ let getTexture = (store, fontName) => {
 let request = (store, fontName, onLoad) => {
     if (Hashtbl.mem(store.fonts, fontName)) {
         /* Already loaded */
-        onLoad(Hashtbl.find(store.fonts, fontName))
+        onLoad(Hashtbl.find(store.fonts, fontName), Hashtbl.find(store.images, fontName))
     } else if (Hashtbl.mem(store.loading, fontName)) {
         /* Already loading */
         let onLoads = Hashtbl.find(store.onLoads, fontName);
@@ -48,14 +45,11 @@ let request = (store, fontName, onLoad) => {
                 let bmFont = SdfFont.BMFont.parse(fontFiles.bin);
                 let texture = getTexture(store, fontName);
                 Gpu.Texture.setDataT(texture, Gpu.Texture.ImageTexture(fontFiles.image));
-                let fontData = {
-                    bmFont,
-                    image: fontFiles.image
-                };
-                Hashtbl.add(store.fonts, fontName, fontData);
+                Hashtbl.add(store.fonts, fontName, bmFont);
+                Hashtbl.add(store.images, fontName, fontFiles.image);
                 let onLoads = Hashtbl.find(store.onLoads, fontName);
                 Hashtbl.remove(store.onLoads, fontName);
-                List.iter((onLoad) => onLoad(fontData), onLoads);
+                List.iter((onLoad) => onLoad(bmFont, fontFiles.image), onLoads);
             }
         );
     };

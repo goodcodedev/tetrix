@@ -122,8 +122,10 @@ let measureFittingChars = (self, start, last, width) => {
  * and width for each line
  */
 let lineWraps = (self, width, start, last) => {
-  let textLength = String.length(self.text);
+  let textLength = self.textLen;
   let curStart = ref(start);
+  /* Return index of next newline,
+     wrapped in option. None for not found */
   let rec optionNChar = i =>
     if (i >= textLength - 1) {
       None;

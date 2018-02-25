@@ -13,6 +13,29 @@ type bmChar = {
   channel: int
 };
 
+/* Char with values scaled to gl coords */
+type glChar = {
+  code: int,
+  /* Texture x, scaled by texture widt */
+  x: float,
+  /* Texture y, scaled by texture height */
+  y: float,
+  /* Texture width */
+  tw: float,
+  /* Texture height */
+  th: float,
+  /* Vertex width scaled to one line per 2.0 here */
+  vw: float,
+  /* Vertex height scaled to one line per 2.0 here */
+  vh: float,
+  /* X offset before texture copy */
+  xOffset: float,
+  /* Y offset before texture copy */
+  yOffset: float,
+  /* How much to advance after drawing character */
+  xAdvance: float,
+};
+
 type bmInfo = {
   size: int,
   smooth: bool,
@@ -38,7 +61,11 @@ type bmKerning = {
 type bmCommon = {
   lineHeight: int,
   base: int,
+  /* Lineheight ratio to gl coords -1.0 to 1.0 */
+  glScale: float,
+  /* Tex width */
   scaleW: int,
+  /* Tex height */
   scaleH: int,
   pages: int,
   packed: int,
@@ -54,10 +81,37 @@ type bmFont = {
   common: bmCommon,
   pages: list(string),
   chars: list(bmChar),
-  charsById: array(option(bmChar))
+  charsById: array(option(bmChar)),
+  glChars: array(option(glChar))
 };
 
 module Buffer = SdfFontBinaryBuffer;
+
+let addGlChar = (font, code) => {
+  let bmChar =
+    switch font.charsById[code] {
+    | Some(bmChar) => bmChar
+    | None => failwith("Could not find bmchar for code " ++ string_of_int(code))
+    };
+  /* Initialize glChar data */
+  let texWidth = float_of_int(font.common.scaleW);
+  let texHeight = float_of_int(font.common.scaleH);
+  let glScale = font.common.glScale;
+  let glChar : glChar = {
+    code,
+    x: float_of_int(bmChar.x) /. texWidth,
+    y: float_of_int(bmChar.y) /. texHeight,
+    tw: float_of_int(bmChar.width) /. texWidth,
+    th: float_of_int(bmChar.height) /. texHeight,
+    vw: float_of_int(bmChar.width) *. glScale,
+    vh: float_of_int(bmChar.height) *. glScale,
+    xOffset: float_of_int(bmChar.xOffset) *. glScale,
+    yOffset: float_of_int(bmChar.yOffset) *. glScale,
+    xAdvance: float_of_int(bmChar.xAdvance) *. glScale
+  };
+  font.glChars[code] = Some(glChar);
+  glChar
+};
 
 let readInfo = (buf, i) : bmInfo => {
   let bitField = Buffer.readUInt8(buf, i + 2);
@@ -84,17 +138,21 @@ let readInfo = (buf, i) : bmInfo => {
 };
 
 let readCommon = (buf, i) : bmCommon => {
-  /* Red and green go to same(?) */
-  lineHeight: Buffer.readUInt16LE(buf, i),
-  base: Buffer.readUInt16LE(buf, i + 2),
-  scaleW: Buffer.readUInt16LE(buf, i + 4),
-  scaleH: Buffer.readUInt16LE(buf, i + 6),
-  pages: Buffer.readUInt16LE(buf, i + 8),
-  packed: 0,
-  alphaChnl: Buffer.readUInt8(buf, i + 11),
-  redChnl: Buffer.readUInt8(buf, i + 12),
-  greenChnl: Buffer.readUInt8(buf, i + 12),
-  blueChnl: Buffer.readUInt8(buf, i + 13)
+  let lineHeight = Buffer.readUInt16LE(buf, i);
+  {
+    /* Red and green go to same(?) */
+    lineHeight,
+    base: Buffer.readUInt16LE(buf, i + 2),
+    glScale: 2.0 /. float_of_int(lineHeight),
+    scaleW: Buffer.readUInt16LE(buf, i + 4),
+    scaleH: Buffer.readUInt16LE(buf, i + 6),
+    pages: Buffer.readUInt16LE(buf, i + 8),
+    packed: 0,
+    alphaChnl: Buffer.readUInt8(buf, i + 11),
+    redChnl: Buffer.readUInt8(buf, i + 12),
+    greenChnl: Buffer.readUInt8(buf, i + 12),
+    blueChnl: Buffer.readUInt8(buf, i + 13)
+  }
 };
 
 let readPages = (buf, i, size) => {
@@ -263,7 +321,8 @@ let parse = buf : bmFont => {
       common,
       pages,
       chars,
-      charsById
+      charsById,
+      glChars : Array.make(Array.length(charsById), None)
     }
   | (None, Some(info), Some(common), Some(pages), Some(chars), Some(charsById)) => {
       kernings: [],
@@ -271,12 +330,14 @@ let parse = buf : bmFont => {
       common,
       pages,
       chars,
-      charsById
+      charsById,
+      glChars : Array.make(Array.length(charsById), None)
     }
   | _ => failwith("Could not parse font")
   };
 };
 
+/* Todo: Hashtbl or other structure */
 let getKerning = (font: bmFont, prevId, currId) => {
   let rec findKerning = kernings =>
     switch kernings {
