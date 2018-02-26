@@ -15,15 +15,14 @@ type bmChar = {
 
 /* Char with values scaled to gl coords */
 type glChar = {
-  code: int,
   /* Texture x, scaled by texture widt */
-  x: float,
+  tx: float,
   /* Texture y, scaled by texture height */
-  y: float,
-  /* Texture width */
-  tw: float,
-  /* Texture height */
-  th: float,
+  ty: float,
+  /* Texture x right, scaled by texture widt */
+  tx2: float,
+  /* Texture y top, scaled by texture height */
+  ty2: float,
   /* Vertex width scaled to one line per 2.0 here */
   vw: float,
   /* Vertex height scaled to one line per 2.0 here */
@@ -97,12 +96,13 @@ let addGlChar = (font, code) => {
   let texWidth = float_of_int(font.common.scaleW);
   let texHeight = float_of_int(font.common.scaleH);
   let glScale = font.common.glScale;
+  let tx = float_of_int(bmChar.x) /. texWidth;
+  let ty = float_of_int(bmChar.y) /. texHeight;
   let glChar : glChar = {
-    code,
-    x: float_of_int(bmChar.x) /. texWidth,
-    y: float_of_int(bmChar.y) /. texHeight,
-    tw: float_of_int(bmChar.width) /. texWidth,
-    th: float_of_int(bmChar.height) /. texHeight,
+    tx,
+    ty,
+    tx2: tx +. float_of_int(bmChar.width) /. texWidth,
+    ty2: ty +. float_of_int(bmChar.height) /. texHeight,
     vw: float_of_int(bmChar.width) *. glScale,
     vh: float_of_int(bmChar.height) *. glScale,
     xOffset: float_of_int(bmChar.xOffset) *. glScale,
