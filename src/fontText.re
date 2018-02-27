@@ -6,7 +6,7 @@ type align =
   | Right;
 
 type block = {
-  align,
+  align: option(align),
   font: option(string),
   height: option(float),
   color: option(Color.t),
@@ -29,7 +29,7 @@ let defaultHeight = 0.2;
 let defaultColor = Color.fromFloats(1.0, 1.0, 1.0);
 
 let block = (
-  ~align=Left,
+  ~align=?,
   ~font=?,
   ~height=?,
   ~color=?,
@@ -221,7 +221,7 @@ module FontLayout = {
     /* Four points per glyph, each point has
        x, y, uvx, uvy. Multicolor has 3 more per point
        for color */
-    let perGlyph = (multicolor) ? 16 : 28;
+    let perGlyph = (multicolor) ? 28 : 16;
     let d = Array.make(numGlyphs * perGlyph, 0.0);
     let rec processGlyph = (iGlyph, i) => {
       if (iGlyph < numGlyphs) {
@@ -239,15 +239,15 @@ module FontLayout = {
         d[i + 6] = gl.tx2;
         d[i + 7] = gl.ty2;
         /* Top right */
-        d[i + 4] = g.x +. g.w;
-        d[i + 5] = g.y;
-        d[i + 6] = gl.tx2;
-        d[i + 7] = gl.ty;
+        d[i + 8] = g.x +. g.w;
+        d[i + 9] = g.y;
+        d[i + 10] = gl.tx2;
+        d[i + 11] = gl.ty;
         /* Top left */
-        d[i + 4] = g.x;
-        d[i + 5] = g.y;
-        d[i + 6] = gl.tx;
-        d[i + 7] = gl.ty;
+        d[i + 12] = g.x;
+        d[i + 13] = g.y;
+        d[i + 14] = gl.tx;
+        d[i + 15] = gl.ty;
         /* Recurse next glyph */
         processGlyph(iGlyph + 1, i + perGlyph);
       };
@@ -268,6 +268,8 @@ module FontLayout = {
     }
   };
 
+  /* Todo: Verify algorithms when we have better setup
+     to "unit test" */
   let layoutBlock = (layout, block : block, yScale) => {
     let curStyle = defaultStyle(layout);
     let lineStart = -1.0;
@@ -276,7 +278,7 @@ module FontLayout = {
     /* Todo: Use font baseline */
     let s = {
       lastGlyph: None,
-      penX: 0.0,
+      penX: lineStart,
       penY: 0.0,
       iGlyph: 0,
       glyphLineStart: 0
@@ -311,12 +313,13 @@ module FontLayout = {
       | [part, ...rest] =>
         switch part {
         | Text(text) =>
+          Js.log("Processing text " ++ text);
           let textLen = String.length(text);
           GlyphArrayB.ensureSize(layout.glyphB, s.iGlyph + textLen);
           let glScale = curStyle.font.common.glScale;
           /* First non whitespace index from i and backwards */
           let rec nonWhitespace = (i, until) => {
-            if (i <= until) {
+            if (i < until) {
               None
             } else if (glyphB[i].code == spaceCode) {
               nonWhitespace(i - 1, until)
@@ -327,9 +330,9 @@ module FontLayout = {
           let truncateWhitespace = (fromIndex) => {
             /* Truncate between nonWhitespace and fromIndex
                by moving glyphs backwards and placing the
-               truncated glyphs after */
+               truncated glyphs after current iGlyph */
             let rec collectTruncated = (i, until, list) => {
-              if (i < until) {
+              if (i <= until) {
                 collectTruncated(i + 1, until, [glyphB[i], ...list])
               } else {
                 list
@@ -342,42 +345,53 @@ module FontLayout = {
               };
             };
             let truncateFrom = switch (nonWhitespace(fromIndex, s.glyphLineStart)) {
-            | Some(nonWhitespace) => nonWhitespace
+            | Some(nonWhitespace) => nonWhitespace + 1
             | None => s.glyphLineStart
             };
-            let numTruncated = fromIndex - truncateFrom;
-            if (numTruncated > 0) {
-              let truncated = collectTruncated(truncateFrom, fromIndex, []);
-              moveBack(truncateFrom + 1, fromIndex - numTruncated, numTruncated);
+            let numTruncated = fromIndex - truncateFrom + 1;
+            let numAfter = s.iGlyph - 1 - fromIndex;
+            let numMove = min(numTruncated, numAfter);
+            if (numMove > 0) {
+              let truncated = collectTruncated(truncateFrom, truncateFrom + numMove, []);
+              moveBack(truncateFrom, truncateFrom + numMove, numTruncated);
+              /* Put truncated items where items where moved from */
               List.iteri((i, truncated) => {
-                glyphB[fromIndex - i] = truncated;
+                glyphB[truncateFrom + numTruncated + i] = truncated;
               }, truncated);
             };
             numTruncated
           };
           let alignLine = (lastIndex) => {
             let lastGlyph = glyphB[lastIndex];
+            Js.log2("Aligning " ++ text, String.make(1, Char.chr(lastGlyph.code)));
             switch (curStyle.align) {
             | Left => ()
             | Center =>
-              let xAdj = (lineEnd -. lastGlyph.x +. lastGlyph.w) /. 2.0;
+              let xAdj = (lineEnd -. lastGlyph.x -. lastGlyph.w) /. 2.0;
               moveX(xAdj, s.glyphLineStart, lastIndex);
             | Right =>
               let xAdj = lineEnd -. s.penX;
               moveX(xAdj, s.glyphLineStart, lastIndex);
             };
           };
+                  let rec printBuffer = (i) => {
+                    if (i < s.iGlyph) {
+                      Js.log(String.make(1, Char.chr(glyphB[i].code)));
+                      printBuffer(i + 1);
+                    };
+                  };
           /* Loop for character in text */
           let rec addChar = (iText) => {
             if (iText >= textLen) {
               /* Reached end of text */
-              alignLine(s.iGlyph);
+              alignLine(s.iGlyph - 1);
             } else {
               let code = Char.code(text.[iText]);
+              Js.log("Processing char " ++ String.make(1, Char.chr(code)));
               /* Check for newline char */
               if (code == nlCode) {
                 /* Move back to first non whitespace */
-                switch (nonWhitespace(s.iGlyph, s.glyphLineStart)) {
+                switch (nonWhitespace(s.iGlyph - 1, s.glyphLineStart)) {
                 | Some(iGlyph) =>
                   s.iGlyph = iGlyph;
                   if (iText + 1 < textLen) {
@@ -391,7 +405,7 @@ module FontLayout = {
                   /* No non-whitespace found.. Assume the user wants a newline */
                   if (iText + 1 < textLen) {
                     s.penY = s.penY +. curStyle.height;
-                    s.glyphLineStart = s.iGlyph + 1;
+                    s.glyphLineStart = s.iGlyph;
                     s.penX = lineStart;
                     addChar(iText + 1);
                   };
@@ -419,9 +433,11 @@ module FontLayout = {
                     +. curStyle.adjSpacing;
                 };
                 /* Check if we surpass max width */
-                let nextPen = s.penX +. (glChar.xAdvance *. curStyle.height);
+                let xAdvance = (glChar.xAdvance *. curStyle.height);
+                let nextPen = s.penX +. xAdvance;
                 let nextWidth = s.penX +. (glChar.vw *. curStyle.height);
-                let iText = if (nextWidth >= lineEnd || nextPen >= lineEnd) {
+                Js.log3("Next width, pen", nextWidth, nextPen);
+                let iText = if (nextWidth > lineEnd || nextPen > lineEnd) {
                   /* Next char surpassed line width, attempt to find
                     whitespace to break on, or break after current char */
                   let rec prevSpace = (i) => {
@@ -430,7 +446,7 @@ module FontLayout = {
                     } else if (glyphB[i].code == spaceCode) {
                       Some(i)
                     } else {
-                      prevSpace(i)
+                      prevSpace(i - 1)
                     }
                   };
                   /* Skip whitespaces from text position when start of line */
@@ -443,40 +459,52 @@ module FontLayout = {
                       Some(iText)
                     }
                   };
-                  switch (prevSpace(s.iGlyph)) {
+                  switch (prevSpace(s.iGlyph - 1)) {
                   | Some(spaceIndex) =>
-                    /* Especially for right aligned, we need to truncate whitespace */
+                    Js.log2("Space at", spaceIndex);
+                    Js.log("Before truncate");
+                    printBuffer(0);
+                    /* Especially for right aligned, we need to truncate whitespace
+                       Will also reduce vertex data */
                     let truncated = truncateWhitespace(spaceIndex);
-                    let spaceIndex = spaceIndex - truncated;
-                    /* Space found, move characters after to next line */
-                    let subtractX = glyphB[spaceIndex + 1].x;
-                    /* todo: Need to resolve current height for next line
-                      based on moved characters */
-                    let addY = curStyle.height;
-                    moveXY(subtractX, addY, spaceIndex + 1, s.iGlyph);
-                    /* Line is breaked, adjust positions according to align */
-                    alignLine(spaceIndex - 1);
                     s.iGlyph = s.iGlyph - truncated;
-                    s.penX = glyphB[s.iGlyph].x;
-                    s.penY = glyphB[s.iGlyph].y;
+                    Js.log("After truncate");
+                    printBuffer(0);
+                    let spaceIndex = spaceIndex - truncated;
+                    [%debugger];
+                    /* Adding break, adjust positions according to align */
+                    alignLine(spaceIndex);
+                    Js.log3("Spaceindex", spaceIndex, s.iGlyph);
+                    if (s.iGlyph - 1 > spaceIndex) {
+                      /* There are characters after space */
+                      /* Move characters after to next line */
+                      let subtractX = glyphB[spaceIndex + 1].x *. (-1.0);
+                      /* todo: Need to resolve current height for next line
+                        based on moved characters */
+                      let addY = curStyle.height *. (-1.0);
+                      moveXY(subtractX, addY, spaceIndex + 1, s.iGlyph - 1);
+                      s.penX = glyphB[s.iGlyph - 1].x;
+                      s.penY = glyphB[s.iGlyph - 1].y;
+                    } else {
+                      s.penX = lineStart;
+                      s.penY = s.penY -. curStyle.height;
+                    };
                     firstNonWhitespace(iText)
                   | None =>
                     /* No space found, break after current char */
-                    alignLine(s.iGlyph);
+                    alignLine(s.iGlyph - 1);
                     /* Prepare newline when there is another non whitespace character */
                     switch (firstNonWhitespace(iText)) {
                     | Some(_) as iText =>
-                      s.penY = s.penY +. curStyle.height;
+                      s.penY = s.penY -. curStyle.height;
                       s.penX = lineStart;
-                      s.glyphLineStart = s.iGlyph + 1;
+                      s.glyphLineStart = s.iGlyph;
                       iText
                     | None => None
                     }
                   }
                 } else {
                   /* Within line, add as normal */
-                  /* Increment posX */
-                  s.penX = nextPen;
                   Some(iText)
                 };
                 /* There may have been a break and then
@@ -484,8 +512,9 @@ module FontLayout = {
                 switch (iText) {
                 | Some(iText) =>
                   /* Set glyph data */
-                  s.iGlyph = s.iGlyph + 1;
-                  let glyph = layout.glyphB.data[s.iGlyph];
+                  let glyph = glyphB[s.iGlyph];
+                  Js.log3("Pen x y", s.penX, s.penY);
+                  Js.log2("Adding " ++ String.make(1, Char.chr(code)), s.iGlyph);
                   glyph.x = s.penX +. glChar.xOffset *. curStyle.height;
                   glyph.y = s.penY -. glChar.yOffset *. curStyle.height;
                   glyph.w = glChar.vw *. curStyle.height;
@@ -495,6 +524,9 @@ module FontLayout = {
                   glyph.glChar = glChar;
                   /* Recurse rest of chars in text */
                   if (iText < textLen) {
+                    s.iGlyph = s.iGlyph + 1;
+                    /* Increment posX */
+                    s.penX = s.penX +. xAdvance;
                     addChar(iText + 1);
                   };
                 | None => ()
@@ -504,6 +536,8 @@ module FontLayout = {
           };
           /* Initiate char loop */
           addChar(0);
+          Js.log("After addchar");
+          printBuffer(0);
         | Styled(styled) =>
           let height = switch styled.height {
           | None => curStyle.height
@@ -533,6 +567,33 @@ module FontLayout = {
         };
         layoutParts(rest, curStyle);
       };
+    };
+    let height = switch block.height {
+    | None => curStyle.height
+    | Some(height) => height
+    };
+    let spacing = switch block.spacing {
+    | None => curStyle.spacing
+    | Some(spacing) => spacing
+    };
+    let adjSpacing = spacing *. height;
+    let font = switch block.font {
+    | None => curStyle.font
+    | Some(font) => Hashtbl.find(layout.store.fonts, font)
+    };
+    let curStyle = {
+      font,
+      height,
+      spacing,
+      adjSpacing,
+      color: switch block.color {
+      | None => curStyle.color
+      | Some(color) => color
+      },
+      align: switch block.align {
+      | None => curStyle.align
+      | Some(align) => align
+      }
     };
     layoutParts(block.children, curStyle);
     s.iGlyph

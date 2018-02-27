@@ -18,7 +18,7 @@ let vertexSource = {|
         // Took rise over run with smoothFactor as run and factor as rise,
         // subtracted x - x*slope to get + constant.
         smoothFactor = model[0][0] * pixelSize.x;
-        smoothFactor = (smoothFactor * -1.6211904762 + 15.4452380953);
+        smoothFactor = (smoothFactor * 0.008 + 0.0);
         vec2 pos = vec3(vec3(position, 1.0) * model * layout).xy;
         gl_Position = vec4(pos, 0.0, 1.0);
     }
@@ -200,8 +200,8 @@ let updateNode =
     fontDraw.fontLayout.store,
     fontDraw.blockInfo.fonts,
     store => {
-      /*let vertices = FontText.Layout.layoutVertices(fontDraw.fontLayout, fontDraw.text);*/
-      let vertices = Array.make(0, 0.0);
+      let vertices = FontText.FontLayout.layoutVertices(fontDraw.fontLayout, fontDraw.text);
+      Js.log(vertices);
       VertexBuffer.setDataT(fontDraw.vertices, vertices);
       IndexBuffer.setDataT(
         fontDraw.indices,
