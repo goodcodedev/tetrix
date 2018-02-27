@@ -169,6 +169,7 @@ let makeSimpleText =
     font,
     fontLayout,
     ~height=0.2,
+    ~numLines=1,
     ~align=FontText.Left,
     ~color=Color.fromFloats(1.0, 1.0, 1.0),
     ()
@@ -179,12 +180,12 @@ let makeSimpleText =
       ~font,  
       ~color,
       ~align,
-      ~children=[
+      [
         FontText.text(text)
-      ],
-      ()
+      ]
     ),
     fontLayout,
+    ~height=(height *. float_of_int(numLines)),
     ()
   )
 };
@@ -199,18 +200,21 @@ let updateNode =
   FontStore.requestMultiple(
     fontDraw.fontLayout.store,
     fontDraw.blockInfo.fonts,
-    store => {
-      let vertices = FontText.FontLayout.layoutVertices(fontDraw.fontLayout, fontDraw.text);
+    _store => {
+      let (vertices, yLineEnd) = FontText.FontLayout.layoutVertices(fontDraw.fontLayout, fontDraw.text);
       Js.log(vertices);
       VertexBuffer.setDataT(fontDraw.vertices, vertices);
       IndexBuffer.setDataT(
         fontDraw.indices,
         IndexBuffer.makeQuadsData(Array.length(vertices) / 16)
       );
+      /* Text layout on y axis goes from 0.0 downwards,
+         this vertically aligns in middle */
+      let yTrans = yLineEnd *. (-0.5);
       let modelMat =
         Data.Mat3.matmul(
-          Data.Mat3.trans(0.0, 0.0),
-          Data.Mat3.scale(1.0, fontDraw.aspect)
+          Data.Mat3.scale(1.0, fontDraw.aspect),
+          Data.Mat3.trans(0.0, yTrans)
         );
       Uniform.setMat3f(fontDraw.uModel.uniform, modelMat);
       node.loading = false;
@@ -282,6 +286,7 @@ let makeSimpleNode = (
     font,
     fontLayout,
     ~height=0.2,
+    ~numLines=1,
     ~align=FontText.Left,
     ~color=Color.fromFloats(1.0, 1.0, 1.0),
     ~key=?,
@@ -296,6 +301,7 @@ let makeSimpleNode = (
       font,
       fontLayout,
       ~height,
+      ~numLines,
       ~align,
       ~color,
       ()

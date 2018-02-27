@@ -280,10 +280,13 @@ let createRightRow = state => {
 let createStartScreen = state => {
   let vimtrisText = FontText.(block(
     ~font="digitalt",
-    ~children=[
-      text("Vimtris")
-    ],
-    ()
+    ~height=0.25,
+    [
+      text("Vimtris\n"),
+      styled(~height=0.08, [
+        text("Press N to play")
+      ])
+    ]
   ));
   Layout.vertical(
     ~key="startScreen",
@@ -448,7 +451,7 @@ let createRootNode = state => {
 
 let createScene = (canvas, state) => {
   let scene =
-    Scene.make(canvas, state, createRootNode(state), ~drawListDebug=false, ());
+    Scene.make(canvas, state, createRootNode(state), ~drawListDebug=true, ());
   let anim =
     Animate.anim(
       AnimNodeUniform(Scene.getNodeUnsafe(scene, "background"), "anim"),

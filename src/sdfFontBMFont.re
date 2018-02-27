@@ -62,6 +62,8 @@ type bmCommon = {
   base: int,
   /* Lineheight ratio to gl coords -1.0 to 1.0 */
   glScale: float,
+  /* Baseline in gl coords */
+  glBase: float,
   /* Tex width */
   scaleW: int,
   /* Tex height */
@@ -139,11 +141,14 @@ let readInfo = (buf, i) : bmInfo => {
 
 let readCommon = (buf, i) : bmCommon => {
   let lineHeight = Buffer.readUInt16LE(buf, i);
+  let base = Buffer.readUInt16LE(buf, i + 2);
+  let glScale = 2.0 /. float_of_int(lineHeight);
   {
     /* Red and green go to same(?) */
     lineHeight,
-    base: Buffer.readUInt16LE(buf, i + 2),
-    glScale: 2.0 /. float_of_int(lineHeight),
+    base,
+    glScale,
+    glBase: 2.0 /. float_of_int(base),
     scaleW: Buffer.readUInt16LE(buf, i + 4),
     scaleH: Buffer.readUInt16LE(buf, i + 6),
     pages: Buffer.readUInt16LE(buf, i + 8),

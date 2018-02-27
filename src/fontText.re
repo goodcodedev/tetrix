@@ -34,8 +34,7 @@ let block = (
   ~height=?,
   ~color=?,
   ~spacing=?,
-  ~children=[],
-  ()
+  children
 ) => {
   {
     align,
@@ -52,8 +51,7 @@ let styled = (
   ~height=?,
   ~color=?,
   ~spacing=?,
-  ~children=[],
-  ()
+  children
 ) => {
   Styled({
     font,
@@ -76,7 +74,7 @@ let styledText = (
     ~font=?font,
     ~height=?height,
     ~color=?color,
-    ~children=[
+    [
       text(textString)
     ]
   )
@@ -196,6 +194,8 @@ type layoutState = {
   mutable penX: float,
   /* Current y position */
   mutable penY: float,
+  /* Where line ends on y axis */
+  mutable yLineEnd: float,
   /* Total num chars */
   mutable iGlyph: int,
   /* Current line start */
@@ -216,7 +216,7 @@ module FontLayout = {
     }
   };
 
-  let getVertices = (layout, numGlyphs, yScale, multicolor) => {
+  let getVertices = (layout, numGlyphs, multicolor) => {
     let glyphB = layout.glyphB.data;
     /* Four points per glyph, each point has
        x, y, uvx, uvy. Multicolor has 3 more per point
@@ -269,8 +269,9 @@ module FontLayout = {
   };
 
   /* Todo: Verify algorithms when we have better setup
-     to "unit test" */
-  let layoutBlock = (layout, block : block, yScale) => {
+     to "unit test"
+     Would it be good for performance to split this up? */
+  let layoutBlock = (layout, block : block) => {
     let curStyle = defaultStyle(layout);
     let lineStart = -1.0;
     let lineEnd = 1.0;
@@ -280,9 +281,12 @@ module FontLayout = {
       lastGlyph: None,
       penX: lineStart,
       penY: 0.0,
+      yLineEnd: 0.0,
       iGlyph: 0,
       glyphLineStart: 0
     };
+    /* Some linespacing factor, lineHeight might be off somehow */
+    let lineHeight = 2.0;
     let glyphB = layout.glyphB.data;
     let spaceCode = Char.code(' ');
     let nlCode = Char.code('\n');
@@ -393,10 +397,12 @@ module FontLayout = {
                 /* Move back to first non whitespace */
                 switch (nonWhitespace(s.iGlyph - 1, s.glyphLineStart)) {
                 | Some(iGlyph) =>
-                  s.iGlyph = iGlyph;
+                  alignLine(iGlyph);
+                  s.iGlyph = iGlyph + 1;
                   if (iText + 1 < textLen) {
                     /* If more text, go to next line */
-                    s.penY = s.penY +. curStyle.height;
+                    s.penY = s.penY -. curStyle.height *. lineHeight;
+                    s.yLineEnd = s.yLineEnd -. curStyle.height *. lineHeight;
                     s.glyphLineStart = iGlyph + 1;
                     s.penX = lineStart;
                     addChar(iText + 1);
@@ -404,7 +410,8 @@ module FontLayout = {
                 | None => 
                   /* No non-whitespace found.. Assume the user wants a newline */
                   if (iText + 1 < textLen) {
-                    s.penY = s.penY +. curStyle.height;
+                    s.penY = s.penY -. curStyle.height *. lineHeight;
+                    s.yLineEnd = s.yLineEnd -. curStyle.height *. lineHeight;
                     s.glyphLineStart = s.iGlyph;
                     s.penX = lineStart;
                     addChar(iText + 1);
@@ -433,11 +440,7 @@ module FontLayout = {
                     +. curStyle.adjSpacing;
                 };
                 /* Check if we surpass max width */
-                let xAdvance = (glChar.xAdvance *. curStyle.height);
-                let nextPen = s.penX +. xAdvance;
-                let nextWidth = s.penX +. (glChar.vw *. curStyle.height);
-                Js.log3("Next width, pen", nextWidth, nextPen);
-                let iText = if (nextWidth > lineEnd || nextPen > lineEnd) {
+                let iText = if (s.penX +. (glChar.vw *. curStyle.height) > lineEnd) {
                   /* Next char surpassed line width, attempt to find
                     whitespace to break on, or break after current char */
                   let rec prevSpace = (i) => {
@@ -481,13 +484,15 @@ module FontLayout = {
                       let subtractX = glyphB[spaceIndex + 1].x *. (-1.0);
                       /* todo: Need to resolve current height for next line
                         based on moved characters */
-                      let addY = curStyle.height *. (-1.0);
+                      let addY = curStyle.height *. lineHeight *. -1.0;
                       moveXY(subtractX, addY, spaceIndex + 1, s.iGlyph - 1);
                       s.penX = glyphB[s.iGlyph - 1].x;
                       s.penY = glyphB[s.iGlyph - 1].y;
+                      s.yLineEnd = s.yLineEnd -. curStyle.height *. lineHeight;
                     } else {
                       s.penX = lineStart;
-                      s.penY = s.penY -. curStyle.height;
+                      s.penY = s.penY -. curStyle.height *. lineHeight;
+                      s.yLineEnd = s.yLineEnd -. curStyle.height *. lineHeight;
                     };
                     firstNonWhitespace(iText)
                   | None =>
@@ -496,7 +501,8 @@ module FontLayout = {
                     /* Prepare newline when there is another non whitespace character */
                     switch (firstNonWhitespace(iText)) {
                     | Some(_) as iText =>
-                      s.penY = s.penY -. curStyle.height;
+                      s.penY = s.penY -. curStyle.height *. lineHeight;
+                      s.yLineEnd = s.yLineEnd -. curStyle.height *. lineHeight;
                       s.penX = lineStart;
                       s.glyphLineStart = s.iGlyph;
                       iText
@@ -526,7 +532,7 @@ module FontLayout = {
                   if (iText < textLen) {
                     s.iGlyph = s.iGlyph + 1;
                     /* Increment posX */
-                    s.penX = s.penX +. xAdvance;
+                    s.penX = s.penX +. (glChar.xAdvance *. curStyle.height);
                     addChar(iText + 1);
                   };
                 | None => ()
@@ -568,6 +574,7 @@ module FontLayout = {
         layoutParts(rest, curStyle);
       };
     };
+    /* Set curStyle from block */
     let height = switch block.height {
     | None => curStyle.height
     | Some(height) => height
@@ -595,12 +602,18 @@ module FontLayout = {
       | Some(align) => align
       }
     };
+    /* Todo: Need to take baseline into consideration more places,
+       when changing height/fonts. Some edge cases around newlines,
+       how to handle based on previous lines font/height */
+    s.yLineEnd = s.yLineEnd -. curStyle.height;
+    s.penY = s.yLineEnd +. curStyle.font.common.glBase *. curStyle.height;
+    Js.log3("Height, base", curStyle.height, curStyle.font.common.glBase *. curStyle.height);
     layoutParts(block.children, curStyle);
-    s.iGlyph
+    (s.iGlyph, s.yLineEnd)
   };
 
   let layoutVertices = (layout, block) => {
-    let iGlyph = layoutBlock(layout, block, 1.0);
-    getVertices(layout, iGlyph, 1.0, false)
+    let (iGlyph, yLineEnd) = layoutBlock(layout, block);
+    (getVertices(layout, iGlyph, false), yLineEnd)
   }
 };
