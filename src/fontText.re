@@ -154,7 +154,7 @@ type glyphData = {
   mutable w: float,
   mutable h: float,
   mutable size: float,
-  mutable color: Color.t,
+  mutable color: array(float),
   mutable glChar: BMFont.glChar,
   mutable code: int
 };
@@ -182,7 +182,7 @@ module GlyphArrayB = ArrayB.Make({
     w: 0.0,
     h: 0.0,
     size: 0.0,
-    color: Color.fromFloats(1.0, 1.0, 1.0),
+    color: [|1.0, 1.0, 1.0|],
     glChar: nullChar,
     code: 0
   };
@@ -219,18 +219,20 @@ module FontLayout = {
     }
   };
 
+  let numVertices = 20;
+  let numColorVertices = 32;
+
   let getVertices = (layout, numGlyphs, multicolor) => {
     let glyphB = layout.glyphB.data;
     /* Four points per glyph, each point has
        x, y, uvx, uvy. Multicolor has 3 more per point
        for color */
-    let perGlyph = (multicolor) ? 32 : 20;
+    let perGlyph = (multicolor) ? numColorVertices : numVertices;
     let d = Array.make(numGlyphs * perGlyph, 0.0);
     let rec processGlyph = (iGlyph, i) => {
       if (iGlyph < numGlyphs) {
         let g = glyphB[iGlyph];
         let gl = g.glChar;
-        /* todo: better indexing than quads */
         /* Bottom left */
         d[i] = g.x;
         d[i + 1] = g.y -. g.h;
@@ -259,7 +261,55 @@ module FontLayout = {
         processGlyph(iGlyph + 1, i + perGlyph);
       };
     };
-    processGlyph(0, 0);
+    let rec processColorGlyph = (iGlyph, i) => {
+      if (iGlyph < numGlyphs) {
+        let g = glyphB[iGlyph];
+        let gl = g.glChar;
+        /* Bottom left */
+        d[i] = g.x;
+        d[i + 1] = g.y -. g.h;
+        d[i + 2] = gl.tx;
+        d[i + 3] = gl.ty2;
+        d[i + 4] = g.size;
+        d[i + 5] = g.color[0];
+        d[i + 6] = g.color[1];
+        d[i + 7] = g.color[2];
+        /* Bottom right */
+        d[i + 8] = g.x +. g.w;
+        d[i + 9] = g.y -. g.h;
+        d[i + 10] = gl.tx2;
+        d[i + 11] = gl.ty2;
+        d[i + 12] = g.size;
+        d[i + 13] = g.color[0];
+        d[i + 14] = g.color[1];
+        d[i + 15] = g.color[2];
+        /* Top right */
+        d[i + 16] = g.x +. g.w;
+        d[i + 17] = g.y;
+        d[i + 18] = gl.tx2;
+        d[i + 19] = gl.ty;
+        d[i + 20] = g.size;
+        d[i + 21] = g.color[0];
+        d[i + 22] = g.color[1];
+        d[i + 23] = g.color[2];
+        /* Top left */
+        d[i + 24] = g.x;
+        d[i + 25] = g.y;
+        d[i + 26] = gl.tx;
+        d[i + 27] = gl.ty;
+        d[i + 28] = g.size;
+        d[i + 29] = g.color[0];
+        d[i + 30] = g.color[1];
+        d[i + 31] = g.color[2];
+        /* Recurse next glyph */
+        processColorGlyph(iGlyph + 1, i + perGlyph);
+      };
+    };
+    if (multicolor) {
+      processColorGlyph(0, 0);
+    } else {
+      processGlyph(0, 0);
+    };
     d
   };
 
@@ -418,7 +468,7 @@ module FontLayout = {
                   Js.log("No non whitespace " ++ String.make(1, Char.chr(glyphB[s.iGlyph + 1].code)));
                   s.penY = s.penY -. curStyle.height *. lineHeight;
                   s.yLineEnd = s.yLineEnd -. curStyle.height *. lineHeight;
-                  s.glyphLineStart = s.iGlyph + 1;
+                  s.glyphLineStart = s.iGlyph;
                   s.penX = lineStart;
                   addChar(iText + 1);
                 };
@@ -532,7 +582,7 @@ module FontLayout = {
                   glyph.h = glChar.vh *. curStyle.height;
                   glyph.size = curStyle.height;
                   glyph.code = code;
-                  glyph.color = curStyle.color;
+                  glyph.color = Color.toArray(curStyle.color);
                   glyph.glChar = glChar;
                   /* Recurse rest of chars in text */
                   if (iText < textLen) {
@@ -622,8 +672,8 @@ module FontLayout = {
     (s.iGlyph, s.yLineEnd)
   };
 
-  let layoutVertices = (layout, block) => {
+  let layoutVertices = (layout, block, multicolor) => {
     let (iGlyph, yLineEnd) = layoutBlock(layout, block);
-    (getVertices(layout, iGlyph, false), yLineEnd)
+    (getVertices(layout, iGlyph, multicolor), yLineEnd)
   }
 };

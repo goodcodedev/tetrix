@@ -280,33 +280,22 @@ let createRightRow = state => {
 let createStartScreen = state => {
   let vimtrisText = FontText.(block(
     ~font="digitalt",
-    ~height=1.0,
-    ~align=FontText.Center,
-    [
-      text("Vimtris"),
-      styled(~height=0.08, [
-        text("\nPress N to play")
-      ])
-    ]
-  ));
-  let testText = FontText.(block(
-    ~font="digitalt",
     ~height=0.25,
-    ~align=FontText.Left,
+    ~align=FontText.Center,
+    ~color=Color.fromFloats(1.0, 1.0, 1.0),
     [
-      text("Test"),
-      styled(~height=0.08, [
-        text("\nPress N to play")
-      ]),
-      styled(~height=0.04, [
-        text("\n\nPress N to play")
-      ]),
-      styled(~height=0.02, [
+      styledText(~color=Game.colors[2], "V"),
+      styledText(~color=Game.colors[3], "i"),
+      styledText(~color=Game.colors[4], "m"),
+      styledText(~color=Game.colors[5], "t"),
+      styledText(~color=Game.colors[6], "r"),
+      styledText(~color=Game.colors[7], "i"),
+      styledText(~color=Game.colors[8], "s"),
+      styled(~height=0.08, ~color=Color.fromFloats(0.8, 0.9, 1.0), [
         text("\n\nPress N to play")
       ])
     ]
   ));
-  Layout.stacked([
   Layout.vertical(
     ~key="startScreen",
     [
@@ -317,14 +306,7 @@ let createStartScreen = state => {
         ()
       )
     ]
-  ),
-      FontDraw.makeBlockNode(
-        testText,
-        state.fontLayout,
-        ~height=1.0,
-        ()
-      )
-  ])
+  )
 };
 
 let createPauseScreen = state =>
@@ -485,7 +467,7 @@ let updateElTiles =
     (scene, el: Game.elData, elState, rows, cols, uCenterRadius, isSideEl) => {
   /* todo: Consider caching some of this */
   let tiles = Game.elTiles(el.el, el.rotation);
-  let color = Game.tileColors2[el.color];
+  let color = Color.toArray(Game.colors[el.color]);
   let x = el.posX;
   let y = el.posY;
   Scene.UVec3f.set(scene, elState.color, color);

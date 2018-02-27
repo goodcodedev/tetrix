@@ -13,6 +13,14 @@ let from255 = (r, g, b) => [|
 
 let fromFloats = (r, g, b) => [|r, g, b|];
 
+let fromArray = (a) : t => {
+  if (Array.length(a) != 3) {
+    Js.log(a);
+    failwith("Color array needs 3 elements");
+  };
+  a
+};
+
 let toArray = (c: t) : array(float) => c;
 
 let toVec3 = (c: t) => Data.Vec3.fromArray(toArray(c));

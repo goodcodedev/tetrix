@@ -111,19 +111,19 @@ let elTiles = (element, rotation) => {
   };
 };
 
-let tileColors2 =
+let colors =
   Array.map(
-    color => Array.map(component => float_of_int(component) /. 255.0, color),
+    color => Color.fromArray(Array.map(component => float_of_int(component) /. 255.0, color)),
     [|
-      [|199, 214, 240, 255|], /* Standard unfilled color */
-      [|205, 220, 246, 255|], /* Standard lighter color */
-      [|130, 240, 250, 255|], /* Magenta line */
-      [|120, 130, 250, 255|], /* Blue left L */
-      [|250, 210, 80, 255|], /* Orange right L */
-      [|250, 250, 130, 255|], /* Yellow cube */
-      [|140, 250, 140, 255|], /* Green right shift */
-      [|180, 100, 230, 255|], /* Purple triangle */
-      [|240, 130, 120, 255|] /* Red left shift */
+      [|199, 214, 240|], /* Standard unfilled color */
+      [|205, 220, 246|], /* Standard lighter color */
+      [|130, 240, 250|], /* Magenta line */
+      [|120, 130, 250|], /* Blue left L */
+      [|250, 210, 80|], /* Orange right L */
+      [|250, 250, 130|], /* Yellow cube */
+      [|140, 250, 140|], /* Green right shift */
+      [|180, 100, 230|], /* Purple triangle */
+      [|240, 130, 120|] /* Red left shift */
     |]
   );
 
@@ -866,8 +866,7 @@ let gameLogic = state => {
     regularGameLogic(state, isNewTick, curTime);
   } else {
     /* Element has dropped down */
-    let elColor = tileColors2[state.curEl.color];
-    let dropColor = Color.fromFloats(elColor[0], elColor[1], elColor[2]);
+    let dropColor = colors[state.curEl.color];
     /* Set dropbeams,
        copy drop beams "from", "last" from position after drop */
     Array.iteri(

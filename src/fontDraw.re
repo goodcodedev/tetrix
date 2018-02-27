@@ -1,7 +1,34 @@
-let vertexSource = {|
+open Gpu;
+
+type t = {
+  mutable text: FontText.block,
+  blockInfo: FontText.blockInfo,
+  vertices: VertexBuffer.t,
+  indices: IndexBuffer.t,
+  uModel: Scene.sceneUniform,
+  vo: Scene.sceneVertexObject,
+  textures: list(Gpu.Texture.t),
+  aspect: float,
+  fontLayout: FontText.FontLayout.t,
+  multicolor: bool
+};
+
+let vertexSource = (fontDraw) => {
+  let (attribs, varyings, main) =
+    if (fontDraw.multicolor) {
+      (
+        "attribute vec3 color;\n",
+        "varying vec3 vColor;\n",
+        "vColor = color;\n",
+      )
+    } else {
+      ("", "", "")
+    };
+  {|
     precision mediump float;
     attribute vec2 position;
     attribute vec2 uv;
+    |} ++ attribs ++ {|
     attribute float size;
 
     uniform mat3 model;
@@ -10,27 +37,42 @@ let vertexSource = {|
 
     varying vec2 vUv;
     varying float smoothFactor;
+    |} ++ varyings ++ {|
 
     void main() {
         vUv = uv;
+      |} ++ main ++ {|
         // Bit trying and failing to get this somewhat right
         // Can probably be calibrated better
         smoothFactor = model[0][0] / pixelSize.x / size * 600.0;
         vec2 pos = vec3(vec3(position, 1.0) * model * layout).xy;
         gl_Position = vec4(pos, 0.0, 1.0);
     }
-|};
+  |}
+};
 
 /* https://github.com/libgdx/libgdx/wiki/Distance-field-fonts */
-let fragmentSource = {|
+let fragmentSource = (fontDraw) => {
+  let (varyings, uniforms, colorGl) =
+    if (fontDraw.multicolor) {
+      (
+        "varying vec3 vColor;\n",
+        "",
+        "vColor",
+      )
+    } else {
+      ("", "uniform vec3 color;\n", "color")
+    };
+  {|
     #ifdef GL_OES_standard_derivatives
     #extension GL_OES_standard_derivatives : enable
     #endif
     precision mediump float;
     uniform sampler2D map;
-    uniform vec3 color;
+    |} ++ uniforms ++ {|
     uniform float opacity;
     varying vec2 vUv;
+    |} ++ varyings ++ {|
     varying float smoothFactor;
 
     float aastep(float value) {
@@ -39,10 +81,7 @@ let fragmentSource = {|
       #else
         float afwidth = (1.0 / 32.0) * (1.4142135623730951 / (2.0 * gl_FragCoord.w));
       #endif
-      //afwidth = afwidth * 22.0;
       afwidth = afwidth * smoothFactor;
-      // 1.0 - 5.0
-      // 0.3 - 22.0
       return smoothstep(0.5 - afwidth, 0.5 + afwidth, value);
     }
 
@@ -50,16 +89,14 @@ let fragmentSource = {|
         float discardLimit = 0.0001;
         vec4 texColor = 1.0 - texture2D(map, vUv);
         float alpha = aastep(texColor.x);
-        //color = texColor.xyz;
-        float colorCoef = 1.0 - alpha;
-        vec3 c = color * alpha;
+        vec3 c = |} ++ colorGl ++ {| * alpha;
         gl_FragColor = vec4(c, opacity * alpha);
-        //gl_FragColor = vec4(smoothFactor, 0.0, 0.0, opacity * alpha);
         if (alpha < discardLimit) {
             discard;
         }
     }
-|};
+  |}
+};
 
 let msdfVertexSource =
   String.trim(
@@ -105,21 +142,6 @@ let msdfFragmentSource =
 |}
   );
 
-open Gpu;
-
-type t = {
-  mutable text: FontText.block,
-  blockInfo: FontText.blockInfo,
-  vertices: VertexBuffer.t,
-  indices: IndexBuffer.t,
-  uModel: Scene.sceneUniform,
-  vo: Scene.sceneVertexObject,
-  textures: list(Gpu.Texture.t),
-  aspect: float,
-  fontLayout: FontText.FontLayout.t,
-  multicolor: bool
-};
-
 let makeText = (
   text : FontText.block,
   fontLayout : FontText.FontLayout.t,
@@ -133,14 +155,25 @@ let makeText = (
       blockInfo.fonts
     );
   let multicolor = (List.length(blockInfo.colors) > 1) ? true : false;
-  let vertices =
-    VertexBuffer.make(
-      [||],
+  let attribs =
+    if (multicolor) {
+      [|
+        VertexAttrib.make("position", GlType.Vec2f),
+        VertexAttrib.make("uv", GlType.Vec2f),
+        VertexAttrib.make("size", GlType.Float),
+        VertexAttrib.make("color", GlType.Vec3f)
+      |]
+    } else {
       [|
         VertexAttrib.make("position", GlType.Vec2f),
         VertexAttrib.make("uv", GlType.Vec2f),
         VertexAttrib.make("size", GlType.Float)
-      |],
+      |]
+    };
+  let vertices =
+    VertexBuffer.make(
+      [||],
+      attribs,
       DynamicDraw
     );
   let indices = IndexBuffer.make([||], DynamicDraw);
@@ -199,12 +232,13 @@ let updateNode =
     fontDraw.fontLayout.store,
     fontDraw.blockInfo.fonts,
     _store => {
-      let (vertices, yLineEnd) = FontText.FontLayout.layoutVertices(fontDraw.fontLayout, fontDraw.text);
+      let (vertices, yLineEnd) = FontText.FontLayout.layoutVertices(fontDraw.fontLayout, fontDraw.text, fontDraw.multicolor);
       Js.log(vertices);
       VertexBuffer.setDataT(fontDraw.vertices, vertices);
+      let numVertices = (fontDraw.multicolor) ? FontText.FontLayout.numColorVertices : FontText.FontLayout.numVertices;
       IndexBuffer.setDataT(
         fontDraw.indices,
-        IndexBuffer.makeQuadsData(Array.length(vertices) / 20)
+        IndexBuffer.makeQuadsData(Array.length(vertices) / numVertices)
       );
       /* Text layout on y axis goes from 0.0 downwards,
          this vertically aligns in (roughly, to fix) middle */
@@ -235,14 +269,14 @@ let makeNode =
     | _ => None
     };
   let uniforms =
-      switch color {
-      | Some(color) =>
+      switch (color, fontDraw.multicolor) {
+      | (Some(color), false) =>
         [
           ("model", fontDraw.uModel),
           ("color", Scene.UVec3f.vec(Color.toVec3(color))),
           ("opacity", Scene.UFloat.make(opacity))
         ]
-      | None =>
+      | (None, _) | (_, true) =>
         [
           ("model", fontDraw.uModel),
           ("opacity", Scene.UFloat.make(opacity))
@@ -263,8 +297,8 @@ let makeNode =
     Scene.makeNode(
       ~key?,
       ~cls,
-      ~vertShader=Shader.make(vertexSource),
-      ~fragShader=Shader.make(fragmentSource),
+      ~vertShader=Shader.make(vertexSource(fontDraw)),
+      ~fragShader=Shader.make(fragmentSource(fontDraw)),
       ~textures,
       ~vo=fontDraw.vo,
       ~uniforms,

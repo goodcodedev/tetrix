@@ -521,25 +521,21 @@ module IndexBuffer = {
     inited: None
   };
   let makeQuadsData = num => {
+    let d = Array.make(num * 6, 0);
     let rec quadData = quadNum =>
-      if (quadNum >= num) {
-        [];
-      } else {
+      if (quadNum < num) {
         let offset = 4 * quadNum;
-        [
-          [|
-            0 + offset,
-            1 + offset,
-            2 + offset,
-            0 + offset,
-            2 + offset,
-            3 + offset
-          |],
-          ...quadData(quadNum + 1)
-        ];
+        let i = quadNum * 6;
+        d[i] = 0 + offset;
+        d[i + 1] = 1 + offset;
+        d[i + 2] = 2 + offset;
+        d[i + 3] = 0 + offset;
+        d[i + 4] = 2 + offset;
+        d[i + 5] = 3 + offset;
+        quadData(quadNum + 1);
       };
-    /* todo: maybe tail recursive or something */
-    Array.concat(quadData(0));
+    quadData(0);
+    d
   };
   let setData = (inited: inited, data) => {
     inited.data = data;
