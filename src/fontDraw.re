@@ -2,6 +2,7 @@ let vertexSource = {|
     precision mediump float;
     attribute vec2 position;
     attribute vec2 uv;
+    attribute float size;
 
     uniform mat3 model;
     uniform mat3 layout;
@@ -12,13 +13,9 @@ let vertexSource = {|
 
     void main() {
         vUv = uv;
-        // x scale. I got the value of this by outputting smoothfactor and sampling color
-        // Divided by some factors that looked good to see what I needed
-        // to multiply with.
-        // Took rise over run with smoothFactor as run and factor as rise,
-        // subtracted x - x*slope to get + constant.
-        smoothFactor = model[0][0] * pixelSize.x;
-        smoothFactor = (smoothFactor * 0.008 + 0.0);
+        // Bit trying and failing to get this somewhat right
+        // Can probably be calibrated better
+        smoothFactor = model[0][0] / pixelSize.x / size * 600.0;
         vec2 pos = vec3(vec3(position, 1.0) * model * layout).xy;
         gl_Position = vec4(pos, 0.0, 1.0);
     }
@@ -141,7 +138,8 @@ let makeText = (
       [||],
       [|
         VertexAttrib.make("position", GlType.Vec2f),
-        VertexAttrib.make("uv", GlType.Vec2f)
+        VertexAttrib.make("uv", GlType.Vec2f),
+        VertexAttrib.make("size", GlType.Float)
       |],
       DynamicDraw
     );
@@ -206,10 +204,10 @@ let updateNode =
       VertexBuffer.setDataT(fontDraw.vertices, vertices);
       IndexBuffer.setDataT(
         fontDraw.indices,
-        IndexBuffer.makeQuadsData(Array.length(vertices) / 16)
+        IndexBuffer.makeQuadsData(Array.length(vertices) / 20)
       );
       /* Text layout on y axis goes from 0.0 downwards,
-         this vertically aligns in middle */
+         this vertically aligns in (roughly, to fix) middle */
       let yTrans = yLineEnd *. (-0.5);
       let modelMat =
         Data.Mat3.matmul(
@@ -279,6 +277,31 @@ let makeNode =
     );
     updateNode(fontDraw, node);
   node;
+};
+
+let makeBlockNode = (
+  block,
+  fontLayout,
+  ~height=0.5,
+  ~key=?,
+  ~cls=?,
+  ~opacity=1.0,
+  ~hidden=false,
+  ()
+) => {
+  makeNode(
+    makeText(
+      block,
+      fontLayout,
+      ~height,
+      ()
+    ),
+    ~key=?key,
+    ~cls=?cls,
+    ~opacity,
+    ~hidden,
+    ()
+  )
 };
 
 let makeSimpleNode = (

@@ -121,7 +121,7 @@ let getBlockInfo = (block : block) => {
         }
       },
       info,
-      block.children
+      styled.children
     )
   };
   let info = processBlock(block, {colors: [], fonts: []});
@@ -153,6 +153,7 @@ type glyphData = {
   mutable y: float,
   mutable w: float,
   mutable h: float,
+  mutable size: float,
   mutable color: Color.t,
   mutable glChar: BMFont.glChar,
   mutable code: int
@@ -180,6 +181,7 @@ module GlyphArrayB = ArrayB.Make({
     y: 0.0,
     w: 0.0,
     h: 0.0,
+    size: 0.0,
     color: Color.fromFloats(1.0, 1.0, 1.0),
     glChar: nullChar,
     code: 0
@@ -199,7 +201,8 @@ type layoutState = {
   /* Total num chars */
   mutable iGlyph: int,
   /* Current line start */
-  mutable glyphLineStart: int
+  mutable glyphLineStart: int,
+  mutable curStyle: calcStyle
 };
 
 module FontLayout = {
@@ -221,7 +224,7 @@ module FontLayout = {
     /* Four points per glyph, each point has
        x, y, uvx, uvy. Multicolor has 3 more per point
        for color */
-    let perGlyph = (multicolor) ? 28 : 16;
+    let perGlyph = (multicolor) ? 32 : 20;
     let d = Array.make(numGlyphs * perGlyph, 0.0);
     let rec processGlyph = (iGlyph, i) => {
       if (iGlyph < numGlyphs) {
@@ -233,21 +236,25 @@ module FontLayout = {
         d[i + 1] = g.y -. g.h;
         d[i + 2] = gl.tx;
         d[i + 3] = gl.ty2;
+        d[i + 4] = g.size;
         /* Bottom right */
-        d[i + 4] = g.x +. g.w;
-        d[i + 5] = g.y -. g.h;
-        d[i + 6] = gl.tx2;
-        d[i + 7] = gl.ty2;
+        d[i + 5] = g.x +. g.w;
+        d[i + 6] = g.y -. g.h;
+        d[i + 7] = gl.tx2;
+        d[i + 8] = gl.ty2;
+        d[i + 9] = g.size;
         /* Top right */
-        d[i + 8] = g.x +. g.w;
-        d[i + 9] = g.y;
-        d[i + 10] = gl.tx2;
-        d[i + 11] = gl.ty;
+        d[i + 10] = g.x +. g.w;
+        d[i + 11] = g.y;
+        d[i + 12] = gl.tx2;
+        d[i + 13] = gl.ty;
+        d[i + 14] = g.size;
         /* Top left */
-        d[i + 12] = g.x;
-        d[i + 13] = g.y;
-        d[i + 14] = gl.tx;
-        d[i + 15] = gl.ty;
+        d[i + 15] = g.x;
+        d[i + 16] = g.y;
+        d[i + 17] = gl.tx;
+        d[i + 18] = gl.ty;
+        d[i + 19] = g.size;
         /* Recurse next glyph */
         processGlyph(iGlyph + 1, i + perGlyph);
       };
@@ -283,7 +290,8 @@ module FontLayout = {
       penY: 0.0,
       yLineEnd: 0.0,
       iGlyph: 0,
-      glyphLineStart: 0
+      glyphLineStart: 0,
+      curStyle
     };
     /* Some linespacing factor, lineHeight might be off somehow */
     let lineHeight = 2.0;
@@ -304,6 +312,20 @@ module FontLayout = {
       if (i <= until) {
         moveXY(deltaX, deltaY, i + 1, until)
       }
+    };
+    let alignLine = (lastIndex, align) => {
+      let lastGlyph = glyphB[lastIndex];
+      Js.log2("Aligning ", String.make(1, Char.chr(lastGlyph.code)));
+      Js.log("From " ++ String.make(1, Char.chr(glyphB[s.glyphLineStart].code)));
+      switch (align) {
+      | Left => ()
+      | Center =>
+        let xAdj = (lineEnd -. lastGlyph.x -. lastGlyph.w) /. 2.0;
+        moveX(xAdj, s.glyphLineStart, lastIndex);
+      | Right =>
+        let xAdj = (lineEnd -. lastGlyph.x -. lastGlyph.w);
+        moveX(xAdj, s.glyphLineStart, lastIndex);
+      };
     };
     /* Loops parts and add result to glyphBuffer */
     /* Lots of dangerous mutable code and bad microoptimizations
@@ -365,19 +387,6 @@ module FontLayout = {
             };
             numTruncated
           };
-          let alignLine = (lastIndex) => {
-            let lastGlyph = glyphB[lastIndex];
-            Js.log2("Aligning " ++ text, String.make(1, Char.chr(lastGlyph.code)));
-            switch (curStyle.align) {
-            | Left => ()
-            | Center =>
-              let xAdj = (lineEnd -. lastGlyph.x -. lastGlyph.w) /. 2.0;
-              moveX(xAdj, s.glyphLineStart, lastIndex);
-            | Right =>
-              let xAdj = lineEnd -. s.penX;
-              moveX(xAdj, s.glyphLineStart, lastIndex);
-            };
-          };
                   let rec printBuffer = (i) => {
                     if (i < s.iGlyph) {
                       Js.log(String.make(1, Char.chr(glyphB[i].code)));
@@ -386,36 +395,32 @@ module FontLayout = {
                   };
           /* Loop for character in text */
           let rec addChar = (iText) => {
-            if (iText >= textLen) {
-              /* Reached end of text */
-              alignLine(s.iGlyph - 1);
-            } else {
+            if (iText < textLen) {
               let code = Char.code(text.[iText]);
               Js.log("Processing char " ++ String.make(1, Char.chr(code)));
               /* Check for newline char */
               if (code == nlCode) {
                 /* Move back to first non whitespace */
+                Js.log("Nl code");
                 switch (nonWhitespace(s.iGlyph - 1, s.glyphLineStart)) {
                 | Some(iGlyph) =>
-                  alignLine(iGlyph);
+                  Js.log("Non whitespace " ++ String.make(1, Char.chr(glyphB[iGlyph].code)));
+                  alignLine(iGlyph, curStyle.align);
                   s.iGlyph = iGlyph + 1;
-                  if (iText + 1 < textLen) {
-                    /* If more text, go to next line */
-                    s.penY = s.penY -. curStyle.height *. lineHeight;
-                    s.yLineEnd = s.yLineEnd -. curStyle.height *. lineHeight;
-                    s.glyphLineStart = iGlyph + 1;
-                    s.penX = lineStart;
-                    addChar(iText + 1);
-                  };
+                  /* Go to next line */
+                  s.penY = s.penY -. curStyle.height *. lineHeight;
+                  s.yLineEnd = s.yLineEnd -. curStyle.height *. lineHeight;
+                  s.glyphLineStart = iGlyph + 1;
+                  s.penX = lineStart;
+                  addChar(iText + 1);
                 | None => 
                   /* No non-whitespace found.. Assume the user wants a newline */
-                  if (iText + 1 < textLen) {
-                    s.penY = s.penY -. curStyle.height *. lineHeight;
-                    s.yLineEnd = s.yLineEnd -. curStyle.height *. lineHeight;
-                    s.glyphLineStart = s.iGlyph;
-                    s.penX = lineStart;
-                    addChar(iText + 1);
-                  };
+                  Js.log("No non whitespace " ++ String.make(1, Char.chr(glyphB[s.iGlyph + 1].code)));
+                  s.penY = s.penY -. curStyle.height *. lineHeight;
+                  s.yLineEnd = s.yLineEnd -. curStyle.height *. lineHeight;
+                  s.glyphLineStart = s.iGlyph + 1;
+                  s.penX = lineStart;
+                  addChar(iText + 1);
                 };
               } else {
                 /* Normal character */
@@ -476,7 +481,7 @@ module FontLayout = {
                     let spaceIndex = spaceIndex - truncated;
                     [%debugger];
                     /* Adding break, adjust positions according to align */
-                    alignLine(spaceIndex);
+                    alignLine(spaceIndex, curStyle.align);
                     Js.log3("Spaceindex", spaceIndex, s.iGlyph);
                     if (s.iGlyph - 1 > spaceIndex) {
                       /* There are characters after space */
@@ -497,7 +502,7 @@ module FontLayout = {
                     firstNonWhitespace(iText)
                   | None =>
                     /* No space found, break after current char */
-                    alignLine(s.iGlyph - 1);
+                    alignLine(s.iGlyph - 1, curStyle.align);
                     /* Prepare newline when there is another non whitespace character */
                     switch (firstNonWhitespace(iText)) {
                     | Some(_) as iText =>
@@ -525,6 +530,7 @@ module FontLayout = {
                   glyph.y = s.penY -. glChar.yOffset *. curStyle.height;
                   glyph.w = glChar.vw *. curStyle.height;
                   glyph.h = glChar.vh *. curStyle.height;
+                  glyph.size = curStyle.height;
                   glyph.code = code;
                   glyph.color = curStyle.color;
                   glyph.glChar = glChar;
@@ -545,6 +551,7 @@ module FontLayout = {
           Js.log("After addchar");
           printBuffer(0);
         | Styled(styled) =>
+          Js.log("Entered styled");
           let height = switch styled.height {
           | None => curStyle.height
           | Some(height) => height
@@ -569,6 +576,7 @@ module FontLayout = {
             },
             align: curStyle.align
           };
+          s.curStyle = newStyle;
           layoutParts(styled.children, newStyle);
         };
         layoutParts(rest, curStyle);
@@ -602,6 +610,7 @@ module FontLayout = {
       | Some(align) => align
       }
     };
+    s.curStyle = curStyle;
     /* Todo: Need to take baseline into consideration more places,
        when changing height/fonts. Some edge cases around newlines,
        how to handle based on previous lines font/height */
@@ -609,6 +618,7 @@ module FontLayout = {
     s.penY = s.yLineEnd +. curStyle.font.common.glBase *. curStyle.height;
     Js.log3("Height, base", curStyle.height, curStyle.font.common.glBase *. curStyle.height);
     layoutParts(block.children, curStyle);
+    alignLine(s.iGlyph - 1, s.curStyle.align);
     (s.iGlyph, s.yLineEnd)
   };
 

@@ -280,37 +280,51 @@ let createRightRow = state => {
 let createStartScreen = state => {
   let vimtrisText = FontText.(block(
     ~font="digitalt",
-    ~height=0.25,
+    ~height=1.0,
+    ~align=FontText.Center,
     [
-      text("Vimtris\n"),
+      text("Vimtris"),
       styled(~height=0.08, [
-        text("Press N to play")
+        text("\nPress N to play")
       ])
     ]
   ));
+  let testText = FontText.(block(
+    ~font="digitalt",
+    ~height=0.25,
+    ~align=FontText.Left,
+    [
+      text("Test"),
+      styled(~height=0.08, [
+        text("\nPress N to play")
+      ]),
+      styled(~height=0.04, [
+        text("\n\nPress N to play")
+      ]),
+      styled(~height=0.02, [
+        text("\n\nPress N to play")
+      ])
+    ]
+  ));
+  Layout.stacked([
   Layout.vertical(
     ~key="startScreen",
     [
-      FontDraw.makeSimpleNode(
-        "Vimtris",
-        "digitalt",
+      FontDraw.makeBlockNode(
+        vimtrisText,
         state.fontLayout,
-        ~key="heading",
-        ~height=0.25,
-        ~align=FontText.Center,
-        ()
-      ),
-      FontDraw.makeSimpleNode(
-        "Press N to play",
-        "digitalt",
-        state.fontLayout,
-        ~key="startText",
-        ~height=0.08,
-        ~align=FontText.Center,
+        ~height=1.0,
         ()
       )
     ]
-  )
+  ),
+      FontDraw.makeBlockNode(
+        testText,
+        state.fontLayout,
+        ~height=1.0,
+        ()
+      )
+  ])
 };
 
 let createPauseScreen = state =>
@@ -451,7 +465,7 @@ let createRootNode = state => {
 
 let createScene = (canvas, state) => {
   let scene =
-    Scene.make(canvas, state, createRootNode(state), ~drawListDebug=true, ());
+    Scene.make(canvas, state, createRootNode(state), ~drawListDebug=false, ());
   let anim =
     Animate.anim(
       AnimNodeUniform(Scene.getNodeUnsafe(scene, "background"), "anim"),
