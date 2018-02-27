@@ -111,25 +111,31 @@ let msdfFragmentSource =
 open Gpu;
 
 type t = {
-  mutable text: FontText.t,
+  mutable text: FontText.block,
+  blockInfo: FontText.blockInfo,
   vertices: VertexBuffer.t,
   indices: IndexBuffer.t,
   uModel: Scene.sceneUniform,
   vo: Scene.sceneVertexObject,
-  texture: Gpu.Texture.t,
+  textures: list(Gpu.Texture.t),
   aspect: float,
-  fontStore: FontStore.t,
+  fontLayout: FontText.FontLayout.t,
   multicolor: bool
 };
 
 let makeText = (
-  text : FontText.t,
-  fontStore,
-  ~numLines=1,
-  ~multicolor=false,
+  text : FontText.block,
+  fontLayout : FontText.FontLayout.t,
+  ~height=0.5,
   ()
 ) => {
-  let texture = FontStore.getTexture(fontStore, text.style.font);
+  let blockInfo = FontText.getBlockInfo(text);
+  let textures =
+    List.map(
+      (font) => FontStore.getTexture(fontLayout.store, font),
+      blockInfo.fonts
+    );
+  let multicolor = (List.length(blockInfo.colors) > 1) ? true : false;
   let vertices =
     VertexBuffer.make(
       [||],
@@ -141,17 +147,18 @@ let makeText = (
     );
   let indices = IndexBuffer.make([||], DynamicDraw);
   let uModel = Scene.UMat3f.id();
-  let aspect = 1.0 /. (text.style.height *. float_of_int(numLines));
+  let aspect = 1.0 /. height;
   let vo = Scene.SceneVO.make(vertices, Some(indices));
   {
     text,
+    blockInfo,
     vertices,
     indices,
     uModel,
     vo,
-    texture,
+    textures,
     aspect,
-    fontStore,
+    fontLayout,
     multicolor
   }
 };
@@ -160,27 +167,24 @@ let makeSimpleText =
   (
     text,
     font,
-    fontStore,
+    fontLayout,
     ~height=0.2,
-    ~numLines=1,
-    ~align=SdfFont.TextLayout.AlignLeft,
+    ~align=FontText.Left,
     ~color=Color.fromFloats(1.0, 1.0, 1.0),
     ()
   ) => {
   makeText(
-    FontText.makeText(
-      text,
-      FontText.makeStyle(
-        font,
-        ~height,
-        ~align,
-        ~color,
-        ()
-      ),
+    FontText.block(
+      ~height,
+      ~font,  
+      ~color,
+      ~align,
+      ~children=[
+        FontText.text(text)
+      ],
       ()
     ),
-    fontStore,
-    ~numLines,
+    fontLayout,
     ()
   )
 };
@@ -192,36 +196,21 @@ let updateNode =
   ) => {
   node.loading = true;
   /* Callback will trigger in function if font is already loaded */
-  FontStore.request(
-    fontDraw.fontStore,
-    fontDraw.text.style.font,
-    fontData => {
-      let font = fontData.bmFont;
-      let scale = 2.0 /. float_of_int(font.common.lineHeight) *. fontDraw.text.style.height;
-      let width = 2.0 /. scale;
-      /* todo: move to nodes update function */
-      let layout =
-        SdfFont.TextLayout.make(fontDraw.text.text, font, int_of_float(width), ~align=fontDraw.text.style.align, ());
-      let (maxLineWidth, glyphs) = SdfFont.TextLayout.update(layout);
-      let vertices = SdfFont.TextLayout.vertexData(layout, glyphs);
+  FontStore.requestMultiple(
+    fontDraw.fontLayout.store,
+    fontDraw.blockInfo.fonts,
+    store => {
+      /*let vertices = FontText.Layout.layoutVertices(fontDraw.fontLayout, fontDraw.text);*/
+      let vertices = Array.make(0, 0.0);
       VertexBuffer.setDataT(fontDraw.vertices, vertices);
       IndexBuffer.setDataT(
         fontDraw.indices,
         IndexBuffer.makeQuadsData(Array.length(vertices) / 16)
       );
-      /* Update model matrix value */
-      let xTrans =
-        switch fontDraw.text.style.align {
-        | SdfFont.TextLayout.AlignLeft => (-1.0)
-        | SdfFont.TextLayout.AlignCenter =>
-          float_of_int(maxLineWidth) *. scale *. (-0.5)
-        | SdfFont.TextLayout.AlignRight =>
-          1.0 -. float_of_int(maxLineWidth) *. scale
-        };
       let modelMat =
         Data.Mat3.matmul(
-          Data.Mat3.trans(xTrans, 0.0),
-          Data.Mat3.scale(scale, scale *. fontDraw.aspect)
+          Data.Mat3.trans(0.0, 0.0),
+          Data.Mat3.scale(1.0, fontDraw.aspect)
         );
       Uniform.setMat3f(fontDraw.uModel.uniform, modelMat);
       node.loading = false;
@@ -238,26 +227,43 @@ let makeNode =
       ~hidden=false,
       ()
     ) => {
+  let color =
+    switch fontDraw.blockInfo.colors {
+    | [color] => Some(color)
+    | _ => None
+    };
   let uniforms =
-      if (fontDraw.multicolor) {
+      switch color {
+      | Some(color) =>
         [
           ("model", fontDraw.uModel),
+          ("color", Scene.UVec3f.vec(Color.toVec3(color))),
           ("opacity", Scene.UFloat.make(opacity))
         ]
-      } else {
+      | None =>
         [
           ("model", fontDraw.uModel),
-          ("color", Scene.UVec3f.vec(Color.toVec3(fontDraw.text.style.color))),
           ("opacity", Scene.UFloat.make(opacity))
         ]
       };
+  let textures =
+    List.mapi(
+      (i, texture) => {
+        if (i == 0) {
+          ("map", Scene.SceneTex.tex(texture))
+        } else {
+          ("map" ++ string_of_int(i + 1), Scene.SceneTex.tex(texture))
+        }
+      },
+      fontDraw.textures
+    );
   let node =
     Scene.makeNode(
       ~key?,
       ~cls,
       ~vertShader=Shader.make(vertexSource),
       ~fragShader=Shader.make(fragmentSource),
-      ~textures=[("map", Scene.SceneTex.tex(fontDraw.texture))],
+      ~textures,
       ~vo=fontDraw.vo,
       ~uniforms,
       ~pixelSizeUniform=true,
@@ -274,10 +280,9 @@ let makeNode =
 let makeSimpleNode = (
     text,
     font,
-    fontStore,
+    fontLayout,
     ~height=0.2,
-    ~numLines=1,
-    ~align=SdfFont.TextLayout.AlignLeft,
+    ~align=FontText.Left,
     ~color=Color.fromFloats(1.0, 1.0, 1.0),
     ~key=?,
     ~cls=?,
@@ -289,9 +294,8 @@ let makeSimpleNode = (
     makeSimpleText(
       text,
       font,
-      fontStore,
+      fontLayout,
       ~height,
-      ~numLines,
       ~align,
       ~color,
       ()

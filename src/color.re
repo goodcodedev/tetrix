@@ -30,6 +30,25 @@ let black = () : t => fromFloats(0.0, 0.0, 0.0);
 
 let white = () : t => fromFloats(1.0, 1.0, 1.0);
 
+/* A bit arbitrary compare, should be consistent
+   and detect equal colors.
+   Could consider "hslCompare" for purposes
+   where order matters in a visual way */
+let compare = (color1 : t, color2 : t) => {
+  let compare1 = compare(color1[0], color2[0]);
+  if (compare1 != 0) {
+    compare1
+  } else {
+    let compare2 = compare(color1[1], color2[1]);
+    if (compare2 != 0) {
+      compare2
+    } else {
+      let compare3 = compare(color1[2], color2[2]);
+      compare3
+    }
+  }
+};
+
 /* http://www.niwa.nu/2013/05/math-behind-colorspace-conversions-rgb-hsl/ */
 module Hsl = {
   /* Hue in degrees from 0-360,

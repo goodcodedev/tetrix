@@ -24,6 +24,10 @@ and part =
   | Text(string)
   | Styled(styled);
 
+let defaultFont = "digitalt";
+let defaultHeight = 0.2;
+let defaultColor = Color.fromFloats(1.0, 1.0, 1.0);
+
 let block = (
   ~align=Left,
   ~font=?,
@@ -76,6 +80,65 @@ let styledText = (
       text(textString)
     ]
   )
+};
+
+type blockInfo = {
+  fonts: list(string),
+  colors: list(Color.t)
+};
+
+/* Block info can be used to determine required
+   fonts and colors */
+let getBlockInfo = (block : block) => {
+  let collectInfo = (info, font, color) => {
+    let info = switch font {
+    | Some(font) => {...info, fonts: [font, ...info.fonts]}
+    | None => info
+    };
+    switch color {
+    | Some(color) => {...info, colors: [color, ...info.colors]}
+    | None => info
+    };
+  };
+  let rec processBlock = (block, info) => {
+    let info = collectInfo(info, block.font, block.color);
+    List.fold_left(
+      (info, child) => {
+        switch child {
+        | Text(_) => info
+        | Styled(styled) => processStyled(styled, info)
+        }
+      },
+      info,
+      block.children
+    )
+  }
+  and processStyled = (styled, info) => {
+    let info = collectInfo(info, styled.font, styled.color);
+    List.fold_left(
+      (info, child) => {
+        switch child {
+        | Text(_) => info
+        | Styled(styled) => processStyled(styled, info)
+        }
+      },
+      info,
+      block.children
+    )
+  };
+  let info = processBlock(block, {colors: [], fonts: []});
+  /* If no fonts, add default font */
+  let info = if (List.length(info.fonts) == 0) {
+    {...info, fonts: [defaultFont]}
+  } else {
+    {...info, fonts: List.sort_uniq(String.compare, info.fonts)}
+  };
+  /* If no colors, add default color */
+  if (List.length(info.colors) == 0) {
+    {...info, colors: [defaultColor]}
+  } else {
+    {...info, colors: List.sort_uniq(Color.compare, info.colors)}
+  }
 };
 
 type calcStyle = {
@@ -139,27 +202,17 @@ type layoutState = {
   mutable glyphLineStart: int
 };
 
-module Layout = {
+module FontLayout = {
   /* Globally usable data for layout */
   type t = {
-    fontStore: FontStore.t,
-    glyphB: GlyphArrayB.t,
-    defaultStyle: calcStyle
+    store: FontStore.t,
+    glyphB: GlyphArrayB.t
   };
 
-  let make = (fontStore : FontStore.t) : t => {
-    let font = Hashtbl.find(fontStore.fonts, "digitalt");
+  let make = (store : FontStore.t) : t => {
     {
-      fontStore,
+      store,
       glyphB: GlyphArrayB.make(100),
-      defaultStyle: {
-        font,
-        height: 0.2,
-        spacing: 0.0,
-        adjSpacing: 0.0,
-        color: Color.fromFloats(1.0, 1.0, 1.0),
-        align: Left
-      }
     }
   };
 
@@ -203,8 +256,20 @@ module Layout = {
     d
   };
 
+  let defaultStyle = (layout) => {
+    let font = Hashtbl.find(layout.store.fonts, defaultFont);
+    {
+      font,
+      height: defaultHeight,
+      spacing: 0.0,
+      adjSpacing: 0.0,
+      color: defaultColor,
+      align: Left
+    }
+  };
+
   let layoutBlock = (layout, block : block, yScale) => {
-    let curStyle = layout.defaultStyle;
+    let curStyle = defaultStyle(layout);
     let lineStart = -1.0;
     let lineEnd = 1.0;
     /* State while doing layout */
@@ -414,6 +479,8 @@ module Layout = {
                   s.penX = nextPen;
                   Some(iText)
                 };
+                /* There may have been a break and then
+                   no more non-whitespace */
                 switch (iText) {
                 | Some(iText) =>
                   /* Set glyph data */
@@ -449,7 +516,7 @@ module Layout = {
           let adjSpacing = spacing *. height;
           let font = switch styled.font {
           | None => curStyle.font
-          | Some(font) => Hashtbl.find(layout.fontStore.fonts, font)
+          | Some(font) => Hashtbl.find(layout.store.fonts, font)
           };
           let newStyle = {
             font,
@@ -468,5 +535,11 @@ module Layout = {
       };
     };
     layoutParts(block.children, curStyle);
+    s.iGlyph
   };
+
+  let layoutVertices = (layout, block) => {
+    let iGlyph = layoutBlock(layout, block, 1.0);
+    getVertices(layout, iGlyph, 1.0, false)
+  }
 };

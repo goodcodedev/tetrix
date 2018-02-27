@@ -54,3 +54,18 @@ let request = (store, fontName, onLoad) => {
         );
     };
 };
+
+let requestMultiple = (store, fonts, onLoad) => {
+    let remaining = ref(List.length(fonts));
+    List.iter(
+        (font) => {
+            request(store, font, (_font, _image) => {
+                remaining := remaining^ - 1;
+                if (remaining^ == 0) {
+                    onLoad(store);
+                };
+            });
+        },
+        fonts
+    );
+};

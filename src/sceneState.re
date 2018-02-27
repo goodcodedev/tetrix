@@ -29,5 +29,5 @@ type sceneState = {
   boardColor: Scene.sceneUniform,
   lineColor: Scene.sceneUniform,
   mutable gameState: Game.stateT,
-  fontStore: FontStore.t
+  fontLayout: FontText.FontLayout.t
 };

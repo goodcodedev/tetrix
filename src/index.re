@@ -109,7 +109,7 @@ let setup = _canvas => {
     boardColor,
     lineColor,
     gameState,
-    fontStore: FontStore.make(~initSize=1, ())
+    fontLayout: FontText.FontLayout.make(FontStore.make(~initSize=1, ()))
   };
   setBg(state);
 };
@@ -201,10 +201,10 @@ let createLeftRow = state => {
             FontDraw.makeSimpleNode(
               "HOLD",
               "digitalt",
-              state.fontStore,
+              state.fontLayout,
               ~opacity=0.7,
               ~height=0.27,
-              ~align=SdfFont.TextLayout.AlignCenter,
+              ~align=FontText.Center,
               ()
             ),
             DrawElement.makeNode(state.holdingEl, state.sceneLight)
@@ -259,11 +259,11 @@ let createRightRow = state => {
             FontDraw.makeSimpleNode(
               "NEXT",
               "digitalt",
-              state.fontStore,
+              state.fontLayout,
               ~key="next",
               ~opacity=0.7,
               ~height=0.27,
-              ~align=SdfFont.TextLayout.AlignCenter,
+              ~align=FontText.Center,
               ()
             ),
             DrawElement.makeNode(state.nextEls[0], state.sceneLight),
@@ -278,33 +278,32 @@ let createRightRow = state => {
 };
 
 let createStartScreen = state => {
-  open FontText;
-  let vimtrisText = block(
+  let vimtrisText = FontText.(block(
     ~font="digitalt",
     ~children=[
       text("Vimtris")
     ],
     ()
-  );
+  ));
   Layout.vertical(
     ~key="startScreen",
     [
       FontDraw.makeSimpleNode(
         "Vimtris",
         "digitalt",
-        state.fontStore,
+        state.fontLayout,
         ~key="heading",
         ~height=0.25,
-        ~align=SdfFont.TextLayout.AlignCenter,
+        ~align=FontText.Center,
         ()
       ),
       FontDraw.makeSimpleNode(
         "Press N to play",
         "digitalt",
-        state.fontStore,
+        state.fontLayout,
         ~key="startText",
         ~height=0.08,
-        ~align=SdfFont.TextLayout.AlignCenter,
+        ~align=FontText.Center,
         ()
       )
     ]
@@ -320,18 +319,18 @@ let createPauseScreen = state =>
         FontDraw.makeSimpleNode(
           "Pause",
           "digitalt",
-          state.fontStore,
+          state.fontLayout,
           ~key="paused",
           ~height=0.26,
-          ~align=SdfFont.TextLayout.AlignCenter,
+          ~align=FontText.Center,
           ()
         ),
         FontDraw.makeSimpleNode(
           "Press Space to continue",
           "digitalt",
-          state.fontStore,
+          state.fontLayout,
           ~height=0.06,
-          ~align=SdfFont.TextLayout.AlignCenter,
+          ~align=FontText.Center,
           ()
         )
       ])
@@ -343,18 +342,18 @@ let createGameOverScreen = state =>
     FontDraw.makeSimpleNode(
       "Game over",
       "digitalt",
-      state.fontStore,
+      state.fontLayout,
       ~key="gameOver",
       ~height=0.25,
-      ~align=SdfFont.TextLayout.AlignCenter,
+      ~align=FontText.Center,
       ()
     ),
     FontDraw.makeSimpleNode(
       "Press N to start new game",
       "digitalt",
-      state.fontStore,
+      state.fontLayout,
       ~height=0.08,
-      ~align=SdfFont.TextLayout.AlignCenter,
+      ~align=FontText.Center,
       ()
     )
   ]);
@@ -380,19 +379,18 @@ let createHelpScreen = state => {
       FontDraw.makeSimpleNode(
         "Help",
         "digitalt",
-        state.fontStore,
+        state.fontLayout,
         ~key="gameOver",
         ~height=0.12,
-        ~align=SdfFont.TextLayout.AlignLeft,
+        ~align=FontText.Left,
         ()
       ),
       FontDraw.makeSimpleNode(
         String.concat("\n", helpLines),
         "digitalt",
-        state.fontStore,
+        state.fontLayout,
         ~height=0.07,
-        ~numLines=List.length(helpLines),
-        ~align=SdfFont.TextLayout.AlignLeft,
+        ~align=FontText.Left,
         ()
       )
     ]
@@ -404,18 +402,18 @@ let createNextLevelScreen = state =>
     FontDraw.makeSimpleNode(
       "Level complete",
       "digitalt",
-      state.fontStore,
+      state.fontLayout,
       ~key="gameOver",
       ~height=0.25,
-      ~align=SdfFont.TextLayout.AlignCenter,
+      ~align=FontText.Center,
       ()
     ),
     FontDraw.makeSimpleNode(
       "Press N to start new level",
       "digitalt",
-      state.fontStore,
+      state.fontLayout,
       ~height=0.08,
-      ~align=SdfFont.TextLayout.AlignCenter,
+      ~align=FontText.Center,
       ()
     )
   ]);
