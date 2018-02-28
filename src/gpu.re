@@ -1349,7 +1349,6 @@ module Canvas = {
     | None => ()
     | Some(error) =>
       Js.log(error);
-      [%debugger];
     };
   };
 };

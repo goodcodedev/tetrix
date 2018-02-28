@@ -1,7 +1,7 @@
 open Gpu;
 
 type t = {
-  mutable text: FontText.block,
+  mutable part: FontText.part,
   blockInfo: FontText.blockInfo,
   vertices: VertexBuffer.t,
   indices: IndexBuffer.t,
@@ -143,12 +143,12 @@ let msdfFragmentSource =
   );
 
 let makeText = (
-  text : FontText.block,
+  part : FontText.part,
   fontLayout : FontText.FontLayout.t,
   ~height=0.5,
   ()
 ) => {
-  let blockInfo = FontText.getBlockInfo(text);
+  let blockInfo = FontText.getPartInfo(part);
   let textures =
     List.map(
       (font) => FontStore.getTexture(fontLayout.store, font),
@@ -181,7 +181,7 @@ let makeText = (
   let aspect = 1.0 /. height;
   let vo = Scene.SceneVO.make(vertices, Some(indices));
   {
-    text,
+    part,
     blockInfo,
     vertices,
     indices,
@@ -232,7 +232,7 @@ let updateNode =
     fontDraw.fontLayout.store,
     fontDraw.blockInfo.fonts,
     _store => {
-      let (vertices, yLineEnd) = FontText.FontLayout.layoutVertices(fontDraw.fontLayout, fontDraw.text, fontDraw.multicolor);
+      let (vertices, yLineEnd) = FontText.FontLayout.layoutVertices(fontDraw.fontLayout, fontDraw.part, fontDraw.multicolor);
       Js.log(vertices);
       VertexBuffer.setDataT(fontDraw.vertices, vertices);
       let numVertices = (fontDraw.multicolor) ? FontText.FontLayout.numColorVertices : FontText.FontLayout.numVertices;

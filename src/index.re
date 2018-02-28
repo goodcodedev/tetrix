@@ -298,11 +298,12 @@ let createStartScreen = state => {
   ));
   Layout.vertical(
     ~key="startScreen",
+    ~vAlign=Scene.AlignMiddle,
     [
       FontDraw.makeBlockNode(
         vimtrisText,
         state.fontLayout,
-        ~height=1.0,
+        ~height=0.4,
         ()
       )
     ]
@@ -372,24 +373,40 @@ let createHelpScreen = state => {
     "0 - move leftmost",
     "$ - move rightmost"
   ];
+  let helpText = FontText.(block(
+    ~font="digitalt",
+    ~height=0.12, [
+      text("Help"),
+      block(~align=FontText.Right, [
+        text("Space")
+      ])
+    ]
+  ));
+  let vimtrisText = FontText.(block(
+    ~font="digitalt",
+    ~height=0.25,
+    ~align=FontText.Center,
+    ~color=Color.fromFloats(1.0, 1.0, 1.0),
+    [
+      styledText(~color=Game.colors[2], "V"),
+      styledText(~color=Game.colors[3], "i"),
+      styledText(~color=Game.colors[4], "m"),
+      styledText(~color=Game.colors[5], "t"),
+      styledText(~color=Game.colors[6], "r"),
+      styledText(~color=Game.colors[7], "i"),
+      styledText(~color=Game.colors[8], "s"),
+      styled(~height=0.08, ~color=Color.fromFloats(0.8, 0.9, 1.0), [
+        text("\n\nPress N to play")
+      ])
+    ]
+  ));
   Layout.vertical(
     ~margin=Scene.MarginXY(Scene.Scale(0.12), Scene.Scale(0.0)),
     [
-      FontDraw.makeSimpleNode(
-        "Help",
-        "digitalt",
+      FontDraw.makeBlockNode(
+        helpText,
         state.fontLayout,
-        ~key="gameOver",
-        ~height=0.12,
-        ~align=FontText.Left,
-        ()
-      ),
-      FontDraw.makeSimpleNode(
-        String.concat("\n", helpLines),
-        "digitalt",
-        state.fontLayout,
-        ~height=0.07,
-        ~align=FontText.Left,
+        ~height=1.0,
         ()
       )
     ]
