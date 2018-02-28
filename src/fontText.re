@@ -5,20 +5,54 @@ type align =
   | Center
   | Right;
 
-type block = {
+type blockStyle = {
   align: option(align),
   scaleX: option(float),
   font: option(string),
   height: option(float),
   color: option(Color.t),
   spacing: option(float),
-  children: list(part)
-}
-and styled = {
+};
+let blockStyle = (
+  ~align=?,
+  ~scaleX=?,
+  ~font=?,
+  ~height=?,
+  ~color=?,
+  ~spacing=?,
+  ()
+) : blockStyle => {
+  align,
+  scaleX,
+  font,
+  height,
+  color,
+  spacing
+};
+type textStyle = {
   font: option(string),
   height: option(float),
   color: option(Color.t),
   spacing: option(float),
+};
+let textStyle = (
+  ~font=?,
+  ~height=?,
+  ~color=?,
+  ~spacing=?,
+  ()
+) : textStyle => {
+  font,
+  height,
+  color,
+  spacing
+};
+type block = {
+  style: blockStyle,
+  children: list(part)
+}
+and styled = {
+  style: textStyle,
   children: list(part)
 }
 and part =
@@ -37,15 +71,24 @@ let block = (
   ~height=?,
   ~color=?,
   ~spacing=?,
+  ~style=?,
   children
 ) => {
+  let style =
+    switch (style) {
+    | Some(style) => style
+    | None =>
+      {
+        align,
+        scaleX,
+        font,
+        height,
+        color,
+        spacing
+      }
+    };
   Block({
-    align,
-    scaleX,
-    font,
-    height,
-    color,
-    spacing,
+    style,
     children
   })
 };
@@ -55,13 +98,22 @@ let styled = (
   ~height=?,
   ~color=?,
   ~spacing=?,
+  ~style=?,
   children
 ) => {
+  let style =
+    switch (style) {
+    | Some(style) => style
+    | None =>
+      {
+        font,
+        height,
+        color,
+        spacing
+      }
+    };
   Styled({
-    font,
-    height,
-    color,
-    spacing,
+    style,
     children
   })
 };
@@ -92,14 +144,28 @@ type blockInfo = {
 /* Block info can be used to determine required
    fonts and colors */
 let getPartInfo = (part : part) => {
+  let defaultFontAdded = ref(false);
+  let defaultColorAdded = ref(false);
   let collectInfo = (info, font, color) => {
     let info = switch font {
     | Some(font) => {...info, fonts: [font, ...info.fonts]}
-    | None => info
+    | None =>
+      if (!defaultFontAdded^) {
+        defaultFontAdded := true;
+        {...info, fonts: [defaultFont, ...info.fonts]}
+      } else {
+        info
+      }
     };
     switch color {
     | Some(color) => {...info, colors: [color, ...info.colors]}
-    | None => info
+    | None =>
+      if (!defaultColorAdded^) {
+        defaultColorAdded := true;
+        {...info, colors: [defaultColor, ...info.colors]}
+      } else {
+        info
+      }
     };
   };
   let rec processPart = (part, info) => {
@@ -110,7 +176,7 @@ let getPartInfo = (part : part) => {
     }
   }
   and processBlock = (block, info) => {
-    let info = collectInfo(info, block.font, block.color);
+    let info = collectInfo(info, block.style.font, block.style.color);
     List.fold_left(
       (info, child) => processPart(child, info),
       info,
@@ -118,7 +184,7 @@ let getPartInfo = (part : part) => {
     )
   }
   and processStyled = (styled, info) => {
-    let info = collectInfo(info, styled.font, styled.color);
+    let info = collectInfo(info, styled.style.font, styled.style.color);
     List.fold_left(
       (info, child) => processPart(child, info),
       info,
@@ -126,18 +192,10 @@ let getPartInfo = (part : part) => {
     )
   };
   let info = processPart(part, {colors: [], fonts: []});
-  /* If no fonts, add default font */
-  let info = if (List.length(info.fonts) == 0) {
-    {...info, fonts: [defaultFont]}
-  } else {
-    {...info, fonts: List.sort_uniq(String.compare, info.fonts)}
+  {
+    fonts: List.sort_uniq(String.compare, info.fonts),
+    colors: List.sort_uniq(Color.compare, info.colors) 
   };
-  /* If no colors, add default color */
-  if (List.length(info.colors) == 0) {
-    {...info, colors: [defaultColor]}
-  } else {
-    {...info, colors: List.sort_uniq(Color.compare, info.colors)}
-  }
 };
 
 type calcStyle = {
@@ -152,6 +210,7 @@ type calcBlock = {
   lineStart: float,
   lineEnd: float,
   align,
+  mutable firstLineAdded: bool,
   /* Current block x point */
   mutable xBlock: float,
   /* Start block y point
@@ -347,6 +406,7 @@ module FontLayout = {
     {
       lineStart: -1.0,
       lineEnd: 1.0,
+      firstLineAdded: false,
       align: Left,
       xBlock: 0.0,
       yBlockStart: 0.0,
@@ -377,26 +437,26 @@ module FontLayout = {
     };
     /* Some linespacing factor, lineHeight might be off somehow */
     let lineHeight = 2.0;
-    let glyphB = layout.glyphB.data;
+    let glyphB = layout.glyphB;
     let spaceCode = Char.code(' ');
     let nlCode = Char.code('\n');
     /* Move characters in range in x direction */
     let rec moveX = (delta, i, until) => {
-      glyphB[i].x = glyphB[i].x +. delta;
-      if (i <= until) {
+      glyphB.data[i].x = glyphB.data[i].x +. delta;
+      if (i < until) {
         moveX(delta, i + 1, until)
       }
     };
     /* Move characters in range in x and y direction */
     let rec moveXY = (deltaX, deltaY, i, until) => {
-      glyphB[i].x = glyphB[i].x +. deltaX;
-      glyphB[i].y = glyphB[i].y +. deltaY;
+      glyphB.data[i].x = glyphB.data[i].x +. deltaX;
+      glyphB.data[i].y = glyphB.data[i].y +. deltaY;
       if (i <= until) {
         moveXY(deltaX, deltaY, i + 1, until)
       }
     };
     let alignLine = (lastIndex, curBlock) => {
-      let lastGlyph = glyphB[lastIndex];
+      let lastGlyph = glyphB.data[lastIndex];
       switch (curBlock.align) {
       | Left => ()
       | Center =>
@@ -411,7 +471,7 @@ module FontLayout = {
     let rec nonWhitespace = (i, until) => {
       if (i < until) {
         None
-      } else if (glyphB[i].code == spaceCode) {
+      } else if (glyphB.data[i].code == spaceCode) {
         nonWhitespace(i - 1, until)
       } else {
         Some(i)
@@ -423,14 +483,14 @@ module FontLayout = {
           truncated glyphs after current iGlyph */
       let rec collectTruncated = (i, until, list) => {
         if (i <= until) {
-          collectTruncated(i + 1, until, [glyphB[i], ...list])
+          collectTruncated(i + 1, until, [glyphB.data[i], ...list])
         } else {
           list
         }
       };
       let rec moveBack = (i, until, truncateNum) => {
         if (i <= until) {
-          glyphB[i] = glyphB[i + truncateNum];
+          glyphB.data[i] = glyphB.data[i + truncateNum];
           moveBack(i + 1, until, truncateNum);
         };
       };
@@ -446,7 +506,7 @@ module FontLayout = {
         moveBack(truncateFrom, truncateFrom + numMove, numTruncated);
         /* Put truncated items where items where moved from */
         List.iteri((i, truncated) => {
-          glyphB[truncateFrom + numTruncated + i] = truncated;
+          glyphB.data[truncateFrom + numTruncated + i] = truncated;
         }, truncated);
       };
       numTruncated
@@ -454,7 +514,7 @@ module FontLayout = {
     let rec prevSpace = (i) => {
       if (i <= s.glyphLineStart) {
         None
-      } else if (glyphB[i].code == spaceCode) {
+      } else if (glyphB.data[i].code == spaceCode) {
         Some(i)
       } else {
         prevSpace(i - 1)
@@ -467,15 +527,28 @@ module FontLayout = {
        could handle this maybe by looking it s.iGlyph */
     let addLine = (lastIndex, curStyle, curBlock) => {
       alignLine(lastIndex, curBlock);
+      let lineDist = curStyle.height *. lineHeight;
       /* Go to next line */
-      s.penY = s.penY -. curStyle.height *. lineHeight;
-      s.yLineEnd = s.yLineEnd -. curStyle.height *. lineHeight;
+      s.penY = s.penY -. lineDist;
+      s.yLineEnd = s.yLineEnd -. lineDist;
       /* Child blocks should start after line */
       curBlock.yBlockStart = s.yLineEnd;
       if (s.yLineEnd < curBlock.yBlockEnd) {
         curBlock.yBlockEnd = s.yLineEnd;
       };
       s.glyphLineStart = lastIndex + 1;
+      s.lastGlyph = None;
+    };
+    let addFirstLine = (curStyle, curBlock) => {
+      let lineDist = curStyle.height *. lineHeight;
+      s.penY = s.penY -. lineDist +. (curStyle.font.common.glBase *. curStyle.height *. lineHeight);
+      s.yLineEnd = s.yLineEnd -. lineDist;
+      /* Child blocks should start after line */
+      curBlock.yBlockStart = s.yLineEnd;
+      if (s.yLineEnd < curBlock.yBlockEnd) {
+        curBlock.yBlockEnd = s.yLineEnd;
+      };
+      s.glyphLineStart = s.iGlyph;
       s.lastGlyph = None;
     };
     /* Loops parts and add result to glyphBuffer */
@@ -490,8 +563,11 @@ module FontLayout = {
       | [part, ...rest] =>
         switch part {
         | Text(text) =>
+          if (!curBlock.firstLineAdded) {
+            curBlock.firstLineAdded = true;
+            addFirstLine(curStyle, curBlock);
+          };
           s.pendingLine = true;
-          curBlock.yBlockEnd = s.yLineEnd;
           let textLen = String.length(text);
           GlyphArrayB.ensureSize(layout.glyphB, s.iGlyph + textLen);
           let glScale = curStyle.font.common.glScale;
@@ -562,13 +638,13 @@ module FontLayout = {
                     if (s.iGlyph - 1 > spaceIndex) {
                       /* There are characters after space */
                       /* Move characters after to next line */
-                      let subtractX = glyphB[spaceIndex + 1].x *. (-1.0);
+                      let subtractX = glyphB.data[spaceIndex + 1].x *. (-1.0);
                       /* todo: Need to resolve current height for next line
                         based on moved characters */
                       let addY = curStyle.height *. lineHeight *. -1.0;
                       moveXY(subtractX, addY, spaceIndex + 1, s.iGlyph - 1);
-                      s.penX = glyphB[s.iGlyph - 1].x;
-                      s.penY = glyphB[s.iGlyph - 1].y;
+                      s.penX = glyphB.data[s.iGlyph - 1].x;
+                      s.penY = glyphB.data[s.iGlyph - 1].y;
                     } else {
                       s.penX = curBlock.lineStart;
                     };
@@ -592,7 +668,7 @@ module FontLayout = {
                 switch (iText) {
                 | Some(iText) =>
                   /* Set glyph data */
-                  let glyph = glyphB[s.iGlyph];
+                  let glyph = glyphB.data[s.iGlyph];
                   glyph.x = s.penX +. glChar.xOffset *. curStyle.height;
                   glyph.y = s.penY -. glChar.yOffset *. curStyle.height;
                   glyph.w = glChar.vw *. curStyle.height;
@@ -616,16 +692,16 @@ module FontLayout = {
           /* Initiate char loop */
           addChar(0);
         | Styled(styled) =>
-          let height = switch styled.height {
+          let height = switch styled.style.height {
           | None => curStyle.height
           | Some(height) => height
           };
-          let spacing = switch styled.spacing {
+          let spacing = switch styled.style.spacing {
           | None => curStyle.spacing
           | Some(spacing) => spacing
           };
           let adjSpacing = spacing *. height;
-          let font = switch styled.font {
+          let font = switch styled.style.font {
           | None => curStyle.font
           | Some(font) => Hashtbl.find(layout.store.fonts, font)
           };
@@ -634,7 +710,7 @@ module FontLayout = {
             height,
             spacing,
             adjSpacing,
-            color: switch styled.color {
+            color: switch styled.style.color {
             | None => curStyle.color
             | Some(color) => color
             }
@@ -647,16 +723,16 @@ module FontLayout = {
             alignLine(s.iGlyph - 1, curBlock);
           };
           /* Set curStyle from block */
-          let height = switch block.height {
+          let height = switch block.style.height {
           | None => curStyle.height
           | Some(height) => height
           };
-          let spacing = switch block.spacing {
+          let spacing = switch block.style.spacing {
           | None => curStyle.spacing
           | Some(spacing) => spacing
           };
           let adjSpacing = spacing *. height;
-          let font = switch block.font {
+          let font = switch block.style.font {
           | None => curStyle.font
           | Some(font) => Hashtbl.find(layout.store.fonts, font)
           };
@@ -665,7 +741,7 @@ module FontLayout = {
             height,
             spacing,
             adjSpacing,
-            color: switch block.color {
+            color: switch block.style.color {
             | None => curStyle.color
             | Some(color) => color
             }
@@ -675,7 +751,7 @@ module FontLayout = {
              xBlock point from adjecent blocks where block
              continues from */
           let blockWidth =
-            switch (block.scaleX) {
+            switch (block.style.scaleX) {
             | None => curBlockWidth
             | Some(scaleX) => curBlockWidth *. scaleX
             };
@@ -692,14 +768,11 @@ module FontLayout = {
               curBlock.xBlock = curBlock.lineStart +. blockWidth;
               (curBlock.lineStart, curBlock.xBlock)
             };
-          /* Set pen to block start coords */
-          s.penX = lineStart;
-          s.penY = curBlock.yBlockStart;
-          s.glyphLineStart = s.iGlyph;
           let childBlock = {
             lineStart,
             lineEnd,
-            align: switch block.align {
+            firstLineAdded: false,
+            align: switch block.style.align {
             | None => curBlock.align
             | Some(align) => align
             },
@@ -711,11 +784,10 @@ module FontLayout = {
           /* Todo: Need to take baseline into consideration more places,
             when changing height/fonts. Some edge cases around newlines,
             how to handle based on previous lines font/height */
-          s.yLineEnd = s.yLineEnd -. curStyle.height;
-          if (s.yLineEnd < curBlock.yBlockEnd) {
-            curBlock.yBlockEnd = s.yLineEnd;
-          };
-          s.penY = childBlock.yBlockStart -. curStyle.height +. curStyle.font.common.glBase *. curStyle.height;
+          /* Set pen to block start coords */
+          s.penX = lineStart;
+          s.penY = curBlock.yBlockStart;
+          s.yLineEnd = s.penY;
           layoutParts(block.children, curStyle, childBlock);
           /* Align last line in block if pending */
           if (s.pendingLine) {

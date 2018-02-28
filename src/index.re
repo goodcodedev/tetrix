@@ -359,45 +359,48 @@ let createGameOverScreen = state =>
   ]);
 
 let createHelpScreen = state => {
-  let helpLines = [
-    "Space - pause",
-    "H - move left",
-    "L - move right",
-    "J - move down",
-    "K - cancel down",
-    "C - rotate clockwise",
-    "S - rotate counter clockwise",
-    ". - drop",
-    "W - move block right",
-    "B - move block left",
-    "0 - move leftmost",
-    "$ - move rightmost"
-  ];
+  let leftStyle = FontText.blockStyle(
+    ~align=FontText.Right,
+    ~scaleX=0.1,
+    ()
+  );
+  let rightStyle = FontText.blockStyle(
+    ~align=Left,
+    ~color=Color.fromFloats(0.75, 0.7, 0.8),
+    ~scaleX=0.9,
+    ()
+  );
+  let helpBlocks =
+    List.fold_left(
+      (blocks, (key, command)) => {
+        FontText.([
+          block(~style=rightStyle, [text("- " ++ command)]),
+          block(~style=leftStyle, [text(key)]),
+          ...blocks
+        ])
+      },
+      [],
+      [
+        ("Space", "pause"),
+        ("H", "move left"),
+        ("L", "move right"),
+        ("J", "move down"),
+        ("K", "cancel down"),
+        ("C", "rotate clockwise"),
+        ("S", "rotate counter clockwise"),
+        (".", "drop"),
+        ("W", "move block right"),
+        ("B", "move block left"),
+        ("0", "move leftmost"),
+        ("$", "move rightmost")
+      ]
+    );
+  /* Hacked in newline for space, margin/padding would be nice */
   let helpText = FontText.(block(
     ~font="digitalt",
     ~height=0.12, [
       text("Help"),
-      block(~align=FontText.Right, [
-        text("Space")
-      ])
-    ]
-  ));
-  let vimtrisText = FontText.(block(
-    ~font="digitalt",
-    ~height=0.25,
-    ~align=FontText.Center,
-    ~color=Color.fromFloats(1.0, 1.0, 1.0),
-    [
-      styledText(~color=Game.colors[2], "V"),
-      styledText(~color=Game.colors[3], "i"),
-      styledText(~color=Game.colors[4], "m"),
-      styledText(~color=Game.colors[5], "t"),
-      styledText(~color=Game.colors[6], "r"),
-      styledText(~color=Game.colors[7], "i"),
-      styledText(~color=Game.colors[8], "s"),
-      styled(~height=0.08, ~color=Color.fromFloats(0.8, 0.9, 1.0), [
-        text("\n\nPress N to play")
-      ])
+      block(~height=0.04, [text("\n"), ...List.rev(helpBlocks)])
     ]
   ));
   Layout.vertical(
@@ -456,7 +459,7 @@ let createRootNode = state => {
         ]
       ),
       Mask.makeNode(),
-      createStartScreen(state),
+      createHelpScreen(state),
       createPauseScreen(state)
     ]
   );

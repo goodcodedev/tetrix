@@ -233,7 +233,6 @@ let updateNode =
     fontDraw.blockInfo.fonts,
     _store => {
       let (vertices, yLineEnd) = FontText.FontLayout.layoutVertices(fontDraw.fontLayout, fontDraw.part, fontDraw.multicolor);
-      Js.log(vertices);
       VertexBuffer.setDataT(fontDraw.vertices, vertices);
       let numVertices = (fontDraw.multicolor) ? FontText.FontLayout.numColorVertices : FontText.FontLayout.numVertices;
       IndexBuffer.setDataT(
