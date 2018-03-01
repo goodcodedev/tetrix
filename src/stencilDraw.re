@@ -23,7 +23,7 @@ type t = {
 
 let make = (canvas: Gpu.Canvas.t) => {
   let programT =
-    Program.make(Shader.make(vertexSource), Shader.make(fragmentSource), [||]);
+    Program.make(Shader.make(vertexSource), Shader.make(fragmentSource), []);
   let program =
     switch (Program.init(programT, canvas.context)) {
     | Some(program) => program

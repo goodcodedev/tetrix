@@ -226,10 +226,10 @@ module AreaBetweenQuads = {
     let vbuf =
       VertexBuffer.make(
         createVertexData(self),
-        [|
+        [
           VertexAttrib.make("position", GlType.Vec3f),
           VertexAttrib.make("normal", GlType.Vec3f)
-        |],
+        ],
         usage
       );
     let ibuf = IndexBuffer.make(IndexBuffer.makeQuadsData(6), usage);

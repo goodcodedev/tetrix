@@ -5,9 +5,7 @@ open Config;
 open SceneState;
 
 let resize = _state =>
-  ()/* todo: throttle? */
-    ;
-    /*BoardProgram.onResize(state.boardProgram);*/
+  ();
 
 let makeElState = () => {
   let pos = Scene.UMat3f.id();
@@ -50,10 +48,10 @@ let setup = _canvas => {
     Scene.SVertexObject.make(
       VertexBuffer.make(
         [||],
-        [|
+        [
           VertexAttrib.make("position", GlType.Vec2f),
           VertexAttrib.make("fromDrop", GlType.Float)
-        |],
+        ],
         DynamicDraw
       ),
       Some(IndexBuffer.make([||], DynamicDraw))
@@ -459,7 +457,7 @@ let createRootNode = state => {
         ]
       ),
       Mask.makeNode(),
-      createHelpScreen(state),
+      createStartScreen(state),
       createPauseScreen(state)
     ]
   );

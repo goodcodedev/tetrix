@@ -267,11 +267,11 @@ module Program = {
   type t = {
     vertexShader: Shader.t,
     fragmentShader: Shader.t,
-    uniforms: array(Uniform.t)
+    uniforms: list(Uniform.t)
   };
   type inited = {
     programRef: Gl.programT,
-    uniforms: array(Uniform.inited)
+    uniforms: list(Uniform.inited)
   };
   let make = (vertexShader, fragmentShader, uniforms) => {
     vertexShader,
@@ -313,7 +313,7 @@ module Program = {
     ) {
     | Some(programRef) =>
       let uniforms =
-        Array.map(
+        List.map(
           uniform => Uniform.init(uniform, context, programRef),
           program.uniforms
         );
@@ -339,7 +339,7 @@ external _bufferData : (Gl.contextT, int, Gl.Bigarray.t('a, 'b), int) => unit =
 module VertexBuffer = {
   type inited = {
     bufferRef: Gl.bufferT,
-    attribs: array(VertexAttrib.inited),
+    attribs: list(VertexAttrib.inited),
     perElement: int,
     mutable data: array(float),
     mutable update: bool,
@@ -348,14 +348,14 @@ module VertexBuffer = {
   };
   type t = {
     mutable data: array(float),
-    attributes: array(VertexAttrib.t),
+    attributes: list(VertexAttrib.t),
     perElement: int,
     usage: bufferUsage,
     mutable inited: option(inited)
   };
   let make = (data, attributes, usage) => {
     let perElement =
-      Array.fold_left(
+      List.fold_left(
         (p, attrib: VertexAttrib.t) => p + GlType.getSize(attrib.glType),
         0,
         attributes
@@ -378,7 +378,7 @@ module VertexBuffer = {
       };
     {
       data,
-      attributes: [|VertexAttrib.make("position", Vec2f)|],
+      attributes: [VertexAttrib.make("position", Vec2f)],
       usage,
       perElement: 2,
       inited: None
@@ -410,7 +410,7 @@ module VertexBuffer = {
 
   let initAttribs = (attribs, context, program) => {
     let stride =
-      Array.fold_left(
+      List.fold_left(
         (size, attrib: VertexAttrib.t) =>
           size
           + GlType.getSize(attrib.glType)
@@ -419,7 +419,7 @@ module VertexBuffer = {
         attribs
       );
     let offset = ref(0);
-    Array.map(
+    List.map(
       (attrib: VertexAttrib.t) => {
         let size = GlType.getSize(attrib.glType);
         let attrSize = size * GlType.getBytes(attrib.glType);
@@ -1239,7 +1239,7 @@ module Canvas = {
     | Some(currBuffer) when currBuffer === vertexBuffer => ()
     | _ =>
       glBindBuffer(context, Constants.array_buffer, vertexBuffer.bufferRef);
-      Array.iter(
+      List.iter(
         (attrib: VertexAttrib.inited) => {
           VertexAttrib.setPointer(attrib, context);
           enableVertexAttribArray(context, attrib.loc);
@@ -1276,7 +1276,7 @@ module Canvas = {
       canvas.currProgram = Some(program);
     };
     /* Set uniforms */
-    Array.iter(
+    List.iter(
       uniform => Uniform.valueToGpu(uniform, context),
       program.uniforms
     );
@@ -1288,7 +1288,7 @@ module Canvas = {
       if (vertexBuffer.update) {
         VertexBuffer.updateGpuData(vertexBuffer, context);
       };
-      Array.iter(
+      List.iter(
         (attrib: VertexAttrib.inited) => {
           VertexAttrib.setPointer(attrib, context);
           enableVertexAttribArray(context, attrib.loc);
@@ -1371,7 +1371,7 @@ module DrawState = {
         | None => None
         };
       let iTextures =
-        Array.map(
+        List.map(
           (programTex: ProgramTexture.t) => {
             let pInit =
               ProgramTexture.init(programTex, context, program.programRef);
@@ -1383,7 +1383,7 @@ module DrawState = {
         program,
         vertexBuffer: iBuffer,
         indexBuffer: iIndexes,
-        textures: iTextures
+        textures: Array.of_list(iTextures)
       };
     | None => failwith("Program creation failed")
     };

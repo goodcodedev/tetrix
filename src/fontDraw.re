@@ -157,18 +157,18 @@ let makeText = (
   let multicolor = (List.length(blockInfo.colors) > 1) ? true : false;
   let attribs =
     if (multicolor) {
-      [|
+      [
         VertexAttrib.make("position", GlType.Vec2f),
         VertexAttrib.make("uv", GlType.Vec2f),
         VertexAttrib.make("size", GlType.Float),
         VertexAttrib.make("color", GlType.Vec3f)
-      |]
+      ]
     } else {
-      [|
+      [
         VertexAttrib.make("position", GlType.Vec2f),
         VertexAttrib.make("uv", GlType.Vec2f),
         VertexAttrib.make("size", GlType.Float)
-      |]
+      ]
     };
   let vertices =
     VertexBuffer.make(

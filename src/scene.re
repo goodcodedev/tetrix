@@ -154,7 +154,7 @@ and sceneProgramInited = {
     /* Inited attribs, these will be reused
        in vertexBuffer
        Todo: Maybe they should be in program */
-    iAttribs: array(Gpu.VertexAttrib.inited),
+    iAttribs: list(Gpu.VertexAttrib.inited),
     iVo: option((Gpu.VertexBuffer.inited, option(Gpu.IndexBuffer.inited))),
     /* System uniforms */
     layoutUniform: option(Gpu.Gl.uniformT),
@@ -839,9 +839,7 @@ let createDrawStateUniforms =
       ]
     | None => uniforms
     };
-  let uniforms =
-    Array.of_list(List.append(uniforms, customUniforms));
-    uniforms
+  List.append(uniforms, customUniforms);
 };
 
 let initSceneProgram = (scene, sceneP : sceneProgram) => {
@@ -872,7 +870,7 @@ let initSceneProgram = (scene, sceneP : sceneProgram) => {
             Gpu.Program.make(
                 sceneP.vertShader,
                 sceneP.fragShader,
-                Array.of_list(uniforms)
+                uniforms
             );
         let iProgram =
           switch (Gpu.Program.init(
@@ -974,7 +972,7 @@ let initSceneProgram = (scene, sceneP : sceneProgram) => {
             };
             (iVertices.attribs, Some((iVertices, iIndices)))
         | (None, Some(attribs)) =>
-            (Gpu.VertexBuffer.initAttribs(Array.of_list(attribs), context, iProgram.programRef), None)
+            (Gpu.VertexBuffer.initAttribs(attribs, context, iProgram.programRef), None)
         | (Some(_), Some(_)) => failwith("Both vo and attribs provided to program")
         | (None, None) => failwith("Neither vo nor attribs provided to program")
         };
@@ -1006,24 +1004,28 @@ let createProgramDrawState = (scene, node, program : sceneProgram) => {
     /* todo: decouple program from uniforms? */
     let (_, uniforms) = 
         List.fold_left(
-          ((i, uniforms), key) => {
-            if (Hashtbl.mem(node.uniforms, key)) {
-                let sUniform = Hashtbl.find(node.uniforms, key);
-                (
-                    i + 1,
-                    [Gpu.Uniform.initedFromLoc(
-                        Gpu.Uniform.getUniformGlType(sUniform.uniform),
-                        sUniform.uniform,
-                        pInited.iProgram.uniforms[i].loc
-                    ), ...uniforms]
-                )
-            } else if (Hashtbl.mem(program.defaultUniforms, key)) {
-                (i + 1, [pInited.iProgram.uniforms[i], ...uniforms])
-            } else {
-                failwith("Could not find uniform by name: " ++ key)
+          ((iUniforms : list(Gpu.Uniform.inited), uniforms), key) => {
+            switch iUniforms {
+            | [iUniform, ...restIUniforms] =>
+              if (Hashtbl.mem(node.uniforms, key)) {
+                  let sUniform = Hashtbl.find(node.uniforms, key);
+                  (
+                      restIUniforms,
+                      [Gpu.Uniform.initedFromLoc(
+                          Gpu.Uniform.getUniformGlType(sUniform.uniform),
+                          sUniform.uniform,
+                          iUniform.loc
+                      ), ...uniforms]
+                  )
+              } else if (Hashtbl.mem(program.defaultUniforms, key)) {
+                  (restIUniforms, [iUniform, ...uniforms])
+              } else {
+                  failwith("Could not find uniform by name: " ++ key)
+              }
+            | [] => failwith("Scene program uniform mismatch between inited program and node creating drawstate")
             }
           },
-          (0, []),
+          (pInited.iProgram.uniforms, []),
           program.uniformList
         );
     let uniforms =
@@ -1102,7 +1104,7 @@ let createProgramDrawState = (scene, node, program : sceneProgram) => {
     node.drawState =
       Some(
           Gpu.DrawState.fromInited(
-              Gpu.Program.initedWithUniforms(pInited.iProgram, Array.of_list(List.rev(uniforms))),
+              Gpu.Program.initedWithUniforms(pInited.iProgram, List.rev(uniforms)),
               vertexBuffer,
               indexBuffer,
               Array.of_list(textures)
@@ -1142,15 +1144,13 @@ let createNodeDrawState = (scene, node) => {
           nodeUniforms
     );
   let textures =
-    Array.of_list(
       List.map(
         key => {
           let nodeTex = Hashtbl.find(node.textures, key);
           Gpu.ProgramTexture.make(key, nodeTex.texture);
         },
         node.textureList
-      )
-    );
+      );
   let vertShader =
     switch node.vertShader {
     | Some(vertShader) => vertShader
@@ -3441,6 +3441,7 @@ module UVec3f = {
     Gpu.Uniform.setVec3f(self.uniform, Data.Vec3.fromArray(arr));
     queueUpdates(scene, self.nodes);
   };
+  /* Sets uniforms without triggering node updates */
   let setQuiet = (self, v) => Gpu.Uniform.setVec3f(self.uniform, v);
   let get = self =>
     switch self.uniform {

@@ -39,7 +39,7 @@ let make = (canvas: Gpu.Canvas.t) => {
     Program.make(
       Shader.make(vertexSource),
       Shader.make(fragmentSource),
-      [|Uniform.make("layout", layout), Uniform.make("elapsed", elapsed)|]
+      [Uniform.make("layout", layout), Uniform.make("elapsed", elapsed)]
     );
   let program =
     switch (Program.init(programT, canvas.context)) {

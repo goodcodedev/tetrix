@@ -92,11 +92,11 @@ let createCanvas = () => {
       Program.make(
         Shader.make(vertexSource),
         Shader.make(fragmentSource),
-        [||]
+        []
       ),
       VertexBuffer.makeQuad(),
       Some(IndexBuffer.makeQuad()),
-      [||]
+      []
     );
   DrawState.draw(drawState, canvas);
 };
