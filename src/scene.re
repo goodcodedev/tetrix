@@ -90,7 +90,13 @@ type t('s) = {
      todo: Consider frame interval
      (look at benchmarks for creation) */
   mutable queuedDrawStates: list(node('s)),
-  initQueuedDrawState: bool
+  /* Queued dependencies, these could be prioritized
+     over queued drawstates */
+  mutable queuedDeps: list(int),
+  /* Whether to process queued drawstates/deps.
+     This can be activated when there is resource
+     availability (maybe automatically?) */
+  initQueued: bool
 }
 and drawListDebug('s) = {draw: DrawListDebug.t}
 and updateState = {
@@ -734,7 +740,156 @@ let setNodeParentsSceneKeyCls = scene => {
   loop(scene.root, None);
 };
 
-let make = (canvas, state, root, ~drawListDebug=false, ~initQueuedDrawState=true, ()) => {
+/* Can also consider using depth buffer
+   and draw from closest down parents when
+   drawing layout things */
+/* Performance is important for this function,
+   so will look for more opportunities to cache etc.
+   Possibly we could use an array sized for all
+   nodes in the three and jump for children
+   and deps.
+   Use new collections from bucklescript. */
+   let buildUpdateTree = (scene, root) => {
+    /* Also adds nodes to uniforms, vertexobjects and textures objects */
+    let rec loop = (node, parent, isDep, isDepRoot, prevStacked) => {
+      /* Feels maybe better to keep lists on scene instead of on these objects */
+      Hashtbl.iter(
+        (_key, uniform) => uniform.nodes = [node.id, ...uniform.nodes],
+        node.uniforms
+      );
+      switch (node.vo) {
+      | Some(vo) => vo.nodes = [node.id, ...vo.nodes]
+      | None =>
+          switch node.program {
+          | Some(p) =>
+              switch p.vo {
+              | Some(vo) => vo.nodes = [node.id, ...vo.nodes]
+              | None => failwith("Could not find vo")
+              };
+          | None => failwith("Could not find vo");
+          }
+      };
+      Hashtbl.iter(
+        (_key, tex: sceneTexture) => tex.nodes = [node.id, ...tex.nodes],
+        node.textures
+      );
+      /* Check for hidden */
+      if (node.hidden) {
+        scene.hiddenNodes = [node.id, ...scene.hiddenNodes];
+      };
+      let stencil =
+        if (node.transparent || node.partialDraw) {
+          None;
+        } else {
+          /* Translate to screen coordinates */
+          let updStencil = {rect: node.screenRect, active: false};
+          /* There may not be much point to
+             add stencil when isDepRoot */
+          if (! isDepRoot) {
+            /* Add reference to parent */
+            switch parent {
+            | Some(parent) => parent.stencils = [updStencil, ...parent.stencils]
+            | None => ()
+            };
+          };
+          Some(updStencil);
+        };
+      /* Possibly, this could be created after
+         collecting deps and children, in which
+         case parent field would need to be
+         filled in. Not sure if the difference
+         is very big, see if there is some use
+         to getting the parent handy first */
+      let updateNode = {
+        update: false,
+        childUpdate: false,
+        isDep,
+        isDepRoot,
+        updNode: node,
+        rect: None,
+        stencils: [],
+        stencil,
+        childRects: [],
+        parentRects: [],
+        updDeps: [],
+        updChildren: [],
+        parent,
+        prevStacked,
+        nextStacked: []
+      };
+      /* Add to indexes for node id/number and flag */
+      scene.updateNodes[node.id] = Some(updateNode);
+      updateNode.updDeps =
+        List.map(dep => loop(dep, Some(updateNode), true, true, []), node.deps);
+      switch node.layout.childLayout {
+      | Stacked =>
+        /* Loop stacked children, and pass on accumulated children as prevStacked */
+        let updChildren =
+          List.fold_left(
+            (updChildren, stackedChild) => {
+              let updChild =
+                loop(stackedChild, Some(updateNode), isDep, false, updChildren);
+              [updChild, ...updChildren];
+            },
+            [],
+            node.children
+          );
+        /* Set nextStacked, updChildren is in reverse order from original child order */
+        let _ =
+          List.fold_left(
+            (nextStacked, updChild) => {
+              updChild.nextStacked = nextStacked;
+              [updChild, ...nextStacked];
+            },
+            [],
+            updChildren
+          );
+        updateNode.updChildren = List.rev(updChildren);
+      | _ =>
+        updateNode.updChildren =
+          List.map(
+            child => loop(child, Some(updateNode), isDep, false, []),
+            node.children
+          )
+      };
+      /* All children have added their stencils,
+         propagate them to prevStacked and parent */
+      let rec addStencilsToNodeAndChildren = updNode => {
+        /* Add to updNode */
+        List.iter(
+          updStencil => updNode.stencils = [updStencil, ...updNode.stencils],
+          updateNode.stencils
+        );
+        /* And updNodes children */
+        List.iter(
+          updNodeChild => addStencilsToNodeAndChildren(updNodeChild),
+          updNode.updChildren
+        );
+      };
+      List.iter(
+        prevStacked => addStencilsToNodeAndChildren(prevStacked),
+        prevStacked
+      );
+      if (! updateNode.isDepRoot) {
+        switch updateNode.parent {
+        | Some(parent) =>
+          List.iter(
+            updStencil => parent.stencils = [updStencil, ...parent.stencils],
+            updateNode.stencils
+          )
+        | None => ()
+        };
+      };
+      updateNode;
+    };
+    scene.updateNodes = Array.make(currNodeId^, None);
+    let tree = loop(root, None, false, false, []);
+    /* Sort added hidden nodes */
+    scene.hiddenNodes = List.sort((a, b) => a > b ? 1 : (-1), scene.hiddenNodes);
+    tree;
+  };
+
+let make = (canvas, state, root, ~drawListDebug=false, ~initQueued=true, ()) => {
   let drawListsDebug =
     switch drawListDebug {
     | false => None
@@ -760,9 +915,11 @@ let make = (canvas, state, root, ~drawListDebug=false, ~initQueuedDrawState=true
     updateRoot: None,
     hiddenNodes: [],
     queuedDrawStates: [],
-    initQueuedDrawState
+    queuedDeps: [],
+    initQueued
   };
   setNodeParentsSceneKeyCls(scene);
+  scene.updateRoot = Some(buildUpdateTree(scene, scene.root));
   scene;
 };
 
@@ -1179,6 +1336,11 @@ let createNodeDrawState = (scene, node) => {
     );
 };
 
+/* Creates a drawstate for a node, possibly using it's
+   "sceneProgram", which are reusable programs with
+   possibly default data. This drawstate is data
+   needed to perform a draw like uniforms, vertices,
+   textures */
 let createDrawState = (scene, node) => {
     if (node.selfDraw) {
       switch node.program {
@@ -1206,6 +1368,8 @@ let queueDrawStates = scene => {
   scene.queuedDrawStates = loop(scene.root, []);
 };
 
+/* Add nodes that needs update, and it should be
+   done on next render/frame */
 let queueUpdates = (scene, nodes) =>
   scene.queuedUpdates =
     List.fold_left(
@@ -1214,6 +1378,7 @@ let queueUpdates = (scene, nodes) =>
       nodes
     );
 
+/* Creates animation record */
 let makeAnim =
     (onFrame, setLast, duration, ~key=?, ~next=?, ~frameInterval=1, ~onDone=?, ()) => {
   animKey: key,
@@ -1239,154 +1404,7 @@ let clearAnim = (scene, animKey) =>
       scene.anims
     );
 
-/* Can also consider using depth buffer
-   and draw from closest down parents when
-   drawing layout things */
-/* Performance is important for this function,
-   so will look for more opportunities to cache etc.
-   Possibly we could use an array sized for all
-   nodes in the three and jump for children
-   and deps.
-   Use new collections from bucklescript. */
-let buildUpdateTree = (scene, root) => {
-  /* Also adds nodes to uniforms, vertexobjects and textures objects */
-  let rec loop = (node, parent, isDep, isDepRoot, prevStacked) => {
-    /* Feels maybe better to keep lists on scene instead of on these objects */
-    Hashtbl.iter(
-      (_key, uniform) => uniform.nodes = [node.id, ...uniform.nodes],
-      node.uniforms
-    );
-    switch (node.vo) {
-    | Some(vo) => vo.nodes = [node.id, ...vo.nodes]
-    | None =>
-        switch node.program {
-        | Some(p) =>
-            switch p.vo {
-            | Some(vo) => vo.nodes = [node.id, ...vo.nodes]
-            | None => failwith("Could not find vo")
-            };
-        | None => failwith("Could not find vo");
-        }
-    };
-    Hashtbl.iter(
-      (_key, tex: sceneTexture) => tex.nodes = [node.id, ...tex.nodes],
-      node.textures
-    );
-    /* Check for hidden */
-    if (node.hidden) {
-      scene.hiddenNodes = [node.id, ...scene.hiddenNodes];
-    };
-    let stencil =
-      if (node.transparent || node.partialDraw) {
-        None;
-      } else {
-        /* Translate to screen coordinates */
-        let updStencil = {rect: node.screenRect, active: false};
-        /* There may not be much point to
-           add stencil when isDepRoot */
-        if (! isDepRoot) {
-          /* Add reference to parent */
-          switch parent {
-          | Some(parent) => parent.stencils = [updStencil, ...parent.stencils]
-          | None => ()
-          };
-        };
-        Some(updStencil);
-      };
-    /* Possibly, this could be created after
-       collecting deps and children, in which
-       case parent field would need to be
-       filled in. Not sure if the difference
-       is very big, see if there is some use
-       to getting the parent handy first */
-    let updateNode = {
-      update: false,
-      childUpdate: false,
-      isDep,
-      isDepRoot,
-      updNode: node,
-      rect: None,
-      stencils: [],
-      stencil,
-      childRects: [],
-      parentRects: [],
-      updDeps: [],
-      updChildren: [],
-      parent,
-      prevStacked,
-      nextStacked: []
-    };
-    /* Add to indexes for node id/number and flag */
-    scene.updateNodes[node.id] = Some(updateNode);
-    updateNode.updDeps =
-      List.map(dep => loop(dep, Some(updateNode), true, true, []), node.deps);
-    switch node.layout.childLayout {
-    | Stacked =>
-      /* Loop stacked children, and pass on accumulated children as prevStacked */
-      let updChildren =
-        List.fold_left(
-          (updChildren, stackedChild) => {
-            let updChild =
-              loop(stackedChild, Some(updateNode), isDep, false, updChildren);
-            [updChild, ...updChildren];
-          },
-          [],
-          node.children
-        );
-      /* Set nextStacked, updChildren is in reverse order from original child order */
-      let _ =
-        List.fold_left(
-          (nextStacked, updChild) => {
-            updChild.nextStacked = nextStacked;
-            [updChild, ...nextStacked];
-          },
-          [],
-          updChildren
-        );
-      updateNode.updChildren = List.rev(updChildren);
-    | _ =>
-      updateNode.updChildren =
-        List.map(
-          child => loop(child, Some(updateNode), isDep, false, []),
-          node.children
-        )
-    };
-    /* All children have added their stencils,
-       propagate them to prevStacked and parent */
-    let rec addStencilsToNodeAndChildren = updNode => {
-      /* Add to updNode */
-      List.iter(
-        updStencil => updNode.stencils = [updStencil, ...updNode.stencils],
-        updateNode.stencils
-      );
-      /* And updNodes children */
-      List.iter(
-        updNodeChild => addStencilsToNodeAndChildren(updNodeChild),
-        updNode.updChildren
-      );
-    };
-    List.iter(
-      prevStacked => addStencilsToNodeAndChildren(prevStacked),
-      prevStacked
-    );
-    if (! updateNode.isDepRoot) {
-      switch updateNode.parent {
-      | Some(parent) =>
-        List.iter(
-          updStencil => parent.stencils = [updStencil, ...parent.stencils],
-          updateNode.stencils
-        )
-      | None => ()
-      };
-    };
-    updateNode;
-  };
-  scene.updateNodes = Array.make(currNodeId^, None);
-  let tree = loop(root, None, false, false, []);
-  /* Sort added hidden nodes */
-  scene.hiddenNodes = List.sort((a, b) => a > b ? 1 : (-1), scene.hiddenNodes);
-  tree;
-};
+
 
 let rec setChildToUpdate = updNode =>
   if (! updNode.updNode.hidden) {
@@ -3063,6 +3081,29 @@ let isNodeHidden = (scene, nodeId) => {
   };
 };
 
+/* Debug function to ensure state is reset after processing of tree */
+let rec checkForCleanState = updNode => {
+  if (updNode.update || updNode.childUpdate) {
+    [%debugger];
+  };
+  List.iter(
+    stencil =>
+      if (stencil.active) {
+        [%debugger];
+      },
+    updNode.stencils
+  );
+  List.iter(
+    (rect: updateRect('s)) =>
+      if (rect.active) {
+        [%debugger];
+      },
+    updNode.childRects
+  );
+  List.iter(dep => checkForCleanState(dep), updNode.updDeps);
+  List.iter(child => checkForCleanState(child), updNode.updChildren);
+};
+
 /* Creates a drawList that shows which
    areas are updating */
 let update = scene => {
@@ -3102,28 +3143,6 @@ let update = scene => {
      when things update anyway, and drawlist is cached */
   scene.queuedUpdates = [];
   let updateState = {updateNodes, hiddenNodes: scene.hiddenNodes};
-  /* Debug function to ensure state is reset after processing of tree */
-  let rec checkForCleanState = updNode => {
-    if (updNode.update || updNode.childUpdate) {
-      [%debugger];
-    };
-    List.iter(
-      stencil =>
-        if (stencil.active) {
-          [%debugger];
-        },
-      updNode.stencils
-    );
-    List.iter(
-      (rect: updateRect('s)) =>
-        if (rect.active) {
-          [%debugger];
-        },
-      updNode.childRects
-    );
-    List.iter(dep => checkForCleanState(dep), updNode.updDeps);
-    List.iter(child => checkForCleanState(child), updNode.updChildren);
-  };
   /* Ensure state is inited */
   let rec initDeps = (nodeId, blackList) => {
     let depIds = collectDeps(scene, [nodeId], scene.hiddenNodes);
@@ -3242,12 +3261,40 @@ let update = scene => {
     processDrawList(scene, Hashtbl.find(scene.drawLists, updateState), true);
     Gpu.glDisable(context, Gpu.Constants.blend);
   };
-  /* Check for queued drawStates and process if there are */
-  switch scene.queuedDrawStates {
-  | [] => ()
-  | [next, ...rest] =>
-    scene.queuedDrawStates = rest;
-    createDrawState(scene, next);
+  /* Check for queued deps then drawStates and process if there are */
+  switch scene.queuedDeps {
+  | [] =>
+    switch scene.queuedDrawStates {
+    | [] => ()
+    | [next, ...rest] =>
+      scene.queuedDrawStates = rest;
+      createDrawState(scene, next);
+    };
+  | [depId, ...rest] =>
+    scene.queuedDeps = rest;
+    if (! Hashtbl.mem(scene.initedDeps, depId)) {
+      Hashtbl.add(scene.initedDeps, depId, true);
+      switch scene.updateNodes[depId] {
+      | Some(depNode) =>
+      let depDraws =
+          createDrawList(scene, [depId], depNode.updNode);
+      processDrawList(scene, depDraws, false);
+      switch scene.drawListsDebug {
+      | None => ()
+      | Some(_listsDebug) =>
+          Js.log(
+          "==\nQueued dep drawlist: "
+          ++ nodeDescr(depNode.updNode)
+          );
+          logDrawList(scene, {
+            updateNodes: [],
+            hiddenNodes: []
+          }, depDraws);
+          checkForCleanState(depNode);
+      };
+      | None => failwith("Could not find dep node")
+      };
+    };
   };
 };
 
@@ -3279,6 +3326,18 @@ let cleanUpDrawList = (scene, drawList) => {
   loop(drawList);
 };
 
+let queueDeps = (scene, fromNodeId) => {
+  /* We need the deps of deps to be drawn first */
+  let rec collectQueue = (idList) => {
+    let depIds = collectDeps(scene, idList, []);
+    switch (depIds) {
+    | [] => []
+    | list => List.append(collectQueue(depIds), list)
+    }
+  };
+  scene.queuedDeps = collectQueue([fromNodeId]);
+};
+
 let doResize = scene => {
   let (width, height) = Gpu.Canvas.getViewportSize();
   Gpu.Canvas.resize(scene.canvas, width, height);
@@ -3307,9 +3366,6 @@ let run =
   let canvas = Gpu.Canvas.init(width, height);
   let userState = ref(setup(canvas));
   let scene = createScene(canvas, userState^);
-  /* There are possibly other options for where to put this,
-     if there is any need for stuff earlier, like scenes make() */
-  scene.updateRoot = Some(buildUpdateTree(scene, scene.root));
   calcLayout(scene);
   /* Time for resize requested, this is throttled */
   let resizeRequested = ref(None);
@@ -3325,7 +3381,7 @@ let run =
           /* Create updateNodes */
           queueUpdates(scene, [scene.root.id]);
           update(scene);
-          if (scene.initQueuedDrawState) {
+          if (scene.initQueued) {
             queueDrawStates(scene);
           };
           scene.inited = true;

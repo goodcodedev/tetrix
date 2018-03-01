@@ -466,6 +466,8 @@ let createRootNode = state => {
 let createScene = (canvas, state) => {
   let scene =
     Scene.make(canvas, state, createRootNode(state), ~drawListDebug=false, ());
+  /* Queue deps from root */
+  Scene.queueDeps(scene, scene.root.id);
   let anim =
     Animate.anim(
       AnimNodeUniform(Scene.getNodeUnsafe(scene, "background"), "anim"),
