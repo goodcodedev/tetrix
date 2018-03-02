@@ -91,7 +91,9 @@ let fragmentSource = {|
 
         float aoi = dot(vec3(0.0, 0.0, 1.0), lVec);
         float attenuation = 1.0 / (1.0 + 100.0 * pow(length(surfaceToLight), 2.0));
-        attenuation = attenuation * (1.0 - smoothstep(60.0, 68.0, lightToSurfaceAngle));
+        float endDegree = 60.0 + centerRadius.z * 30.0;
+        float startDegree = endDegree - 20.0 - centerRadius.z * 20.0;
+        attenuation = attenuation * (1.0 - smoothstep(startDegree, endDegree, lightToSurfaceAngle));
         triangleLight = aoi * attenuation;
 
         // Shadow

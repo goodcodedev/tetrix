@@ -133,8 +133,8 @@ let colors =
   Array.map(
     color => {
       let hsl = Color.Hsl.fromRgb(color);
-      Color.Hsl.incrL(hsl, 0.06);
-      Color.Hsl.incrS(hsl, 0.06);
+      Color.Hsl.incrL(hsl, 0.07);
+      Color.Hsl.incrS(hsl, 0.07);
       Color.Hsl.toRgb(hsl)
     },
     colors

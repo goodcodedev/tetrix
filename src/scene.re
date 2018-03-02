@@ -2922,7 +2922,9 @@ let calcLayout = scene => {
              uniforms below */
           /* Todo: maintain values for quick lookup? */
           /* Todo: Pack texture into available space,
-             resize texture on need? */
+             resize texture on need?
+             http://blog.roomanna.com/09-25-2015/binpacking-shelf
+             */
           /*
            let (texWidth, texHeight) = switch (Gpu.Texture.getSize(texture)) {
            | Some((texWidth, texHeight)) => (float_of_int(texWidth), float_of_int(texHeight))
