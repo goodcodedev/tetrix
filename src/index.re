@@ -205,7 +205,7 @@ let createLeftRow = state => {
               ~align=FontText.Center,
               ()
             ),
-            DrawElement.makeNode(state.holdingEl, state.sceneLight)
+            DrawElement.makeNode(state.holdingEl, state.sceneLight),
           ]
         ),
         ()
@@ -327,7 +327,7 @@ let createPauseScreen = state =>
           "Press Space to continue",
           "digitalt",
           state.fontLayout,
-          ~height=0.06,
+          ~height=0.058,
           ~align=FontText.Center,
           ()
         )
@@ -336,13 +336,16 @@ let createPauseScreen = state =>
   );
 
 let createGameOverScreen = state =>
-  Layout.vertical([
+  Layout.vertical(
+    ~key="gameOverScreen",
+    ~hidden=true,
+    [
     FontDraw.makeSimpleNode(
       "Game over",
       "digitalt",
       state.fontLayout,
       ~key="gameOver",
-      ~height=0.25,
+      ~height=0.17,
       ~align=FontText.Center,
       ()
     ),
@@ -350,7 +353,7 @@ let createGameOverScreen = state =>
       "Press N to start new game",
       "digitalt",
       state.fontLayout,
-      ~height=0.08,
+      ~height=0.06,
       ~align=FontText.Center,
       ()
     )
@@ -403,6 +406,8 @@ let createHelpScreen = state => {
   ));
   Layout.vertical(
     ~margin=Scene.MarginXY(Scene.Scale(0.12), Scene.Scale(0.0)),
+    ~key="helpScreen",
+    ~hidden=true,
     [
       FontDraw.makeBlockNode(
         helpText,
@@ -411,7 +416,7 @@ let createHelpScreen = state => {
         ()
       )
     ]
-  );
+  )
 };
 
 let createNextLevelScreen = state =>
@@ -458,7 +463,9 @@ let createRootNode = state => {
       ),
       Mask.makeNode(),
       createStartScreen(state),
-      createPauseScreen(state)
+      createPauseScreen(state),
+      createHelpScreen(state),
+      createGameOverScreen(state)
     ]
   );
 };
@@ -714,9 +721,10 @@ let drawGame = (state, scene) => {
         );
       /* Handle holding element */
       switch state.gameState.holdingEl {
-      | Some(holdingEl) =>
-        updateElTiles(scene, holdingEl, state.holdingEl, 3, 4, None, true)
-      | None => resetElState(scene, state.holdingEl)
+      | Some(holdEl) =>
+        updateElTiles(scene, holdEl, state.holdingEl, 3, 4, None, true);
+      | None =>
+        resetElState(scene, state.holdingEl);
       };
     }
   | Some(touchDown) =>
@@ -843,6 +851,8 @@ let hideMask = scene => Scene.hideNodeByKey(scene, "mask");
 let draw = (state, scene, canvas: Gpu.Canvas.t) => {
   state.gameState =
     Game.processAction({...state.gameState, deltaTime: canvas.deltaTime});
+  /* Maybe polymorphic variants here, does it make sense/possible?
+     and some better state management/page navigation? */
   let state =
     switch state.gameState.gameState {
     | Running =>
@@ -857,10 +867,37 @@ let draw = (state, scene, canvas: Gpu.Canvas.t) => {
           Scene.hideNodeByKey(scene, "pauseScreen");
           hideMask(scene);
           setScreenState(state, GameScreen);
+        | HelpScreen =>
+          Scene.hideNodeByKey(scene, "helpScreen");
+          hideMask(scene);
+          setScreenState(state, GameScreen);
+        | GameOverScreen =>
+          Scene.hideNodeByKey(scene, "gameOverScreen");
+          hideMask(scene);
+          setScreenState(state, GameScreen);
         };
       drawGame(state, scene);
     | StartScreen => state
-    | HelpScreen => state
+    | HelpScreen =>
+      switch state.sceneLayout {
+      | HelpScreen => state
+      | GameScreen =>
+        showMask(scene);
+        Scene.showNodeByKey(scene, "helpScreen");
+        setScreenState(state, HelpScreen);
+      | PauseScreen =>
+        Scene.hideNodeByKey(scene, "pauseScreen");
+        Scene.showNodeByKey(scene, "helpScreen");
+        setScreenState(state, HelpScreen);
+      | GameOverScreen =>
+        Scene.hideNodeByKey(scene, "gameOverScreen");
+        Scene.showNodeByKey(scene, "helpScreen");
+        setScreenState(state, HelpScreen);
+      | StartScreen =>
+        Scene.hideNodeByKey(scene, "startScreen");
+        Scene.showNodeByKey(scene, "helpScreen");
+        setScreenState(state, HelpScreen);
+      };
     | Paused =>
       switch state.sceneLayout {
       | PauseScreen => state
@@ -870,8 +907,16 @@ let draw = (state, scene, canvas: Gpu.Canvas.t) => {
         setScreenState(state, PauseScreen);
       | _ => failwith("Paused from other than game screen")
       }
-    | NextLevel => state
-    | GameOver => state
+    | NextLevel => state /* Not implemented */
+    | GameOver =>
+      switch state.sceneLayout {
+      | GameOverScreen => state
+      | GameScreen =>
+        showMask(scene);
+        Scene.showNodeByKey(scene, "gameOverScreen");
+        setScreenState(state, GameOverScreen);
+      | _ => failwith("Game over from other than game screen")
+      }
     };
   Scene.update(scene);
   state;

@@ -80,9 +80,9 @@ let fragmentSource = {|
 
         // Roughly light a triangle below element
         float triangleDir = dot(elVecNorm, vec2(0.0, -1.0));
-        float noiseFactor = random(vPosition) * 0.3 + 0.7;
+        //float noiseFactor = random(vPosition) * 0.3 + 0.7;
         float triangleLight = smoothstep(0.0, 0.2, triangleDir) * 0.02;
-        vec3 lPos = vec3(centerRadius.x, centerRadius.y + 0.1, 0.5);
+        vec3 lPos = vec3(centerRadius.x, centerRadius.y + 0.15, 0.25);
         vec3 surfaceToLight = lPos - vec3(vPosition.xy, 0.0);
         vec3 lVec = normalize(surfaceToLight);
 
@@ -91,7 +91,7 @@ let fragmentSource = {|
 
         float aoi = dot(vec3(0.0, 0.0, 1.0), lVec);
         float attenuation = 1.0 / (1.0 + 100.0 * pow(length(surfaceToLight), 2.0));
-        attenuation = attenuation * (1.0 - smoothstep(75.0, 78.0, lightToSurfaceAngle));
+        attenuation = attenuation * (1.0 - smoothstep(60.0, 68.0, lightToSurfaceAngle));
         triangleLight = aoi * attenuation;
 
         // Shadow

@@ -8,7 +8,9 @@ type elState = {
 type sceneLayout =
   | StartScreen
   | GameScreen
-  | PauseScreen;
+  | PauseScreen
+  | HelpScreen
+  | GameOverScreen;
 
 type sceneState = {
   tiles: array(int),

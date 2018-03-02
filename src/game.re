@@ -47,6 +47,7 @@ type gameState =
 
 type startScreenAction =
   | StartGame
+  | Help
   | NoAction;
 
 type gameAction =
@@ -64,6 +65,7 @@ type gameAction =
   | MoveBeginning
   | MoveEnd
   | Pause
+  | Help
   | NoAction;
 
 type nextLevelAction =
@@ -125,6 +127,17 @@ let colors =
       [|180, 100, 230|], /* Purple triangle */
       [|240, 130, 120|] /* Red left shift */
     |]
+  );
+/* Temp, adjust colors */
+let colors =
+  Array.map(
+    color => {
+      let hsl = Color.Hsl.fromRgb(color);
+      Color.Hsl.incrL(hsl, 0.06);
+      Color.Hsl.incrS(hsl, 0.06);
+      Color.Hsl.toRgb(hsl)
+    },
+    colors
   );
 
 /* Center position and radius
@@ -352,14 +365,9 @@ type stateT = {
 };
 
 let nextEl = state => {
-  let next =
-    switch state.holdingEl {
-    | Some(holdingEl) => holdingEl
-    | None => ElQueue.pop(state.elQueue)
-    };
+  let next = ElQueue.pop(state.elQueue);
   {
     ...state,
-    holdingEl: None,
     elChanged: true,
     elMoved: true,
     lastTick: state.curTime,
@@ -453,10 +461,10 @@ let newGame = state => {
     };
   };
   ElQueue.initQueue(state.elQueue);
-  {
+  let state = {
     ...state,
     action: GameAction(NoAction),
-    curEl: ElQueue.pop(state.elQueue),
+    curEl: ElQueue.setBoardInitPos(ElQueue.pop(state.elQueue)),
     holdingEl: None,
     elChanged: true,
     elMoved: true,
@@ -465,6 +473,8 @@ let newGame = state => {
     curTime: 0.,
     gameState: Running
   };
+  updateBeams(state);
+  state
 };
 
 let isCollision = state =>
@@ -743,10 +753,26 @@ let processGameInput = (state, gameAction) =>
     | (false, state) => {...state, action: GameAction(NoAction)}
     }
   | HoldElement =>
-    let holdingEl = Some(ElQueue.setHoldPos(state.curEl));
-    let state = nextEl(state);
-    {...state, action: GameAction(NoAction), holdingEl};
-  | Pause => {...state, action: GameAction(NoAction), paused: true}
+    let holdEl = ElQueue.setHoldPos(state.curEl);
+    let state = switch state.holdingEl {
+    | None =>
+      nextEl({
+        ...state,
+        holdingEl: Some(holdEl)
+      })
+    | Some(nextEl) =>
+      {
+        ...state,
+        holdingEl: Some(holdEl),
+        elChanged: true,
+        elMoved: true,
+        lastTick: state.curTime,
+        curEl: ElQueue.setBoardInitPos(nextEl)
+      }
+    };
+    {...state, action: GameAction(NoAction)};
+  | Pause => {...state, gameState: Paused, action: PauseAction(NoAction), paused: true}
+  | Help => {...state, gameState: HelpScreen, action: HelpScreenAction(NoAction)}
   | NoAction => state
   };
 
@@ -776,6 +802,7 @@ let afterTouchdown = state => {
   let state = nextEl(state);
   updateBeams(state);
   if (isCollision(state)) {
+    Js.log("Game over state");
     {...state, action: GameOverAction(NoAction), gameState: GameOver};
   } else {
     {...state, curTime, lastTick: curTime};
@@ -895,11 +922,10 @@ let gameLogic = state => {
 let rec processGameAction = (state, action: gameAction) => {
   let mainProcess = state => {
     let state = processGameInput(state, action);
-    if (state.paused) {
-      {...state, gameState: Paused, action: PauseAction(NoAction)};
-    } else {
-      gameLogic(state);
-    };
+    switch state.gameState {
+    | Running => gameLogic(state)
+    | _ => processAction(state)
+    }
   };
   /* Check for touchdown in progress */
   switch state.touchDown {
@@ -914,6 +940,7 @@ let rec processGameAction = (state, action: gameAction) => {
 and processStartScreenAction = (state, action: startScreenAction) =>
   switch action {
   | NoAction => state
+  | Help => processAction({...state, gameState: HelpScreen, action: HelpScreenAction(NoAction)})
   | StartGame =>
     processAction({...state, gameState: Running, action: GameAction(NoAction)})
   }
@@ -968,10 +995,15 @@ let keyPressed = (state, canvas: Gpu.Canvas.t) => {
     StartScreenAction(
       switch keyCode {
       | N => StartGame
-      | _ => NoAction
+      | _ =>
+        switch (lastKeyCode(Document.window)) {
+        | 171 => Help
+        | _ => NoAction
+        }
       }
     )
   | Running =>
+    Js.log(lastKeyCode(Document.window));
     GameAction(
       switch keyCode {
       | H => MoveLeft
@@ -993,6 +1025,7 @@ let keyPressed = (state, canvas: Gpu.Canvas.t) => {
         | 48
         | 173 => MoveBeginning
         | 52 => MoveEnd
+        | 171 => Help
         | _ => NoAction
         }
       }
@@ -1008,6 +1041,7 @@ let keyPressed = (state, canvas: Gpu.Canvas.t) => {
     HelpScreenAction(
       switch keyCode {
       | Space => Resume
+      | N => Resume
       | _ => NoAction
       }
     )

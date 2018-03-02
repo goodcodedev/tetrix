@@ -60,12 +60,19 @@ let compare = (color1 : t, color2 : t) => {
 /* http://www.niwa.nu/2013/05/math-behind-colorspace-conversions-rgb-hsl/ */
 module Hsl = {
   /* Hue in degrees from 0-360,
-     saturation from 0.0 - 1.0
-     luminance from 0.0 - 1.0 */
+     saturation from 0.0 to 1.0
+     luminance from 0.0 to 1.0 */
   type hsl = array(float);
   let clone = (hsl: hsl) : hsl => Array.copy(hsl);
+  /* Increment in place, could be nice for performance
+     sensitive code, but should also have immutable style
+     Figure out api */
   let incrH = (hsl: hsl, increment) =>
     hsl[0] = mod_float(hsl[0] +. increment, 360.0);
+  let incrL = (hsl: hsl, increment) =>
+    hsl[2] = min(hsl[2] +. increment, 1.0);
+  let incrS = (hsl: hsl, increment) =>
+    hsl[1] = min(hsl[1] +. increment, 1.0);
   let setL = (hsl: hsl, l) => hsl[2] = l;
   let fromRgb = (c: t) : hsl => {
     let (r, g, b) = (c[0], c[1], c[2]);

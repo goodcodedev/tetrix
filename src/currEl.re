@@ -23,14 +23,8 @@ let currElFragment = {|
     uniform sampler2D sdfTiles;
 
     void main() {
-        // To texture coords
         vec3 sdfColor = texture2D(sdfTiles, vTexPos).xyz;
-        /*
-        float sdfCoef = abs(0.5 - sdfColor.x) * 0.9;
-        float tileCoef = 1.0 - sdfCoef;
-        vec3 color = elColor * tileCoef + sdfColor * sdfCoef;
-        */
-        gl_FragColor = vec4(mix(elColor, sdfColor, 0.3), 1.0);
+        gl_FragColor = vec4(mix(elColor, sdfColor, 0.4), 1.0);
     }
 |};
 

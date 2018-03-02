@@ -29,14 +29,13 @@ let fragmentSource = {|
         float tile = texture2D(tiles, tilePos).x;
         int colorIdx = int(tile * 255.0);
         vec3 color =
-            (colorIdx == 1) ? vec3(0.5, 0.9, 1.0)
-            : (colorIdx == 2) ? vec3(0.45, 0.5, 0.95)
-            : (colorIdx == 3) ? vec3(0.95, 0.85, 0.3)
-            : (colorIdx == 4) ? vec3(0.95, 1.0, 0.5)
-            : (colorIdx == 5) ? vec3(0.55, 0.95, 0.45)
-            : (colorIdx == 6) ? vec3(0.7, 0.4, 0.85)
-            : (colorIdx == 7) ? vec3(0.9, 0.4, 0.35)
-            : vec3(0.8, 0.8, 0.9);
+            (colorIdx == 1) ? |} ++ Color.toGlsl(Game.colors[2]) ++ {|
+            : (colorIdx == 2) ? |} ++ Color.toGlsl(Game.colors[3]) ++ {|
+            : (colorIdx == 3) ? |} ++ Color.toGlsl(Game.colors[4]) ++ {|
+            : (colorIdx == 4) ? |} ++ Color.toGlsl(Game.colors[5]) ++ {|
+            : (colorIdx == 5) ? |} ++ Color.toGlsl(Game.colors[6]) ++ {|
+            : (colorIdx == 6) ? |} ++ Color.toGlsl(Game.colors[7]) ++ {|
+            : |} ++ Color.toGlsl(Game.colors[8]) ++ {|;
         vec3 sdfColor = texture2D(sdfTiles, sdfPos).xyz;
         //color = color * 0.5 + ((colorIdx == 0) ? vec3(0.0, 0.0, 0.0) : (sdfColor * 0.5));
         /*

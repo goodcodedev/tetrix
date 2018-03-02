@@ -477,12 +477,21 @@ module FontLayout = {
         Some(i)
       }
     };
+    let printBuffer = () => {
+      let rec loop = (i) => {
+        if (i < s.iGlyph) {
+          Js.log(String.make(1, Char.chr(glyphB.data[i].code)));
+          loop(i + 1);
+        }
+      };
+      loop(0);
+    };
     let truncateWhitespace = (fromIndex) => {
       /* Truncate between nonWhitespace and fromIndex
           by moving glyphs backwards and placing the
           truncated glyphs after current iGlyph */
       let rec collectTruncated = (i, until, list) => {
-        if (i <= until) {
+        if (i < until) {
           collectTruncated(i + 1, until, [glyphB.data[i], ...list])
         } else {
           list
@@ -631,20 +640,22 @@ module FontLayout = {
                     /* Especially for right aligned, we need to truncate whitespace
                        Will also reduce vertex data */
                     let truncated = truncateWhitespace(spaceIndex);
-                    s.iGlyph = s.iGlyph - truncated;
+                    /* Hm, why not iGlyph - truncated */
+                    s.iGlyph = s.iGlyph - truncated + 1;
                     let spaceIndex = spaceIndex - truncated;
                     /* Spaceindex - 1? */
                     addLine(spaceIndex, curStyle, curBlock);
                     if (s.iGlyph - 1 > spaceIndex) {
                       /* There are characters after space */
                       /* Move characters after to next line */
-                      let subtractX = glyphB.data[spaceIndex + 1].x *. (-1.0);
+                      /* todo: Could use spaceIndex + 2.x if available */
+                      let subtractX = (glyphB.data[spaceIndex + 1].x +. 1.0) *. (-1.0);
                       /* todo: Need to resolve current height for next line
                         based on moved characters */
                       let addY = curStyle.height *. lineHeight *. -1.0;
                       moveXY(subtractX, addY, spaceIndex + 1, s.iGlyph - 1);
-                      s.penX = glyphB.data[s.iGlyph - 1].x;
-                      s.penY = glyphB.data[s.iGlyph - 1].y;
+                      let lastChar = glyphB.data[s.iGlyph - 1];
+                      s.penX = lastChar.x +. lastChar.glChar.xAdvance *. curStyle.height;
                     } else {
                       s.penX = curBlock.lineStart;
                     };
