@@ -289,8 +289,9 @@ let createStartScreen = state => {
       styledText(~color=Game.colors[6], "r"),
       styledText(~color=Game.colors[7], "i"),
       styledText(~color=Game.colors[8], "s"),
-      styled(~height=0.08, ~color=Color.fromFloats(0.8, 0.9, 1.0), [
-        text("\n\nPress N to play")
+      block([
+        styled(~height=0.08, [text("Press N to play\n")]),
+        styled(~height=0.06, [text("Press ? for help")])
       ])
     ]
   ));
@@ -298,10 +299,10 @@ let createStartScreen = state => {
     ~key="startScreen",
     ~vAlign=Scene.AlignMiddle,
     [
-      FontDraw.makeBlockNode(
+      FontDraw.makePartNode(
         vimtrisText,
         state.fontLayout,
-        ~height=0.4,
+        ~height=0.5,
         ()
       )
     ]
@@ -362,13 +363,13 @@ let createGameOverScreen = state =>
 let createHelpScreen = state => {
   let leftStyle = FontText.blockStyle(
     ~align=FontText.Right,
-    ~scaleX=0.1,
+    ~scaleX=0.45,
     ()
   );
   let rightStyle = FontText.blockStyle(
     ~align=Left,
     ~color=Color.fromFloats(0.75, 0.7, 0.8),
-    ~scaleX=0.9,
+    ~scaleX=0.55,
     ()
   );
   let helpBlocks =
@@ -400,8 +401,7 @@ let createHelpScreen = state => {
   let helpText = FontText.(block(
     ~font="digitalt",
     ~height=0.12, [
-      text("Help"),
-      block(~height=0.04, [text("\n"), ...List.rev(helpBlocks)])
+      block(~height=0.045, [text("\n"), ...List.rev(helpBlocks)])
     ]
   ));
   Layout.vertical(
@@ -409,10 +409,44 @@ let createHelpScreen = state => {
     ~key="helpScreen",
     ~hidden=true,
     [
-      FontDraw.makeBlockNode(
+      Layout.stacked(
+        ~size=Aspect(1.0 /. 0.23),
+        [
+          FontDraw.makePartNode(
+            FontText.(
+              block(~align=FontText.Center, [styled(~height=0.12, [
+                text("Help\n"),
+                styled(~height=0.06, ~color=Color.fromFloats(0.8, 0.85, 0.9), [
+                  text("Press N to play")
+                ])
+              ])])
+            ),
+            state.fontLayout,
+            ~key="startHelp",
+            ~height=0.23,
+            ()
+          ),
+          FontDraw.makePartNode(
+            FontText.(
+              block(~align=FontText.Center, [styled(~height=0.12, [
+                text("Help\n"),
+                styled(~height=0.05, ~color=Color.fromFloats(0.8, 0.85, 0.9), [
+                  text("Press Space to continue")
+                ])
+              ])])
+            ),
+            state.fontLayout,
+            ~hidden=true,
+            ~key="gameHelp",
+            ~height=0.23,
+            ()
+          ),
+        ]
+      ),
+      FontDraw.makePartNode(
         helpText,
         state.fontLayout,
-        ~height=1.0,
+        ~height=0.55,
         ()
       )
     ]
@@ -443,6 +477,7 @@ let createNextLevelScreen = state =>
 let createRootNode = state => {
   let mainSize = Scene.Aspect((14.0 +. 10.0) /. 26.0);
   Layout.stacked(
+    ~key="root",
     ~size=Scene.Dimensions(Scale(1.0), Scale(1.0)),
     ~vAlign=Scene.AlignMiddle,
     [
@@ -869,34 +904,58 @@ let draw = (state, scene, canvas: Gpu.Canvas.t) => {
           setScreenState(state, GameScreen);
         | HelpScreen =>
           Scene.hideNodeByKey(scene, "helpScreen");
+          Scene.showNodeByKey(scene, "gameHorizontal");
           hideMask(scene);
           setScreenState(state, GameScreen);
         | GameOverScreen =>
           Scene.hideNodeByKey(scene, "gameOverScreen");
           hideMask(scene);
           setScreenState(state, GameScreen);
+        | StartHelp =>
+          Scene.hideNodeByKey(scene, "helpScreen");
+          Scene.showNodeByKey(scene, "gameHorizontal");
+          setScreenState(state, GameScreen);
         };
       drawGame(state, scene);
     | StartScreen => state
+    | StartHelp =>
+        switch state.sceneLayout {
+        | StartHelp => state
+        | StartScreen =>
+          Scene.hideNodeByKey(scene, "startScreen");
+          Scene.showNodeByKey(scene, "helpScreen");
+          setScreenState(state, StartHelp);
+        | _ => failwith("Starthelp should only be triggered from start screen")
+        };
     | HelpScreen =>
       switch state.sceneLayout {
       | HelpScreen => state
       | GameScreen =>
-        showMask(scene);
+        Scene.hideNodeByKey(scene, "gameHorizontal");
         Scene.showNodeByKey(scene, "helpScreen");
+        Scene.hideNodeByKey(scene, "startHelp");
+        Scene.showNodeByKey(scene, "gameHelp");
         setScreenState(state, HelpScreen);
       | PauseScreen =>
+        Scene.hideNodeByKey(scene, "gameHorizontal");
         Scene.hideNodeByKey(scene, "pauseScreen");
+        Scene.hideNodeByKey(scene, "startHelp");
+        Scene.showNodeByKey(scene, "gameHelp");
+        hideMask(scene);
         Scene.showNodeByKey(scene, "helpScreen");
         setScreenState(state, HelpScreen);
       | GameOverScreen =>
+        Scene.hideNodeByKey(scene, "gameHorizontal");
         Scene.hideNodeByKey(scene, "gameOverScreen");
+        Scene.hideNodeByKey(scene, "startHelp");
+        Scene.showNodeByKey(scene, "gameHelp");
         Scene.showNodeByKey(scene, "helpScreen");
         setScreenState(state, HelpScreen);
       | StartScreen =>
         Scene.hideNodeByKey(scene, "startScreen");
         Scene.showNodeByKey(scene, "helpScreen");
         setScreenState(state, HelpScreen);
+      | _ => failwith("Helpscreen from state not recognized");
       };
     | Paused =>
       switch state.sceneLayout {

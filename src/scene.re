@@ -2080,6 +2080,37 @@ let createDrawList = (scene, updateNodes, updRoot) => {
     } else {
       drawList;
     };
+  /* When called with non-root root, for example
+     when drawing deps, there can be lingering
+     updates set
+     Todo: alternative is to not set update
+     in these cases, probably better,
+     requires passing root around */
+  let rec clearChildUpdates = (child) => {
+    if (child.update) {
+      child.update = false;
+      List.iter((child) => clearChildUpdates(child), child.updChildren);
+    } else if (child.childUpdate) {
+      child.childUpdate = false;
+      List.iter((child) => clearChildUpdates(child), child.updChildren);
+    }
+  };
+  let rec clearParentUpdates = (parent) => {
+    switch parent {
+    | Some(updNode) =>
+      if (updNode.childUpdate) {
+        updNode.childUpdate = false;
+        List.iter((child) => clearChildUpdates(child), updNode.updChildren);
+      };
+      if (updNode.update) {
+        updNode.update = false;
+        List.iter((child) => clearChildUpdates(child), updNode.updChildren);
+      };
+      clearParentUpdates(updNode.parent);
+    | None => ()
+    };
+  };
+  clearParentUpdates(updRoot.parent);
   List.rev(drawList);
 };
 
@@ -2650,7 +2681,7 @@ let calcLayout = scene => {
           child =>
             child.calcLayout.pXOffset =
               x
-              +. (paddedWidth -. child.calcLayout.pWidth)
+              +. (childWidth -. child.calcLayout.pWidth)
               /. 2.0
               +. child.calcLayout.marginX1,
           node.children
@@ -2660,7 +2691,7 @@ let calcLayout = scene => {
           child =>
             child.calcLayout.pXOffset =
               x
-              +. paddedWidth
+              +. childWidth
               -. child.calcLayout.pWidth
               +. child.calcLayout.marginX1,
           node.children
@@ -2677,7 +2708,7 @@ let calcLayout = scene => {
           child =>
             child.calcLayout.pYOffset =
               y
-              +. (paddedHeight -. child.calcLayout.pHeight)
+              +. (childHeight -. child.calcLayout.pHeight)
               /. 2.0
               +. child.calcLayout.marginY1,
           node.children
@@ -2687,7 +2718,7 @@ let calcLayout = scene => {
           child =>
             child.calcLayout.pYOffset =
               y
-              +. paddedHeight
+              +. childHeight
               -. child.calcLayout.pHeight
               +. child.calcLayout.marginY1,
           node.children
@@ -2699,7 +2730,7 @@ let calcLayout = scene => {
       let spacing =
         switch layout.spacing {
         | Some(Pixel(pixel)) => pixel
-        | Some(Scale(scale)) => paddedWidth *. scale
+        | Some(Scale(scale)) => childWidth *. scale
         | Some(ScreenScale(scale)) => vpWidth *. scale
         | None => 0.0
         };
@@ -2726,7 +2757,7 @@ let calcLayout = scene => {
           )
           +. spacing
           *. float_of_int(List.length(node.children) - 1);
-        let xOffset = (paddedWidth -. totalWidth) /. 2.0;
+        let xOffset = (childWidth -. totalWidth) /. 2.0;
         let _ =
           List.fold_left(
             (xOffset, child) => {
@@ -2747,7 +2778,7 @@ let calcLayout = scene => {
               childOffset -. spacing;
             },
             node.children,
-            x +. paddedWidth
+            x +. childWidth
           );
         ();
       };
@@ -2762,7 +2793,7 @@ let calcLayout = scene => {
           child =>
             child.calcLayout.pYOffset =
               y
-              +. (paddedHeight -. child.calcLayout.pHeight)
+              +. (childHeight -. child.calcLayout.pHeight)
               /. 2.0
               +. child.calcLayout.marginY1,
           node.children
@@ -2772,7 +2803,7 @@ let calcLayout = scene => {
           child =>
             child.calcLayout.pYOffset =
               y
-              +. paddedHeight
+              +. childHeight
               -. child.calcLayout.pHeight
               +. child.calcLayout.marginY1,
           node.children
@@ -2783,7 +2814,7 @@ let calcLayout = scene => {
       let spacing =
         switch layout.spacing {
         | Some(Pixel(pixel)) => pixel
-        | Some(Scale(scale)) => paddedHeight *. scale
+        | Some(Scale(scale)) => childHeight *. scale
         | Some(ScreenScale(scale)) => vpHeight *. scale
         | None => 0.0
         };
@@ -2798,7 +2829,7 @@ let calcLayout = scene => {
           child =>
             child.calcLayout.pXOffset =
               x
-              +. (paddedWidth -. child.calcLayout.pWidth)
+              +. (childWidth -. child.calcLayout.pWidth)
               /. 2.0
               +. child.calcLayout.marginX1,
           node.children
@@ -2808,7 +2839,7 @@ let calcLayout = scene => {
           child =>
             child.calcLayout.pXOffset =
               x
-              +. paddedWidth
+              +. childWidth
               -. child.calcLayout.pWidth
               +. child.calcLayout.marginX1,
           node.children
@@ -2841,7 +2872,7 @@ let calcLayout = scene => {
               child.calcLayout.pYOffset = yOffset +. child.calcLayout.marginY1;
               yOffset +. child.calcLayout.pHeight +. spacing;
             },
-            y +. (paddedHeight -. totalHeight) /. 2.0,
+            y +. (childHeight -. totalHeight) /. 2.0,
             node.children
           );
         ();
@@ -2855,7 +2886,7 @@ let calcLayout = scene => {
               childOffset -. spacing;
             },
             node.children,
-            y +. paddedHeight
+            y +. childHeight
           );
         ();
       };

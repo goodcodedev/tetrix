@@ -198,6 +198,28 @@ let getPartInfo = (part : part) => {
   };
 };
 
+let rec getPartText = (part) => {
+  switch part {
+  | Block(block) =>
+    List.fold_left(
+      (text, child) => {
+        text ++ getPartText(child)
+      },
+      "",
+      block.children
+    ) ++ "\n"
+  | Styled(styled) =>
+    List.fold_left(
+      (text, child) => {
+        text ++ getPartText(child)
+      },
+      "",
+      styled.children
+    )
+  | Text(text) => text
+  }
+};
+
 type calcStyle = {
   font: BMFont.bmFont,
   height: float,
@@ -408,7 +430,7 @@ module FontLayout = {
       lineEnd: 1.0,
       firstLineAdded: false,
       align: Left,
-      xBlock: 0.0,
+      xBlock: -1.0,
       yBlockStart: 0.0,
       yBlockEnd: 0.0,
     }
@@ -456,15 +478,19 @@ module FontLayout = {
       }
     };
     let alignLine = (lastIndex, curBlock) => {
-      let lastGlyph = glyphB.data[lastIndex];
-      switch (curBlock.align) {
-      | Left => ()
-      | Center =>
-        let xAdj = (curBlock.lineEnd -. lastGlyph.x -. lastGlyph.w) /. 2.0;
-        moveX(xAdj, s.glyphLineStart, lastIndex);
-      | Right =>
-        let xAdj = (curBlock.lineEnd -. lastGlyph.x -. lastGlyph.w);
-        moveX(xAdj, s.glyphLineStart, lastIndex);
+      /* If there is a newline as first, char,
+         this will be called with lastIndex = -1 */
+      if (lastIndex >= 0) {
+        let lastGlyph = glyphB.data[lastIndex];
+        switch (curBlock.align) {
+        | Left => ()
+        | Center =>
+          let xAdj = (curBlock.lineEnd -. lastGlyph.x -. lastGlyph.w) /. 2.0;
+          moveX(xAdj, s.glyphLineStart, lastIndex);
+        | Right =>
+          let xAdj = (curBlock.lineEnd -. lastGlyph.x -. lastGlyph.w);
+          moveX(xAdj, s.glyphLineStart, lastIndex);
+        };
       };
     };
     /* First non whitespace index from i and backwards */
@@ -536,6 +562,8 @@ module FontLayout = {
        could handle this maybe by looking it s.iGlyph */
     let addLine = (lastIndex, curStyle, curBlock) => {
       alignLine(lastIndex, curBlock);
+      s.glyphLineStart = lastIndex + 1;
+      s.lastGlyph = None;
       let lineDist = curStyle.height *. lineHeight;
       /* Go to next line */
       s.penY = s.penY -. lineDist;
@@ -545,12 +573,10 @@ module FontLayout = {
       if (s.yLineEnd < curBlock.yBlockEnd) {
         curBlock.yBlockEnd = s.yLineEnd;
       };
-      s.glyphLineStart = lastIndex + 1;
-      s.lastGlyph = None;
     };
     let addFirstLine = (curStyle, curBlock) => {
       let lineDist = curStyle.height *. lineHeight;
-      s.penY = s.penY -. lineDist +. (curStyle.font.common.glBase *. curStyle.height *. lineHeight);
+      s.penY = s.penY -. curStyle.height +. (curStyle.font.common.glBase *. curStyle.height *. lineHeight);
       s.yLineEnd = s.yLineEnd -. lineDist;
       /* Child blocks should start after line */
       curBlock.yBlockStart = s.yLineEnd;
@@ -772,12 +798,12 @@ module FontLayout = {
               /* Fits on same block line */
               let lineStart = curBlock.xBlock;
               curBlock.xBlock = curBlock.xBlock +. blockWidth;
-              (lineStart, curBlock.xBlock)
+              (lineStart, lineStart +. blockWidth)
             } else {
               /* Start new block line */
               curBlock.yBlockStart = curBlock.yBlockEnd;
               curBlock.xBlock = curBlock.lineStart +. blockWidth;
-              (curBlock.lineStart, curBlock.xBlock)
+              (curBlock.lineStart, curBlock.lineStart +. blockWidth)
             };
           let childBlock = {
             lineStart,

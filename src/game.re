@@ -39,6 +39,7 @@ type element =
 
 type gameState =
   | StartScreen
+  | StartHelp
   | HelpScreen
   | Running
   | Paused
@@ -74,10 +75,12 @@ type nextLevelAction =
 
 type gameOverAction =
   | NewGame
+  | Help
   | NoAction;
 
 type pauseAction =
   | Resume
+  | Help
   | NoAction;
 
 type helpScreenAction =
@@ -802,7 +805,6 @@ let afterTouchdown = state => {
   let state = nextEl(state);
   updateBeams(state);
   if (isCollision(state)) {
-    Js.log("Game over state");
     {...state, action: GameOverAction(NoAction), gameState: GameOver};
   } else {
     {...state, curTime, lastTick: curTime};
@@ -940,7 +942,7 @@ let rec processGameAction = (state, action: gameAction) => {
 and processStartScreenAction = (state, action: startScreenAction) =>
   switch action {
   | NoAction => state
-  | Help => processAction({...state, gameState: HelpScreen, action: HelpScreenAction(NoAction)})
+  | Help => processAction({...state, gameState: StartHelp, action: HelpScreenAction(NoAction)})
   | StartGame =>
     processAction({...state, gameState: Running, action: GameAction(NoAction)})
   }
@@ -953,6 +955,7 @@ and processHelpScreenAction = (state, action: helpScreenAction) =>
 and processPauseAction = (state, action: pauseAction) =>
   switch action {
   | NoAction => state
+  | Help => processAction({...state, gameState: HelpScreen, action: HelpScreenAction(NoAction)})
   | Resume =>
     processAction({
       ...state,
@@ -970,6 +973,7 @@ and processNextLevelAction = (state, action: nextLevelAction) =>
 and processGameOverAction = (state, action: gameOverAction) =>
   switch action {
   | NoAction => state
+  | Help => processAction({...state, gameState: HelpScreen, action: HelpScreenAction(NoAction)})
   | NewGame => newGame(state)
   }
 and processAction = state =>
@@ -980,6 +984,8 @@ and processAction = state =>
   | (StartScreen, StartScreenAction(action)) =>
     processStartScreenAction(state, action)
   | (HelpScreen, HelpScreenAction(action)) =>
+    processHelpScreenAction(state, action)
+  | (StartHelp, HelpScreenAction(action)) =>
     processHelpScreenAction(state, action)
   | (Paused, PauseAction(action)) => processPauseAction(state, action)
   | (NextLevel, NextLevelAction(action)) =>
@@ -1034,13 +1040,23 @@ let keyPressed = (state, canvas: Gpu.Canvas.t) => {
     PauseAction(
       switch keyCode {
       | Space => Resume
-      | _ => NoAction
+      | _ =>
+        switch (lastKeyCode(Document.window)) {
+        | 171 => Help
+        | _ => NoAction
+        }
       }
     )
   | HelpScreen =>
     HelpScreenAction(
       switch keyCode {
       | Space => Resume
+      | _ => NoAction
+      }
+    )
+  | StartHelp =>
+    HelpScreenAction(
+      switch keyCode {
       | N => Resume
       | _ => NoAction
       }
@@ -1056,7 +1072,11 @@ let keyPressed = (state, canvas: Gpu.Canvas.t) => {
     GameOverAction(
       switch keyCode {
       | N => NewGame
-      | _ => NoAction
+      | _ =>
+        switch (lastKeyCode(Document.window)) {
+        | 171 => Help
+        | _ => NoAction
+        }
       }
     )
   };

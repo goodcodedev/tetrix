@@ -260,6 +260,7 @@ let makeNode =
       ~cls="fontDraw",
       ~opacity=1.0,
       ~hidden=false,
+      ~margin=?,
       ()
     ) => {
   let color =
@@ -305,6 +306,7 @@ let makeNode =
       ~transparent=true,
       ~loading=true,
       ~size=Scene.Aspect(fontDraw.aspect),
+      ~margin=?margin,
       ~hidden,
       ()
     );
@@ -312,7 +314,7 @@ let makeNode =
   node;
 };
 
-let makeBlockNode = (
+let makePartNode = (
   block,
   fontLayout,
   ~height=0.5,
@@ -320,6 +322,7 @@ let makeBlockNode = (
   ~cls=?,
   ~opacity=1.0,
   ~hidden=false,
+  ~margin=?,
   ()
 ) => {
   makeNode(
@@ -333,6 +336,7 @@ let makeBlockNode = (
     ~cls=?cls,
     ~opacity,
     ~hidden,
+    ~margin=?,
     ()
   )
 };

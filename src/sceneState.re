@@ -5,11 +5,13 @@ type elState = {
   color: Scene.sceneUniform
 };
 
+/* Todo: better "page"/scene system */
 type sceneLayout =
   | StartScreen
   | GameScreen
   | PauseScreen
   | HelpScreen
+  | StartHelp
   | GameOverScreen;
 
 type sceneState = {
