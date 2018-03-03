@@ -142,6 +142,63 @@ let msdfFragmentSource =
 |}
   );
 
+type programHash = {
+  multicolor: bool
+};
+
+let programs : Hashtbl.t(programHash, Scene.sceneProgram) = Hashtbl.create(2);
+
+let getProgramHash = (fontDraw : t) => {
+  multicolor: fontDraw.multicolor
+};
+
+let getProgram = (fontDraw) => {
+  let hash = getProgramHash(fontDraw);
+  if (!Hashtbl.mem(programs, hash)) {
+    let requiredUniforms =
+      switch fontDraw.multicolor {
+      | false =>
+        [
+          ("model", Gpu.GlType.Mat3f),
+          ("color", Gpu.GlType.Vec3f),
+          ("opacity", Gpu.GlType.Float)
+        ]
+      | true =>
+        [
+          ("model", Gpu.GlType.Mat3f),
+          ("opacity", Gpu.GlType.Float)
+        ]
+      };
+    let attribs =
+      if (fontDraw.multicolor) {
+        [
+          VertexAttrib.make("position", GlType.Vec2f),
+          VertexAttrib.make("uv", GlType.Vec2f),
+          VertexAttrib.make("size", GlType.Float),
+          VertexAttrib.make("color", GlType.Vec3f)
+        ]
+      } else {
+        [
+          VertexAttrib.make("position", GlType.Vec2f),
+          VertexAttrib.make("uv", GlType.Vec2f),
+          VertexAttrib.make("size", GlType.Float)
+        ]
+      };
+    /* Todo: Number of textures needs to be in hash,
+       and reflected in required textures */
+    let program = Scene.makeProgram(
+      ~vertShader=Gpu.Shader.make(vertexSource(fontDraw)),
+      ~fragShader=Gpu.Shader.make(fragmentSource(fontDraw)),
+      ~requiredUniforms,
+      ~attribs,
+      ~requiredTextures=[("map", false)],
+      ()
+    );
+    Hashtbl.add(programs, hash, program);
+  };
+  Hashtbl.find(programs, hash)
+};
+
 let makeText = (
   part : FontText.part,
   fontLayout : FontText.FontLayout.t,
@@ -255,7 +312,7 @@ let updateNode =
 
 let makeNode =
     (
-      fontDraw,
+      fontDraw : t,
       ~key=?,
       ~cls="fontDraw",
       ~opacity=1.0,
@@ -263,20 +320,20 @@ let makeNode =
       ~margin=?,
       ()
     ) => {
-  let color =
-    switch fontDraw.blockInfo.colors {
-    | [color] => Some(color)
-    | _ => None
-    };
   let uniforms =
-      switch (color, fontDraw.multicolor) {
-      | (Some(color), false) =>
+      switch fontDraw.multicolor {
+      | false =>
+        let color =
+          switch fontDraw.blockInfo.colors {
+          | [color] => color
+          | _ => failwith("Could not find font color")
+          };
         [
           ("model", fontDraw.uModel),
           ("color", Scene.UVec3f.vec(Color.toVec3(color))),
           ("opacity", Scene.UFloat.make(opacity))
         ]
-      | (None, _) | (_, true) =>
+      | true =>
         [
           ("model", fontDraw.uModel),
           ("opacity", Scene.UFloat.make(opacity))
@@ -297,8 +354,7 @@ let makeNode =
     Scene.makeNode(
       ~key?,
       ~cls,
-      ~vertShader=Shader.make(vertexSource(fontDraw)),
-      ~fragShader=Shader.make(fragmentSource(fontDraw)),
+      ~program=getProgram(fontDraw),
       ~textures,
       ~vo=fontDraw.vo,
       ~uniforms,
