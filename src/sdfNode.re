@@ -23,12 +23,6 @@ type t = {
   lighting: Light.ProgramLight.t
 };
 
-type inited = {
-  self: t,
-  drawState: DrawState.t,
-  canvas: Canvas.t
-};
-
 /* Some of these are incomplete,
    should rethink some of the options here
    that are accidental */
@@ -251,6 +245,65 @@ let make =
   lighting
 };
 
+let makeProgram = self => {
+  let requiredUniforms =
+    switch self.model {
+    | Some(_) => [("model", Gpu.GlType.Mat3f)]
+    | None => []
+    };
+  let requiredUniforms =
+    switch self.color {
+    | SdfDynColor(_) => [("uColor", Gpu.GlType.Vec3f), ...requiredUniforms]
+    | _ => requiredUniforms
+    };
+  Scene.makeProgram(
+    ~vertShader=Shader.make(makeVertexSource(self)),
+    ~fragShader=Shader.make(makeFragmentSource(self)),
+    ~attribs=Gpu.VertexBuffer.quadAttribs(),
+    ~requiredUniforms,
+    ()
+  )
+};
+
+/* Hash for sdfNode, will not take into account differences
+   in sdfDist code */
+type hash = {
+  hFragCoords: fragCoords,
+  hModel: bool,
+  /* Simple encoding,
+    None = no color,
+    Some(None) = dyncolor,
+    Some(Some(Color.t)) = Static */
+  hColor: option(option(Color.t)),
+  hColorMix: float,
+  hAlphaLimit: option(float),
+  hOpacity: option(float),
+  hLight: Light.ProgramLight.hash
+};
+
+let makeHash = (sdfNode) => {
+  let hModel =
+    switch sdfNode.model {
+    | Some(_) => true
+    | None => false
+    };
+  let hColor =
+    switch sdfNode.color {
+    | SdfDynColor(_) => Some(None)
+    | NoColor => None
+    | SdfStaticColor(color) => Some(Some(color))
+    };
+  {
+    hFragCoords: sdfNode.fragCoords,
+    hModel,
+    hColor,
+    hColorMix: sdfNode.colorMix,
+    hAlphaLimit: sdfNode.alphaLimit,
+    hOpacity: sdfNode.opacity,
+    hLight: Light.ProgramLight.makeHash(sdfNode.lighting)
+  }
+};
+
 let makeNode =
     (
       self,
@@ -260,6 +313,7 @@ let makeNode =
       ~drawTo=?,
       ~margin=?,
       ~children=[],
+      ~program=?,
       ()
     ) => {
   let transparent =
@@ -288,11 +342,22 @@ let makeNode =
     | Some(_) => true
     | None => false
     };
+  let (vertShader, fragShader, program) =
+    switch program {
+    | Some(program) => (None, None, Some(program))
+    | None =>
+      (
+        Some(Shader.make(makeVertexSource(self))),
+        Some(Shader.make(makeFragmentSource(self))),
+        None
+      )
+    };
   Scene.makeNode(
     ~key?,
     ~cls,
-    ~vertShader=Shader.make(makeVertexSource(self)),
-    ~fragShader=Shader.make(makeFragmentSource(self)),
+    ~vertShader=?vertShader,
+    ~fragShader=?fragShader,
+    ~program=?program,
     ~size,
     ~margin?,
     ~transparent,

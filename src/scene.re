@@ -1689,6 +1689,9 @@ let rec setAdjecentStackedToUpdate = (updNode: option(updateListNode('s))) =>
   };
 
 /* UpdateNodes should be checked for visibility up front */
+/* Todo: Optimization, draw equals programs after eachother
+   when order and layout allows. Algorithm for this would
+   have some cost, and needs to be checked */
 let createDrawList = (scene, updateNodes, updRoot) => {
   let updRoot =
     switch scene.updateNodes[updRoot.id] {
