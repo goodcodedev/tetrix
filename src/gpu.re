@@ -63,6 +63,24 @@ external glBlendFunc : (Gl.contextT, int, int) => unit = "blendFunc";
 [@bs.send]
 external glBindBuffer : (Gl.contextT, int, Gl.bufferT) => unit = "bindBuffer";
 
+/* Resource id, these are used for programs,
+   vertex and index buffers, textures */
+let curRId = ref(1);
+
+/* Not thread safe :) */
+let rId = () => {
+  let rId = curRId^;
+  curRId := rId + 1;
+  rId
+};
+
+type gpuState = {
+  mutable curProg: int,
+  mutable curVertex: int,
+  mutable curIndex: int,
+  mutable curTextures: array(int),
+};
+
 type uniform =
   | UniformFloat(ref(float))
   | UniformInt(ref(int))
@@ -272,6 +290,7 @@ module Program = {
     perElement: int
   };
   type inited = {
+    rId: int,
     programRef: Gl.programT,
     attribs: list(VertexAttrib.inited),
     uniforms: list(Uniform.inited)
@@ -362,11 +381,12 @@ module Program = {
           program.uniforms
         );
       let attribs = initAttribs(program.attribs, context, programRef);
-      Some({programRef, uniforms, attribs});
+      Some({rId: rId(), programRef, uniforms, attribs});
     | None => None
     };
   let initedWithUniforms = (iProgram : inited, uniforms) => {
     {
+      rId: iProgram.rId,
       programRef: iProgram.programRef,
       uniforms,
       attribs: iProgram.attribs
@@ -384,6 +404,7 @@ external _bufferData : (Gl.contextT, int, Gl.Bigarray.t('a, 'b), int) => unit =
 
 module VertexBuffer = {
   type inited = {
+    rId: int,
     bufferRef: Gl.bufferT,
     mutable data: array(float),
     perElement: int,
@@ -461,7 +482,7 @@ module VertexBuffer = {
     );
   };
 
-  let init = (buffer, context) =>
+  let init = (buffer, context, gpuState) =>
     switch buffer.inited {
     | Some(inited) => inited
     | None =>
@@ -478,6 +499,7 @@ module VertexBuffer = {
         }
       );
       let inited = {
+        rId: rId(),
         bufferRef: vertexBuffer,
         data: buffer.data,
         update: false,
@@ -485,6 +507,7 @@ module VertexBuffer = {
         count: Array.length(buffer.data),
         usage: buffer.usage
       };
+      gpuState.curVertex = inited.rId;
       buffer.inited = Some(inited);
       inited;
     };
@@ -493,6 +516,7 @@ module VertexBuffer = {
 
 module IndexBuffer = {
   type inited = {
+    rId: int,
     elBufferRef: Gl.bufferT,
     mutable data: array(int),
     mutable update: bool,
@@ -552,7 +576,7 @@ module IndexBuffer = {
       }
     );
   };
-  let init = (buffer, context) =>
+  let init = (buffer, context, gpuState) =>
     switch buffer.inited {
     | Some(inited) => inited
     | None =>
@@ -569,6 +593,7 @@ module IndexBuffer = {
         }
       );
       let inited = {
+        rId: rId(),
         elBufferRef: bufferRef,
         data: buffer.data,
         update: false,
@@ -576,6 +601,7 @@ module IndexBuffer = {
         usage: buffer.usage,
         context
       };
+      gpuState.curIndex = inited.rId;
       buffer.inited = Some(inited);
       inited;
     };
@@ -621,6 +647,7 @@ module Texture = {
     | LinearFilter
     | NearestFilter;
   type inited = {
+    rId: int,
     texRef: Gl.textureT,
     mutable data,
     mutable update: bool,
@@ -690,6 +717,8 @@ module Texture = {
         | LinearFilter => Constants.linear
         | NearestFilter => Constants.nearest
         };
+      /* Not setting this to gpuState, assuming this is
+         only needed together with activeTexture */
       Gl.bindTexture(~context, ~target=Constants.texture_2d, ~texture=texRef);
       Gl.texParameteri(
         ~context,
@@ -758,6 +787,7 @@ module Texture = {
       | EmptyTexture => ()
       };
       let inited = {
+        rId: rId(),
         texRef,
         data: texture.data,
         update: false,
@@ -901,6 +931,7 @@ module Texture = {
 
 module ProgramTexture = {
   type inited = {
+    rId: int,
     texture: Texture.inited,
     uniformRef: Gl.uniformT
   };
@@ -921,7 +952,7 @@ module ProgramTexture = {
           ~program,
           ~name=programTexture.uniformName
         );
-      let inited = {texture: tInit, uniformRef: uRef};
+      let inited = {rId: rId(), texture: tInit, uniformRef: uRef};
       programTexture.inited = Some(inited);
       inited;
     };
@@ -937,10 +968,10 @@ module ProgramTexture = {
 
   let initFromRef = (programTexture, context, uRef) => {
     switch programTexture.inited {
-    | Some(inited) => inited
+    | Some(_) => failwith("Init from ref already inited")
     | None =>
       let tInit = Texture.init(programTexture.texture, context);
-      let inited = {texture: tInit, uniformRef: uRef};
+      let inited = {rId: rId(), texture: tInit, uniformRef: uRef};
       programTexture.inited = Some(inited);
       inited;
     };
@@ -1069,17 +1100,14 @@ module Error = {
 module Canvas = {
   type keyboardT = {mutable keyCode: Reasongl.Gl.Events.keycodeT};
   type t = {
-    window: Gl.Window.t,
     context: Gl.contextT,
+    gpuState: gpuState,
+    mutable deltaTime: float,
+    mutable elapsed: float,
     mutable width: int,
     mutable height: int,
-    mutable currProgram: option(Program.inited),
-    mutable currVertexBuffer: option(VertexBuffer.inited),
-    mutable currIndexBuffer: option(IndexBuffer.inited),
-    mutable currTextures: array(ProgramTexture.inited),
     keyboard: keyboardT,
-    mutable deltaTime: float,
-    mutable elapsed: float
+    window: Gl.Window.t
   };
   type window;
   let window: window = [%bs.raw "window"];
@@ -1115,10 +1143,12 @@ module Canvas = {
       context,
       width,
       height,
-      currProgram: None,
-      currVertexBuffer: None,
-      currIndexBuffer: None,
-      currTextures: [||],
+      gpuState: {
+        curProg: 0,
+        curVertex: 0,
+        curIndex: 0,
+        curTextures: [||]
+      },
       keyboard: {
         keyCode: Gl.Events.Nothing
       },
@@ -1218,11 +1248,10 @@ module Canvas = {
   external enableVertexAttribArray : (Gl.contextT, Gl.attributeT) => unit =
     "enableVertexAttribArray";
   /* todo: currently not used, not sure if it works */
-  let drawVertices = (canvas, program, vertexBuffer) => {
+  let drawVertices = (canvas, program : Program.inited, vertexBuffer : VertexBuffer.inited) => {
     let context = canvas.context;
-    switch canvas.currProgram {
-    | Some(currentProgram) when currentProgram === program => ()
-    | _ =>
+    let gpuState = canvas.gpuState;
+    if (gpuState.curProg != program.rId) {
       Gl.useProgram(~context, program.programRef);
       List.iter(
         (attrib: VertexAttrib.inited) => {
@@ -1231,12 +1260,11 @@ module Canvas = {
         },
         program.attribs
       );
-      canvas.currProgram = Some(program);
+      gpuState.curProg = program.rId;
     };
-    switch canvas.currVertexBuffer {
-    | Some(currBuffer) when currBuffer === vertexBuffer => ()
-    | _ =>
+    if (gpuState.curVertex != vertexBuffer.rId) {
       glBindBuffer(context, Constants.array_buffer, vertexBuffer.bufferRef);
+      gpuState.curVertex = vertexBuffer.rId;
     };
     Gl.drawArrays(
       ~context,
@@ -1258,31 +1286,40 @@ module Canvas = {
   [@bs.send]
   external drawElements : (Gl.contextT, int, int, int, int) => unit =
     "drawElements";
-  let drawIndexes = (canvas, program, vertexBuffer, indexBuffer, textures) => {
+  let drawIndexes = (
+    canvas,
+    program : Program.inited,
+    vertexBuffer : VertexBuffer.inited,
+    indexBuffer : IndexBuffer.inited,
+    textures : array(ProgramTexture.inited)
+  ) => {
     let context = canvas.context;
-    let switchedProgram = switch canvas.currProgram {
-    | Some(currentProgram) when currentProgram === program => false
-    | _ =>
-      useProgram(context, program.programRef);
-      canvas.currProgram = Some(program);
-      true
-    };
+    let gpuState = canvas.gpuState;
+    let switchedProgram =
+      if (gpuState.curProg != program.rId) {
+        useProgram(context, program.programRef);
+        gpuState.curProg = program.rId;
+        true
+      } else {
+        false
+      };
     /* Set uniforms */
     List.iter(
       uniform => Uniform.valueToGpu(uniform, context),
       program.uniforms
     );
     /* Vertex buffer */
-    let switchedBuffer = switch canvas.currVertexBuffer {
-    | Some(currBuffer) when currBuffer === vertexBuffer => false
-    | _ =>
-      glBindBuffer(context, Constants.array_buffer, vertexBuffer.bufferRef);
-      if (vertexBuffer.update) {
-        VertexBuffer.updateGpuData(vertexBuffer, context);
+    let switchedBuffer =
+      if (gpuState.curVertex != vertexBuffer.rId) {
+        glBindBuffer(context, Constants.array_buffer, vertexBuffer.bufferRef);
+        if (vertexBuffer.update) {
+          VertexBuffer.updateGpuData(vertexBuffer, context);
+        };
+        gpuState.curVertex = vertexBuffer.rId;
+        true
+      } else {
+        false
       };
-      canvas.currVertexBuffer = Some(vertexBuffer);
-      true
-    };
     /* Not sure of the required logic here, when
        the pointers need to be set, it does seem to be
        needed after changing buffer */
@@ -1296,9 +1333,7 @@ module Canvas = {
       );
     };
     /* Index buffer */
-    switch canvas.currIndexBuffer {
-    | Some(currBuffer) when currBuffer === indexBuffer => ()
-    | _ =>
+    if (gpuState.curIndex != indexBuffer.rId) {
       glBindBuffer(
         context,
         Constants.element_array_buffer,
@@ -1307,16 +1342,16 @@ module Canvas = {
       if (indexBuffer.update) {
         IndexBuffer.updateGpuData(indexBuffer);
       };
-      canvas.currIndexBuffer = Some(indexBuffer);
+      gpuState.curIndex = indexBuffer.rId;
     };
     /* Textures */
     let tex0 = Constants.texture0;
-    let currTexLength = Array.length(canvas.currTextures);
-    canvas.currTextures =
+    let currTexLength = Array.length(gpuState.curTextures);
+    gpuState.curTextures =
       Array.mapi(
         (i, pInit: ProgramTexture.inited) => {
           let wasBound =
-            if (i > currTexLength - 1 || canvas.currTextures[i] !== pInit) {
+            if (i > currTexLength - 1 || gpuState.curTextures[i] != pInit.rId) {
               Uniform.uniform1i(context, pInit.uniformRef, i);
               activeTexture(context, tex0 + i);
               bindTexture(context, Constants.texture_2d, pInit.texture.texRef);
@@ -1331,7 +1366,7 @@ module Canvas = {
             };
             Texture.updateGpuData(pInit.texture);
           };
-          pInit
+          pInit.rId
         },
         textures
       );
@@ -1347,6 +1382,7 @@ module Canvas = {
     | None => ()
     | Some(error) =>
       Js.log(error);
+      [%debugger];
     };
   };
 };
@@ -1358,14 +1394,14 @@ module DrawState = {
     indexBuffer: option(IndexBuffer.inited),
     textures: array(ProgramTexture.inited)
   };
-  let init = (context, program, vertexes, indexes, textures) => {
+  let init = (context, program, vertexes, indexes, textures, gpuState) => {
     let pInited = Program.init(program, context);
     switch pInited {
     | Some(program) =>
-      let iBuffer = VertexBuffer.init(vertexes, context);
+      let iBuffer = VertexBuffer.init(vertexes, context, gpuState);
       let iIndexes =
         switch indexes {
-        | Some(indices) => Some(IndexBuffer.init(indices, context))
+        | Some(indices) => Some(IndexBuffer.init(indices, context, gpuState))
         | None => None
         };
       let iTextures =

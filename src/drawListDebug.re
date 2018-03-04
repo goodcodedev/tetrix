@@ -50,9 +50,10 @@ let make = (canvas: Gpu.Canvas.t) => {
   let vertices =
     VertexBuffer.init(
       VertexBuffer.makeQuad(),
-      canvas.context
+      canvas.context,
+      canvas.gpuState
     );
-  let indices = IndexBuffer.init(IndexBuffer.makeQuad(), canvas.context);
+  let indices = IndexBuffer.init(IndexBuffer.makeQuad(), canvas.context, canvas.gpuState);
   {canvas, program, layout, elapsed, vertices, indices};
 };
 

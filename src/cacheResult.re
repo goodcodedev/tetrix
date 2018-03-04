@@ -24,6 +24,24 @@ let fragmentSource = {|
 
 open Gpu;
 
+let program = ref(None);
+
+let getProgram = () => {
+  switch program^ {
+  | Some(program) => program
+  | None =>
+    let prog = Scene.makeProgram(
+      ~vertShader=Shader.make(vertexSource),
+      ~fragShader=Shader.make(fragmentSource),
+      ~requiredTextures=[("tex", true)],
+      ~attribs=VertexBuffer.quadAttribs(),
+      ()
+    );
+    program := Some(prog);
+    prog
+  }
+};
+
 let makeNode = (node, ~transparent=?, ~partialDraw=?, ~size=?, ()) => {
   /* Not sure why, but texture doesn't show up when
      dims are not 1024 */
@@ -44,8 +62,7 @@ let makeNode = (node, ~transparent=?, ~partialDraw=?, ~size=?, ()) => {
     );
   Scene.makeNode(
     ~cls="cachedResult",
-    ~vertShader=Shader.make(vertexSource),
-    ~fragShader=Shader.make(fragmentSource),
+    ~program=getProgram(),
     ~transparent?,
     ~blendFactor=Scene.BlendOne,
     ~partialDraw?,

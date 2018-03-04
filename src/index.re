@@ -309,32 +309,31 @@ let createStartScreen = state => {
   )
 };
 
-let createPauseScreen = state =>
+let createPauseScreen = state => {
+  let part = FontText.(
+    block(~align=Center, [
+      styledText(~height=0.26, "Pause"),
+      styledText(~height=0.058, "\n\nPress Space to continue")
+    ])
+  );
   Layout.stacked(
     ~key="pauseScreen",
     ~hidden=true,
     [
-      Layout.vertical([
-        FontDraw.makeSimpleNode(
-          "Pause",
-          "digitalt",
-          state.fontLayout,
-          ~key="paused",
-          ~height=0.26,
-          ~align=FontText.Center,
-          ()
-        ),
-        FontDraw.makeSimpleNode(
-          "Press Space to continue",
-          "digitalt",
-          state.fontLayout,
-          ~height=0.058,
-          ~align=FontText.Center,
-          ()
-        )
-      ])
+      Layout.vertical(
+        [
+          FontDraw.makePartNode(
+            part,
+            state.fontLayout,
+            ~key="paused",
+            ~height=0.5,
+            ()
+          )
+        ]
+      )
     ]
-  );
+  )
+};
 
 let createGameOverScreen = state =>
   Layout.vertical(
@@ -509,7 +508,7 @@ let createScene = (canvas, state) => {
   let scene =
     Scene.make(canvas, state, createRootNode(state), ~drawListDebug=false, ());
   /* Queue deps from root */
-  Scene.queueDeps(scene, scene.root.id);
+  /*Scene.queueDeps(scene, scene.root.id);*/
   let anim =
     Animate.anim(
       AnimNodeUniform(Scene.getNodeUnsafe(scene, "background"), "anim"),

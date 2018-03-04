@@ -1010,6 +1010,7 @@ let initSceneProgram = (scene, sceneP : sceneProgram) => {
     | Some(inited) => inited
     | None =>
         let context = scene.canvas.context;
+        let gpuState = scene.canvas.gpuState;
         /* Custom uniforms */
         let uniforms =
           List.map(
@@ -1129,9 +1130,9 @@ let initSceneProgram = (scene, sceneP : sceneProgram) => {
             };
         let iVo = switch sceneP.vo {
         | Some(vo) =>
-            let iVertices = Gpu.VertexBuffer.init(vo.vertexBuffer, context);
+            let iVertices = Gpu.VertexBuffer.init(vo.vertexBuffer, context, gpuState);
             let iIndices = switch (vo.indexBuffer) {
-            | Some(indices) => Some(Gpu.IndexBuffer.init(indices, context))
+            | Some(indices) => Some(Gpu.IndexBuffer.init(indices, context, gpuState))
             | None => None
             };
             Some((iVertices, iIndices))
@@ -1160,6 +1161,7 @@ let initSceneProgram = (scene, sceneP : sceneProgram) => {
 let createProgramDrawState = (scene, node, program : sceneProgram) => {
     let pInited = initSceneProgram(scene, program);
     let context = scene.canvas.context;
+    let gpuState = scene.canvas.gpuState;
     /* List of regular/custom uniforms */
     /* todo: decouple program from uniforms? */
     let (_, uniforms) = 
@@ -1249,9 +1251,9 @@ let createProgramDrawState = (scene, node, program : sceneProgram) => {
         switch node.vo {
         | Some(vo) =>
           (
-              Gpu.VertexBuffer.init(vo.vertexBuffer, context),
+              Gpu.VertexBuffer.init(vo.vertexBuffer, context, gpuState),
               switch vo.indexBuffer {
-              | Some(i) => Some(Gpu.IndexBuffer.init(i, context))
+              | Some(i) => Some(Gpu.IndexBuffer.init(i, context, gpuState))
               | None => None
               }
           )
@@ -1273,6 +1275,7 @@ let createProgramDrawState = (scene, node, program : sceneProgram) => {
 };
 
 let createNodeDrawState = (scene, node) => {
+  let gpuState = scene.canvas.gpuState;
     let texNames = List.fold_left(
       (texNames, name) => {
         let nodeTex = Hashtbl.find(node.textures, name);
@@ -1339,7 +1342,8 @@ let createNodeDrawState = (scene, node) => {
         Gpu.Program.make(vertShader, fragShader, attribs, uniforms),
         vBuffer,
         iBuffer,
-        textures
+        textures,
+        gpuState
       )
     );
 };
@@ -1693,6 +1697,7 @@ let rec setAdjecentStackedToUpdate = (updNode: option(updateListNode('s))) =>
    when order and layout allows. Algorithm for this would
    have some cost, and needs to be checked */
 let createDrawList = (scene, updateNodes, updRoot) => {
+  let gpuState = scene.canvas.gpuState;
   let updRoot =
     switch scene.updateNodes[updRoot.id] {
     | Some(updRoot) => updRoot
@@ -1941,9 +1946,10 @@ let createDrawList = (scene, updateNodes, updRoot) => {
               stencilVertices:
                 Gpu.VertexBuffer.init(
                   vb,
-                  scene.canvas.context
+                  scene.canvas.context,
+                  gpuState
                 ),
-              stencilIndices: Gpu.IndexBuffer.init(ib, scene.canvas.context)
+              stencilIndices: Gpu.IndexBuffer.init(ib, scene.canvas.context, gpuState)
             };
             activeStencils := Some(stencils);
             [DrawStencil(stencilBuffers), ...drawList];
@@ -2074,7 +2080,7 @@ let createDrawList = (scene, updateNodes, updRoot) => {
     ~context=scene.canvas.context,
     scene.stencilDraw.program.programRef
   );
-  scene.canvas.currProgram = Some(scene.stencilDraw.program);
+  gpuState.curProg = scene.stencilDraw.program.rId;
   let drawList = drawListLoop(updRoot, [], false);
   /* Clear active rect if any */
   let drawList =
