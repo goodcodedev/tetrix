@@ -3237,7 +3237,21 @@ let update = scene => {
       let visibleNodes =
         List.filter(nodeId => ! isNodeHidden(scene, nodeId), updateNodes);
       Hashtbl.add(scene.initedLists, updateState, true);
-      List.iter(nodeId => initDeps(nodeId, updateNodes), visibleNodes);
+      List.iter(nodeId => {
+        /* If node is itself a dep, don't pass updateNodes as blacklist
+           I *think* this is correct, not sure if we could use blacklist
+           in some instances
+           Also microoptimization could be to reduce updNode lookups */
+        switch (scene.updateNodes[nodeId]) {
+        | Some(updNode) =>
+          if (updNode.isDep) {
+            initDeps(nodeId, [])
+          } else {
+            initDeps(nodeId, updateNodes)
+          };
+        | None => failwith("Could not find node");
+        };
+      }, visibleNodes);
       Some(visibleNodes);
     } else {
       None;
