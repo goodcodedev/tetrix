@@ -142,19 +142,15 @@ let msdfFragmentSource =
 |}
   );
 
-type programHash = {
-  multicolor: bool
-};
-
-let programs : Hashtbl.t(programHash, Scene.sceneProgram) = Hashtbl.create(2);
-
-let getProgramHash = (fontDraw : t) => {
-  multicolor: fontDraw.multicolor
-};
-
-let getProgram = (fontDraw) => {
-  let hash = getProgramHash(fontDraw);
-  if (!Hashtbl.mem(programs, hash)) {
+module StoreSpec = {
+  type hash = {
+    multicolor: bool
+  };
+  type progType = t;
+  let getHash = (fontDraw : t) : hash => {
+    multicolor: fontDraw.multicolor
+  };
+  let createProgram = (fontDraw : t) => {
     let requiredUniforms =
       switch fontDraw.multicolor {
       | false =>
@@ -186,18 +182,18 @@ let getProgram = (fontDraw) => {
       };
     /* Todo: Number of textures (fonts or fonts with several) needs to be in hash,
        and reflected in required textures */
-    let program = Scene.makeProgram(
+    Scene.makeProgram(
       ~vertShader=Gpu.Shader.make(vertexSource(fontDraw)),
       ~fragShader=Gpu.Shader.make(fragmentSource(fontDraw)),
       ~requiredUniforms,
       ~attribs,
       ~requiredTextures=[("map", false)],
       ()
-    );
-    Hashtbl.add(programs, hash, program);
+    )
   };
-  Hashtbl.find(programs, hash)
+  let tblSize = 2;
 };
+module Programs = ProgramStore.Make(StoreSpec);
 
 let makeText = (
   part : FontText.part,
@@ -354,7 +350,7 @@ let makeNode =
     Scene.makeNode(
       ~key?,
       ~cls,
-      ~program=getProgram(fontDraw),
+      ~program=Programs.getProgram(fontDraw),
       ~textures,
       ~vo=fontDraw.vo,
       ~uniforms,

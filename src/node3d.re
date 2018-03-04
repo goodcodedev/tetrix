@@ -39,6 +39,34 @@ let fragSource = light => {
     |};
 };
 
+module StoreSpec = {
+    type hash = {
+        light: Light.ProgramLight.hash
+    };
+    /* Currently only varies on light */
+    type progType = Light.ProgramLight.t;
+    let getHash = (light) => {
+        light: Light.ProgramLight.makeHash(light)
+    };
+    let createProgram = (light) => {
+        let vs = vertSource();
+        let fs = fragSource(light);
+        open Gpu;
+        Scene.makeProgram(
+            ~vertShader=Shader.make(vs),
+            ~fragShader=Shader.make(fs),
+            ~defaultUniforms=Light.ProgramLight.getUniforms(light),
+            ~attribs=[
+                VertexAttrib.make("position", GlType.Vec3f),
+                VertexAttrib.make("normal", GlType.Vec3f)
+            ],
+            ()
+        )
+    };
+    let tblSize = 3;
+};
+module Programs = ProgramStore.Make(StoreSpec);
+
 let make =
     (
       vo,
@@ -46,15 +74,12 @@ let make =
       ~light,
       ()
     ) => {
-  let vs = vertSource();
-  let fs = fragSource(light);
   Scene.makeNode(
+    ~program=Programs.getProgram(light),
     ~cls="node3d",
     ~size,
     ~uniforms=Light.ProgramLight.getUniforms(light),
     ~transparent=true,
-    ~vertShader=Gpu.Shader.make(vs),
-    ~fragShader=Gpu.Shader.make(fs),
     ~vo,
     ()
   );

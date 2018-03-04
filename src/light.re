@@ -19,6 +19,24 @@ type fragSource = {
   addend: string
 };
 
+/* Hashable values to index scenePrograms */
+
+let lightColorHash = (lightColor : lightColor) =>
+  switch lightColor {
+  | StaticColor(color) => Some(color)
+  | DynamicColor(_) => None
+  };
+let lightPosHash = (lightPos : lightPos) =>
+  switch lightPos {
+  | StaticPos(pos) => Some(pos)
+  | DynamicPos(_) => None
+  };
+let lightDirHash = (lightDir : lightDir) =>
+  switch lightDir {
+  | StaticDir(dir) => Some(dir)
+  | DynamicDir(_) => None
+  };
+
 module PointLight = {
   type t = {
     pos: lightPos,
@@ -27,6 +45,24 @@ module PointLight = {
     factor: float,
     specular: int
   };
+  type hash = {
+    /* Pos static or uniform (encoded as None) */
+    hLightPos: option(Data.Vec3.t),
+    /* Static or uniform (None) */
+    hColor: option(Color.t),
+    hCoords: coordSystem,
+    hFactor : float,
+    hSpecular : int
+  };
+
+  let makeHash = (self : t) : hash => {
+    hLightPos: lightPosHash(self.pos),
+    hColor: lightColorHash(self.color),
+    hCoords: self.coords,
+    hFactor: self.factor,
+    hSpecular: self.specular
+  };
+
   let make =
       (
         ~pos,
@@ -147,6 +183,23 @@ module Directional = {
     factor: float,
     specular: int
   };
+
+  type hash = {
+    hDir: option(Data.Vec3.t),
+    hColor: option(Color.t),
+    hCoords: coordSystem,
+    hFactor: float,
+    hSpecular: int
+  };
+
+  let makeHash = (self) => {
+    hDir: lightDirHash(self.dir),
+    hColor: lightColorHash(self.color),
+    hCoords: self.coords,
+    hFactor: self.factor,
+    hSpecular: self.specular
+  };
+
   let make =
       (
         ~dir,
@@ -216,6 +269,18 @@ module ProgramLight = {
     points: list(PointLight.t),
     camera: Camera.t
   };
+
+  /* Camera is assumed to be uniform (not currently the case) */
+  type hash = {
+    hDir: Directional.hash,
+    hPoints: list(PointLight.hash)
+  };
+
+  let makeHash = (self) => {
+    hDir: Directional.makeHash(self.dir),
+    hPoints: List.map((point) => PointLight.makeHash(point), self.points)
+  };
+
   let make = (dir, points, camera) => {dir, points, camera};
   let default = () => {
     let dirLight =
