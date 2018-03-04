@@ -110,6 +110,7 @@ let makeNode = (origNode, toTex, tempTex, step1, step2) => {
         ~requiredUniforms=[("pDistance", GlType.Float)],
         ~requiredTextures=[("orig", true)],
         ~pixelSizeUniform=true,
+        ~attribs=Gpu.VertexBuffer.quadAttribs(),
         ~vo=Scene.defaultVo(),
         ()
       );

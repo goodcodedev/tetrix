@@ -267,16 +267,29 @@ module Program = {
   type t = {
     vertexShader: Shader.t,
     fragmentShader: Shader.t,
-    uniforms: list(Uniform.t)
+    attribs: list(VertexAttrib.t),
+    uniforms: list(Uniform.t),
+    perElement: int
   };
   type inited = {
     programRef: Gl.programT,
+    attribs: list(VertexAttrib.inited),
     uniforms: list(Uniform.inited)
   };
-  let make = (vertexShader, fragmentShader, uniforms) => {
-    vertexShader,
-    fragmentShader,
-    uniforms
+  let make = (vertexShader, fragmentShader, attribs, uniforms) => {
+    let perElement =
+      List.fold_left(
+        (p, attrib: VertexAttrib.t) => p + GlType.getSize(attrib.glType),
+        0,
+        attribs
+      );
+    {
+      vertexShader,
+      fragmentShader,
+      attribs,
+      uniforms,
+      perElement
+    }
   };
   let linkProgram = (context, vertexSource, fragmentSource) => {
     let vShader =
@@ -303,111 +316,6 @@ module Program = {
     | _ => None
     };
   };
-  let init = (program, context) =>
-    switch (
-      linkProgram(
-        context,
-        program.vertexShader.source,
-        program.fragmentShader.source
-      )
-    ) {
-    | Some(programRef) =>
-      let uniforms =
-        List.map(
-          uniform => Uniform.init(uniform, context, programRef),
-          program.uniforms
-        );
-      Some({programRef, uniforms});
-    | None => None
-    };
-  let initedWithUniforms = (iProgram : inited, uniforms) => {
-    {
-      programRef: iProgram.programRef,
-      uniforms
-    }
-  };
-};
-
-[@bs.send]
-external _deleteBuffer : (Gl.contextT, Gl.bufferT) => unit = "deleteBuffer";
-
-/* context, target, data, usage */
-[@bs.send]
-external _bufferData : (Gl.contextT, int, Gl.Bigarray.t('a, 'b), int) => unit =
-  "bufferData";
-
-module VertexBuffer = {
-  type inited = {
-    bufferRef: Gl.bufferT,
-    attribs: list(VertexAttrib.inited),
-    perElement: int,
-    mutable data: array(float),
-    mutable update: bool,
-    mutable count: int,
-    usage: bufferUsage
-  };
-  type t = {
-    mutable data: array(float),
-    attributes: list(VertexAttrib.t),
-    perElement: int,
-    usage: bufferUsage,
-    mutable inited: option(inited)
-  };
-  let make = (data, attributes, usage) => {
-    let perElement =
-      List.fold_left(
-        (p, attrib: VertexAttrib.t) => p + GlType.getSize(attrib.glType),
-        0,
-        attributes
-      );
-    {data, attributes, perElement, usage, inited: None};
-  };
-  /* Width height in 0.0 - 2.0, x, y from top left as 0.0 for now */
-  let makeQuadData = (width, height, x, y) => {
-    let leftX = (-1.) +. x;
-    let rightX = leftX +. width;
-    let topY = 1.0 -. y;
-    let bottomY = topY -. height;
-    [|leftX, bottomY, rightX, bottomY, rightX, topY, leftX, topY|];
-  };
-  let makeQuad = (~data=?, ~usage=StaticDraw, ()) => {
-    let data =
-      switch data {
-      | Some(data) => data
-      | None => makeQuadData(2.0, 2.0, 0.0, 0.0)
-      };
-    {
-      data,
-      attributes: [VertexAttrib.make("position", Vec2f)],
-      usage,
-      perElement: 2,
-      inited: None
-    };
-  };
-  let setData = (inited: inited, data) => {
-    inited.data = data;
-    inited.count = Array.length(data);
-    inited.update = true;
-  };
-  let setDataT = (self: t, data) =>
-    switch self.inited {
-    | Some(inited) => setData(inited, data)
-    | None => self.data = data
-    };
-  let updateGpuData = (inited: inited, context) => {
-    inited.count = Array.length(inited.data);
-    _bufferData(
-      context,
-      Constants.array_buffer,
-      Gl.Bigarray.of_array(Gl.Bigarray.Float32, inited.data),
-      switch inited.usage {
-      | StaticDraw => Constants.static_draw
-      | DynamicDraw => Constants.dynamic_draw
-      | StreamingDraw => Constants.stream_draw
-      }
-    );
-  };
-
   let initAttribs = (attribs, context, program) => {
     let stride =
       List.fold_left(
@@ -439,7 +347,121 @@ module VertexBuffer = {
     )
   };
 
-  let init = (buffer, context, program) =>
+  let init = (program, context) =>
+    switch (
+      linkProgram(
+        context,
+        program.vertexShader.source,
+        program.fragmentShader.source
+      )
+    ) {
+    | Some(programRef) =>
+      let uniforms =
+        List.map(
+          uniform => Uniform.init(uniform, context, programRef),
+          program.uniforms
+        );
+      let attribs = initAttribs(program.attribs, context, programRef);
+      Some({programRef, uniforms, attribs});
+    | None => None
+    };
+  let initedWithUniforms = (iProgram : inited, uniforms) => {
+    {
+      programRef: iProgram.programRef,
+      uniforms,
+      attribs: iProgram.attribs
+    }
+  };
+};
+
+[@bs.send]
+external _deleteBuffer : (Gl.contextT, Gl.bufferT) => unit = "deleteBuffer";
+
+/* context, target, data, usage */
+[@bs.send]
+external _bufferData : (Gl.contextT, int, Gl.Bigarray.t('a, 'b), int) => unit =
+  "bufferData";
+
+module VertexBuffer = {
+  type inited = {
+    bufferRef: Gl.bufferT,
+    mutable data: array(float),
+    perElement: int,
+    mutable update: bool,
+    mutable count: int,
+    usage: bufferUsage
+  };
+  type t = {
+    mutable data: array(float),
+    usage: bufferUsage,
+    attribs: list((string, GlType.t)),
+    perElement: int,
+    mutable inited: option(inited)
+  };
+  let make = (data, attribs, usage) => {
+    let perElement =
+      List.fold_left(
+        (p, (_, attrib: GlType.t)) => p + GlType.getSize(attrib),
+        0,
+        attribs
+      );
+    {data, usage, attribs, perElement, inited: None};
+  };
+
+  let createAttribs = (self) => {
+    List.map(
+      ((name, glType)) => VertexAttrib.make(name, glType),
+      self.attribs
+    )
+  };
+  /* Width height in 0.0 - 2.0, x, y from top left as 0.0 for now */
+  let makeQuadData = (width, height, x, y) => {
+    let leftX = (-1.) +. x;
+    let rightX = leftX +. width;
+    let topY = 1.0 -. y;
+    let bottomY = topY -. height;
+    [|leftX, bottomY, rightX, bottomY, rightX, topY, leftX, topY|];
+  };
+  let quadAttribs = () => [VertexAttrib.make("position", Vec2f)];
+  let makeQuad = (~data=?, ~usage=StaticDraw, ()) => {
+    let data =
+      switch data {
+      | Some(data) => data
+      | None => makeQuadData(2.0, 2.0, 0.0, 0.0)
+      };
+    {
+      data,
+      usage,
+      attribs: [("position", GlType.Vec2f)],
+      perElement: 2,
+      inited: None
+    };
+  };
+  let setData = (inited: inited, data) => {
+    inited.data = data;
+    inited.count = Array.length(data);
+    inited.update = true;
+  };
+  let setDataT = (self: t, data) =>
+    switch self.inited {
+    | Some(inited) => setData(inited, data)
+    | None => self.data = data
+    };
+  let updateGpuData = (inited: inited, context) => {
+    inited.count = Array.length(inited.data);
+    _bufferData(
+      context,
+      Constants.array_buffer,
+      Gl.Bigarray.of_array(Gl.Bigarray.Float32, inited.data),
+      switch inited.usage {
+      | StaticDraw => Constants.static_draw
+      | DynamicDraw => Constants.dynamic_draw
+      | StreamingDraw => Constants.stream_draw
+      }
+    );
+  };
+
+  let init = (buffer, context) =>
     switch buffer.inited {
     | Some(inited) => inited
     | None =>
@@ -455,48 +477,17 @@ module VertexBuffer = {
         | StreamingDraw => Constants.stream_draw
         }
       );
-      let attribs = initAttribs(buffer.attributes, context, program);
       let inited = {
         bufferRef: vertexBuffer,
-        attribs,
-        perElement: buffer.perElement,
         data: buffer.data,
         update: false,
+        perElement: buffer.perElement,
         count: Array.length(buffer.data),
         usage: buffer.usage
       };
       buffer.inited = Some(inited);
       inited;
     };
-  /* Init with attribs already inited
-     Todo: Probably decouple attribs */
-  /* Dont think this can be cached in .inited,
-     another reason to decouple */
-  let initFromAttribs = (buffer, context, attribs) => {
-    let vertexBuffer = Gl.createBuffer(~context);
-    glBindBuffer(context, Constants.array_buffer, vertexBuffer);
-    _bufferData(
-      context,
-      Constants.array_buffer,
-      Gl.Bigarray.of_array(Gl.Bigarray.Float32, buffer.data),
-      switch buffer.usage {
-      | StaticDraw => Constants.static_draw
-      | DynamicDraw => Constants.dynamic_draw
-      | StreamingDraw => Constants.stream_draw
-      }
-    );
-    let inited = {
-      bufferRef: vertexBuffer,
-      attribs,
-      perElement: buffer.perElement,
-      data: buffer.data,
-      update: false,
-      count: Array.length(buffer.data),
-      usage: buffer.usage
-    };
-    buffer.inited = Some(inited);
-    inited
-  };
   let deleteBuffer = (context, buf) => _deleteBuffer(context, buf.bufferRef);
 };
 
@@ -1233,19 +1224,19 @@ module Canvas = {
     | Some(currentProgram) when currentProgram === program => ()
     | _ =>
       Gl.useProgram(~context, program.programRef);
+      List.iter(
+        (attrib: VertexAttrib.inited) => {
+          VertexAttrib.setPointer(attrib, context);
+          enableVertexAttribArray(context, attrib.loc);
+        },
+        program.attribs
+      );
       canvas.currProgram = Some(program);
     };
     switch canvas.currVertexBuffer {
     | Some(currBuffer) when currBuffer === vertexBuffer => ()
     | _ =>
       glBindBuffer(context, Constants.array_buffer, vertexBuffer.bufferRef);
-      List.iter(
-        (attrib: VertexAttrib.inited) => {
-          VertexAttrib.setPointer(attrib, context);
-          enableVertexAttribArray(context, attrib.loc);
-        },
-        vertexBuffer.attribs
-      );
     };
     Gl.drawArrays(
       ~context,
@@ -1269,11 +1260,12 @@ module Canvas = {
     "drawElements";
   let drawIndexes = (canvas, program, vertexBuffer, indexBuffer, textures) => {
     let context = canvas.context;
-    switch canvas.currProgram {
-    | Some(currentProgram) when currentProgram === program => ()
+    let switchedProgram = switch canvas.currProgram {
+    | Some(currentProgram) when currentProgram === program => false
     | _ =>
       useProgram(context, program.programRef);
       canvas.currProgram = Some(program);
+      true
     };
     /* Set uniforms */
     List.iter(
@@ -1281,21 +1273,27 @@ module Canvas = {
       program.uniforms
     );
     /* Vertex buffer */
-    switch canvas.currVertexBuffer {
-    | Some(currBuffer) when currBuffer === vertexBuffer => ()
+    let switchedBuffer = switch canvas.currVertexBuffer {
+    | Some(currBuffer) when currBuffer === vertexBuffer => false
     | _ =>
       glBindBuffer(context, Constants.array_buffer, vertexBuffer.bufferRef);
       if (vertexBuffer.update) {
         VertexBuffer.updateGpuData(vertexBuffer, context);
       };
+      canvas.currVertexBuffer = Some(vertexBuffer);
+      true
+    };
+    /* Not sure of the required logic here, when
+       the pointers need to be set, it does seem to be
+       needed after changing buffer */
+    if (switchedProgram || switchedBuffer) {
       List.iter(
         (attrib: VertexAttrib.inited) => {
           VertexAttrib.setPointer(attrib, context);
           enableVertexAttribArray(context, attrib.loc);
         },
-        vertexBuffer.attribs
+        program.attribs
       );
-      canvas.currVertexBuffer = Some(vertexBuffer);
     };
     /* Index buffer */
     switch canvas.currIndexBuffer {
@@ -1364,7 +1362,7 @@ module DrawState = {
     let pInited = Program.init(program, context);
     switch pInited {
     | Some(program) =>
-      let iBuffer = VertexBuffer.init(vertexes, context, program.programRef);
+      let iBuffer = VertexBuffer.init(vertexes, context);
       let iIndexes =
         switch indexes {
         | Some(indices) => Some(IndexBuffer.init(indices, context))

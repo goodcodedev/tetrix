@@ -39,6 +39,7 @@ let make = (canvas: Gpu.Canvas.t) => {
     Program.make(
       Shader.make(vertexSource),
       Shader.make(fragmentSource),
+      VertexBuffer.quadAttribs(),
       [Uniform.make("layout", layout), Uniform.make("elapsed", elapsed)]
     );
   let program =
@@ -49,8 +50,7 @@ let make = (canvas: Gpu.Canvas.t) => {
   let vertices =
     VertexBuffer.init(
       VertexBuffer.makeQuad(),
-      canvas.context,
-      program.programRef
+      canvas.context
     );
   let indices = IndexBuffer.init(IndexBuffer.makeQuad(), canvas.context);
   {canvas, program, layout, elapsed, vertices, indices};

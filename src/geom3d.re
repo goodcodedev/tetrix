@@ -227,8 +227,8 @@ module AreaBetweenQuads = {
       VertexBuffer.make(
         createVertexData(self),
         [
-          VertexAttrib.make("position", GlType.Vec3f),
-          VertexAttrib.make("normal", GlType.Vec3f)
+          ("position", GlType.Vec3f),
+          ("normal", GlType.Vec3f)
         ],
         usage
       );

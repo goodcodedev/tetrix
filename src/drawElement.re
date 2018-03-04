@@ -49,6 +49,47 @@ let fragmentSource = {|
     }
 |};
 
+let lightBaseProgram : ref(option(Scene.sceneProgram)) = ref(None);
+let drawElementProgram : ref(option(Scene.sceneProgram)) = ref(None);
+let getLightBaseProgram = () => {
+    switch lightBaseProgram^ {
+    | Some(lightBaseProgram) => lightBaseProgram
+    | None =>
+        let program = Scene.makeProgram(
+            ~vertShader=Gpu.Shader.make(lightBaseVert),
+            ~fragShader=Gpu.Shader.make(lightBaseFrag),
+            ~requiredUniforms=[
+                ("model", Gpu.GlType.Mat3f)
+            ],
+            ~attribs=[Gpu.VertexAttrib.make("position", Vec2f)],
+            ()
+        );
+        lightBaseProgram := Some(program);
+        program
+    }
+};
+let getDrawElementProgram = () => {
+    switch drawElementProgram^ {
+    | Some(drawElementProgram) => drawElementProgram
+    | None =>
+        let program = Scene.makeProgram(
+            ~vertShader=Gpu.Shader.make(vertexSource),
+            ~fragShader=Gpu.Shader.make(fragmentSource),
+            ~requiredUniforms=[
+                ("color", Gpu.GlType.Vec3f)
+            ],
+            ~attribs=[Gpu.VertexAttrib.make("position", Vec2f)],
+            ~requiredTextures=[
+                ("light", true),
+                ("el", true),
+            ],
+            ()
+        );
+        drawElementProgram := Some(program);
+        program
+    }
+};
+
 let makeNode = (elState: SceneState.elState, lighting) => {
     let cols = 2.0;
     let rows = 1.5;
@@ -58,8 +99,7 @@ let makeNode = (elState: SceneState.elState, lighting) => {
     let size = Scene.Aspect(cols /. rows);
     let lightBaseNode = Scene.makeNode(
         ~cls="lightBase",
-        ~vertShader=Gpu.Shader.make(lightBaseVert),
-        ~fragShader=Gpu.Shader.make(lightBaseFrag),
+        ~program=getLightBaseProgram(),
         ~uniforms=[
             ("model", elState.pos)
         ],
@@ -91,8 +131,7 @@ let makeNode = (elState: SceneState.elState, lighting) => {
     /*DrawTex.makeNode(lightNode, ())*/
     Scene.makeNode(
         ~cls="drawElement",
-        ~vertShader=Gpu.Shader.make(vertexSource),
-        ~fragShader=Gpu.Shader.make(fragmentSource),
+        ~program=getDrawElementProgram(),
         ~transparent=true,
         ~size,
         ~margin,

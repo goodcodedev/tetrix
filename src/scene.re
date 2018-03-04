@@ -132,6 +132,7 @@ and node('s) = {
   textures: Hashtbl.t(string, sceneTexture),
   texMats: Hashtbl.t(string, (sceneTexture, Gpu.uniform)),
   vo: option(sceneVertexObject),
+  attribs: option(list(Gpu.VertexAttrib.t)),
   uniformList: list(string),
   uniforms: Hashtbl.t(string, sceneUniform),
   layoutUniform: option(Gpu.uniform),
@@ -157,10 +158,6 @@ and sceneProgramInited = {
     iTextureU: Hashtbl.t(string, Gpu.Gl.uniformT),
     /* Texture mat uniforms */
     iTextureMat: Hashtbl.t(string, Gpu.Gl.uniformT),
-    /* Inited attribs, these will be reused
-       in vertexBuffer
-       Todo: Maybe they should be in program */
-    iAttribs: list(Gpu.VertexAttrib.inited),
     iVo: option((Gpu.VertexBuffer.inited, option(Gpu.IndexBuffer.inited))),
     /* System uniforms */
     layoutUniform: option(Gpu.Gl.uniformT),
@@ -182,7 +179,7 @@ and sceneProgram = {
   vertShader: Gpu.Shader.t,
   fragShader: Gpu.Shader.t,
   /* Attribs or default vo */
-  attribs: option(list(Gpu.VertexAttrib.t)),
+  attribs: list(Gpu.VertexAttrib.t),
   vo: option(sceneVertexObject),
   /* Uniforms may have a default provided in the program
      or may be required from the node */
@@ -422,7 +419,7 @@ let makeProgram =
         ~requiredUniforms=[],
         ~defaultTextures=[],
         ~requiredTextures=[],
-        ~attribs=?,
+        ~attribs,
         ~vo=?,
         ~layoutUniform=true,
         ~pixelSizeUniform=false,
@@ -486,6 +483,7 @@ let makeNode =
       ~update=?,
       ~children=[],
       ~textures: list((string, sceneTexture))=[],
+      ~attribs=?,
       ~vo: option(sceneVertexObject)=?,
       ~uniforms: list((string, sceneUniform))=[],
       ~layoutUniform=true,
@@ -619,6 +617,13 @@ let makeNode =
         | None => Some(defaultVo())
         }
     };
+  let attribs = switch (program, attribs, vo) {
+  | (None, None, Some(vo)) => Some(Gpu.VertexBuffer.createAttribs(vo.vertexBuffer))
+  | (None, Some(_) as attribs, _) => attribs
+  | (Some(_), None, _) => None
+  | (None, None, None) => failwith("Attribs, program or vo is required")
+  | (Some(_), Some(_), _) => failwith("Attribs not usable when program is provided")
+  };
   let layout = {size, padding, margin, childLayout, spacing, hAlign, vAlign};
   /* Easy way to create texture to draw to, this can
      be used in tandem with ~texNodes.
@@ -698,6 +703,7 @@ let makeNode =
     textures,
     texMats,
     vo,
+    attribs,
     uniformList,
     uniforms,
     layoutUniform,
@@ -1027,6 +1033,7 @@ let initSceneProgram = (scene, sceneP : sceneProgram) => {
             Gpu.Program.make(
                 sceneP.vertShader,
                 sceneP.fragShader,
+                sceneP.attribs,
                 uniforms
             );
         let iProgram =
@@ -1120,25 +1127,21 @@ let initSceneProgram = (scene, sceneP : sceneProgram) => {
             } else {
                 None
             };
-        let (iAttribs, iVo) = switch (sceneP.vo, sceneP.attribs) {
-        | (Some(vo), None) =>
-            let iVertices = Gpu.VertexBuffer.init(vo.vertexBuffer, context, iProgram.programRef);
+        let iVo = switch sceneP.vo {
+        | Some(vo) =>
+            let iVertices = Gpu.VertexBuffer.init(vo.vertexBuffer, context);
             let iIndices = switch (vo.indexBuffer) {
             | Some(indices) => Some(Gpu.IndexBuffer.init(indices, context))
             | None => None
             };
-            (iVertices.attribs, Some((iVertices, iIndices)))
-        | (None, Some(attribs)) =>
-            (Gpu.VertexBuffer.initAttribs(attribs, context, iProgram.programRef), None)
-        | (Some(_), Some(_)) => failwith("Both vo and attribs provided to program")
-        | (None, None) => failwith("Neither vo nor attribs provided to program")
+            Some((iVertices, iIndices))
+        | None => None
         };
         {
             iProgram,
             iTexture,
             iTextureU,
             iTextureMat,
-            iAttribs,
             iVo,
             layoutUniform,
             pixelSizeUniform,
@@ -1246,7 +1249,7 @@ let createProgramDrawState = (scene, node, program : sceneProgram) => {
         switch node.vo {
         | Some(vo) =>
           (
-              Gpu.VertexBuffer.initFromAttribs(vo.vertexBuffer, context, pInited.iAttribs),
+              Gpu.VertexBuffer.init(vo.vertexBuffer, context),
               switch vo.indexBuffer {
               | Some(i) => Some(Gpu.IndexBuffer.init(i, context))
               | None => None
@@ -1324,11 +1327,16 @@ let createNodeDrawState = (scene, node) => {
     | Some(vo) => (vo.vertexBuffer, vo.indexBuffer)
     | None => failwith("Could not find vo")
     };
+  let attribs =
+    switch node.attribs {
+    | Some(attribs) => attribs
+    | None => failwith("Program or attribs is required")
+    };
   node.drawState =
     Some(
       Gpu.DrawState.init(
         scene.canvas.context,
-        Gpu.Program.make(vertShader, fragShader, uniforms),
+        Gpu.Program.make(vertShader, fragShader, attribs, uniforms),
         vBuffer,
         iBuffer,
         textures
@@ -1930,8 +1938,7 @@ let createDrawList = (scene, updateNodes, updRoot) => {
               stencilVertices:
                 Gpu.VertexBuffer.init(
                   vb,
-                  scene.canvas.context,
-                  scene.stencilDraw.program.programRef
+                  scene.canvas.context
                 ),
               stencilIndices: Gpu.IndexBuffer.init(ib, scene.canvas.context)
             };

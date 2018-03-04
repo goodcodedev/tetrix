@@ -184,7 +184,7 @@ let getProgram = (fontDraw) => {
           VertexAttrib.make("size", GlType.Float)
         ]
       };
-    /* Todo: Number of textures needs to be in hash,
+    /* Todo: Number of textures (fonts or fonts with several) needs to be in hash,
        and reflected in required textures */
     let program = Scene.makeProgram(
       ~vertShader=Gpu.Shader.make(vertexSource(fontDraw)),
@@ -215,16 +215,16 @@ let makeText = (
   let attribs =
     if (multicolor) {
       [
-        VertexAttrib.make("position", GlType.Vec2f),
-        VertexAttrib.make("uv", GlType.Vec2f),
-        VertexAttrib.make("size", GlType.Float),
-        VertexAttrib.make("color", GlType.Vec3f)
+        ("position", GlType.Vec2f),
+        ("uv", GlType.Vec2f),
+        ("size", GlType.Float),
+        ("color", GlType.Vec3f)
       ]
     } else {
       [
-        VertexAttrib.make("position", GlType.Vec2f),
-        VertexAttrib.make("uv", GlType.Vec2f),
-        VertexAttrib.make("size", GlType.Float)
+        ("position", GlType.Vec2f),
+        ("uv", GlType.Vec2f),
+        ("size", GlType.Float)
       ]
     };
   let vertices =

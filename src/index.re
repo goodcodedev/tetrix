@@ -49,8 +49,8 @@ let setup = _canvas => {
       VertexBuffer.make(
         [||],
         [
-          VertexAttrib.make("position", GlType.Vec2f),
-          VertexAttrib.make("fromDrop", GlType.Float)
+          ("position", GlType.Vec2f),
+          ("fromDrop", GlType.Float)
         ],
         DynamicDraw
       ),
