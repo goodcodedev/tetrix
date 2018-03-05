@@ -25,17 +25,16 @@ let fragShader = {|
 
 /* Should accept regular texture (and image) as well
    Similar to CacheResult */
-let makeNode = (texNode, ~transparent=?, ~partialDraw=?, ~key=?, ~size=?, ()) => {
-    Scene.makeNode(
-        ~key=?key,
-        ~cls="drawTex",
-        ~vertShader=Gpu.Shader.make(vertShader),
-        ~fragShader=Gpu.Shader.make(fragShader),
-        ~transparent=?transparent,
-        ~partialDraw=?partialDraw,
-        ~size=?size,
-        ~deps=[texNode],
-        ~textures=[("tex", Scene.SceneTex.node(texNode))],
-        ()
-    )
-};
+let makeNode = (texNode, ~transparent=?, ~partialDraw=?, ~key=?, ~size=?, ()) =>
+  Scene.makeNode(
+    ~key?,
+    ~cls="drawTex",
+    ~vertShader=Gpu.Shader.make(vertShader),
+    ~fragShader=Gpu.Shader.make(fragShader),
+    ~transparent?,
+    ~partialDraw?,
+    ~size?,
+    ~deps=[texNode],
+    ~textures=[("tex", Scene.SceneTex.node(texNode))],
+    ()
+  );

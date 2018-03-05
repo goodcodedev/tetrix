@@ -20,18 +20,19 @@ type fragSource = {
 };
 
 /* Hashable values to index scenePrograms */
-
-let lightColorHash = (lightColor : lightColor) =>
+let lightColorHash = (lightColor: lightColor) =>
   switch lightColor {
   | StaticColor(color) => Some(color)
   | DynamicColor(_) => None
   };
-let lightPosHash = (lightPos : lightPos) =>
+
+let lightPosHash = (lightPos: lightPos) =>
   switch lightPos {
   | StaticPos(pos) => Some(pos)
   | DynamicPos(_) => None
   };
-let lightDirHash = (lightDir : lightDir) =>
+
+let lightDirHash = (lightDir: lightDir) =>
   switch lightDir {
   | StaticDir(dir) => Some(dir)
   | DynamicDir(_) => None
@@ -51,18 +52,16 @@ module PointLight = {
     /* Static or uniform (None) */
     hColor: option(Color.t),
     hCoords: coordSystem,
-    hFactor : float,
-    hSpecular : int
+    hFactor: float,
+    hSpecular: int
   };
-
-  let makeHash = (self : t) : hash => {
+  let makeHash = (self: t) : hash => {
     hLightPos: lightPosHash(self.pos),
     hColor: lightColorHash(self.color),
     hCoords: self.coords,
     hFactor: self.factor,
     hSpecular: self.specular
   };
-
   let make =
       (
         ~pos,
@@ -174,7 +173,7 @@ module PointLight = {
     };
   };
   /* Light function for only this pointLight */
-  let getLightFunction = (self, camera : Camera.t) => {
+  let getLightFunction = (self, camera: Camera.t) => {
     let part = getLightFuncSource(self, 0, camera);
     "vec3 lighting(vec3 localP, vec3 screenP, vec3 normal) {\n"
     ++ part.statements
@@ -193,7 +192,6 @@ module Directional = {
     factor: float,
     specular: int
   };
-
   type hash = {
     hDir: option(Data.Vec3.t),
     hColor: option(Color.t),
@@ -201,15 +199,13 @@ module Directional = {
     hFactor: float,
     hSpecular: int
   };
-
-  let makeHash = (self) => {
+  let makeHash = self => {
     hDir: lightDirHash(self.dir),
     hColor: lightColorHash(self.color),
     hCoords: self.coords,
     hFactor: self.factor,
     hSpecular: self.specular
   };
-
   let make =
       (
         ~dir,
@@ -279,18 +275,15 @@ module ProgramLight = {
     points: list(PointLight.t),
     camera: Camera.t
   };
-
   /* Camera is assumed to be uniform (not currently the case) */
   type hash = {
     hDir: Directional.hash,
     hPoints: list(PointLight.hash)
   };
-
-  let makeHash = (self) => {
+  let makeHash = self => {
     hDir: Directional.makeHash(self.dir),
-    hPoints: List.map((point) => PointLight.makeHash(point), self.points)
+    hPoints: List.map(point => PointLight.makeHash(point), self.points)
   };
-
   let make = (dir, points, camera) => {dir, points, camera};
   let default = () => {
     let dirLight =

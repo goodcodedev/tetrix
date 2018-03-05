@@ -35,8 +35,7 @@ let vertexSource = {|
     }
 |};
 
-let fragmentSource = 
-  {|
+let fragmentSource = {|
     precision mediump float;
     uniform vec3 bg;
     uniform vec3 lineColor;
@@ -197,5 +196,5 @@ let makeNode =
         ~deps=[sdfTiles, beamNode, tileShadows, dropNode, gridLight],
         ()
       )
-    )
+    );
 };

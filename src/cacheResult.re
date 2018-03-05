@@ -26,21 +26,21 @@ open Gpu;
 
 let program = ref(None);
 
-let getProgram = () => {
+let getProgram = () =>
   switch program^ {
   | Some(program) => program
   | None =>
-    let prog = Scene.makeProgram(
-      ~vertShader=Shader.make(vertexSource),
-      ~fragShader=Shader.make(fragmentSource),
-      ~requiredTextures=[("tex", true)],
-      ~attribs=VertexBuffer.quadAttribs(),
-      ()
-    );
+    let prog =
+      Scene.makeProgram(
+        ~vertShader=Shader.make(vertexSource),
+        ~fragShader=Shader.make(fragmentSource),
+        ~requiredTextures=[("tex", true)],
+        ~attribs=VertexBuffer.quadAttribs(),
+        ()
+      );
     program := Some(prog);
-    prog
-  }
-};
+    prog;
+  };
 
 let makeNode = (node, ~transparent=?, ~partialDraw=?, ~size=?, ()) => {
   /* Not sure why, but texture doesn't show up when

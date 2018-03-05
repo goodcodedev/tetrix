@@ -14,7 +14,7 @@ let utf8ToBytes = string => {
   let units = {counter: length * 6};
   let leadSurrogate = ref(0);
   let codePoint = ref(0);
-  let bytes = ArrayBInt.make(length + (length / 8));
+  let bytes = ArrayBInt.make(length + length / 8);
   /* Not sure if continue is redundant */
   let continue = ref(false);
   let break = ref(false);

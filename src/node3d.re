@@ -40,31 +40,29 @@ let fragSource = light => {
 };
 
 module StoreSpec = {
-    type hash = {
-        light: Light.ProgramLight.hash
-    };
-    /* Currently only varies on light */
-    type progType = Light.ProgramLight.t;
-    let getHash = (light) => {
-        light: Light.ProgramLight.makeHash(light)
-    };
-    let createProgram = (light) => {
-        let vs = vertSource();
-        let fs = fragSource(light);
-        open Gpu;
-        Scene.makeProgram(
-            ~vertShader=Shader.make(vs),
-            ~fragShader=Shader.make(fs),
-            ~defaultUniforms=Light.ProgramLight.getUniforms(light),
-            ~attribs=[
-                VertexAttrib.make("position", GlType.Vec3f),
-                VertexAttrib.make("normal", GlType.Vec3f)
-            ],
-            ()
-        )
-    };
-    let tblSize = 3;
+  type hash = {light: Light.ProgramLight.hash};
+  /* Currently only varies on light */
+  type progType = Light.ProgramLight.t;
+  let getHash = light => {light: Light.ProgramLight.makeHash(light)};
+  let createProgram = light => {
+    let vs = vertSource();
+    let fs = fragSource(light);
+    Gpu.(
+      Scene.makeProgram(
+        ~vertShader=Shader.make(vs),
+        ~fragShader=Shader.make(fs),
+        ~defaultUniforms=Light.ProgramLight.getUniforms(light),
+        ~attribs=[
+          VertexAttrib.make("position", GlType.Vec3f),
+          VertexAttrib.make("normal", GlType.Vec3f)
+        ],
+        ()
+      )
+    );
+  };
+  let tblSize = 3;
 };
+
 module Programs = ProgramStore.Make(StoreSpec);
 
 let make =
@@ -73,7 +71,7 @@ let make =
       ~size=Scene.Dimensions(Scene.Scale(1.0), Scene.Scale(1.0)),
       ~light,
       ()
-    ) => {
+    ) =>
   Scene.makeNode(
     ~program=Programs.getProgram(light),
     ~cls="node3d",
@@ -83,4 +81,3 @@ let make =
     ~vo,
     ()
   );
-};

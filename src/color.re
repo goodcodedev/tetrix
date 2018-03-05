@@ -13,12 +13,12 @@ let from255 = (r, g, b) => [|
 
 let fromFloats = (r, g, b) => [|r, g, b|];
 
-let fromArray = (a) : t => {
+let fromArray = a : t => {
   if (Array.length(a) != 3) {
     Js.log(a);
     failwith("Color array needs 3 elements");
   };
-  a
+  a;
 };
 
 let toArray = (c: t) : array(float) => c;
@@ -42,19 +42,19 @@ let white = () : t => fromFloats(1.0, 1.0, 1.0);
    and detect equal colors.
    Could consider "hslCompare" for purposes
    where order matters in a visual way */
-let compare = (color1 : t, color2 : t) => {
+let compare = (color1: t, color2: t) => {
   let compare1 = compare(color1[0], color2[0]);
   if (compare1 != 0) {
-    compare1
+    compare1;
   } else {
     let compare2 = compare(color1[1], color2[1]);
     if (compare2 != 0) {
-      compare2
+      compare2;
     } else {
       let compare3 = compare(color1[2], color2[2]);
-      compare3
-    }
-  }
+      compare3;
+    };
+  };
 };
 
 /* http://www.niwa.nu/2013/05/math-behind-colorspace-conversions-rgb-hsl/ */
@@ -69,10 +69,8 @@ module Hsl = {
      Figure out api */
   let incrH = (hsl: hsl, increment) =>
     hsl[0] = mod_float(hsl[0] +. increment, 360.0);
-  let incrL = (hsl: hsl, increment) =>
-    hsl[2] = min(hsl[2] +. increment, 1.0);
-  let incrS = (hsl: hsl, increment) =>
-    hsl[1] = min(hsl[1] +. increment, 1.0);
+  let incrL = (hsl: hsl, increment) => hsl[2] = min(hsl[2] +. increment, 1.0);
+  let incrS = (hsl: hsl, increment) => hsl[1] = min(hsl[1] +. increment, 1.0);
   let setL = (hsl: hsl, l) => hsl[2] = l;
   let fromRgb = (c: t) : hsl => {
     let (r, g, b) = (c[0], c[1], c[2]);

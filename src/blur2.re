@@ -101,21 +101,22 @@ let blurProgram = ref(None);
 
 let makeNode = (origNode, toTex, tempTex, step1, step2) => {
   let blurProgram =
-    switch (blurProgram^) {
+    switch blurProgram^ {
     | Some(program) => program
     | None =>
-      let program = Scene.makeProgram(
-        ~vertShader=Shader.make(blurVertex),
-        ~fragShader=Shader.make(blurFragment),
-        ~requiredUniforms=[("pDistance", GlType.Float)],
-        ~requiredTextures=[("orig", true)],
-        ~pixelSizeUniform=true,
-        ~attribs=Gpu.VertexBuffer.quadAttribs(),
-        ~vo=Scene.defaultVo(),
-        ()
-      );
+      let program =
+        Scene.makeProgram(
+          ~vertShader=Shader.make(blurVertex),
+          ~fragShader=Shader.make(blurFragment),
+          ~requiredUniforms=[("pDistance", GlType.Float)],
+          ~requiredTextures=[("orig", true)],
+          ~pixelSizeUniform=true,
+          ~attribs=Gpu.VertexBuffer.quadAttribs(),
+          ~vo=Scene.defaultVo(),
+          ()
+        );
       blurProgram := Some(program);
-      program
+      program;
     };
   /* First blur */
   let blur1 =

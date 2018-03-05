@@ -32,7 +32,7 @@ type glChar = {
   /* Y offset before texture copy */
   yOffset: float,
   /* How much to advance after drawing character */
-  xAdvance: float,
+  xAdvance: float
 };
 
 type bmInfo = {
@@ -92,7 +92,8 @@ let addGlChar = (font, code) => {
   let bmChar =
     switch font.charsById[code] {
     | Some(bmChar) => bmChar
-    | None => failwith("Could not find bmchar for code " ++ string_of_int(code))
+    | None =>
+      failwith("Could not find bmchar for code " ++ string_of_int(code))
     };
   /* Initialize glChar data */
   let texWidth = float_of_int(font.common.scaleW);
@@ -100,7 +101,7 @@ let addGlChar = (font, code) => {
   let glScale = font.common.glScale;
   let tx = float_of_int(bmChar.x) /. texWidth;
   let ty = float_of_int(bmChar.y) /. texHeight;
-  let glChar : glChar = {
+  let glChar: glChar = {
     tx,
     ty,
     tx2: tx +. float_of_int(bmChar.width) /. texWidth,
@@ -112,7 +113,7 @@ let addGlChar = (font, code) => {
     xAdvance: float_of_int(bmChar.xAdvance) *. glScale
   };
   font.glChars[code] = Some(glChar);
-  glChar
+  glChar;
 };
 
 let readInfo = (buf, i) : bmInfo => {
@@ -157,7 +158,7 @@ let readCommon = (buf, i) : bmCommon => {
     redChnl: Buffer.readUInt8(buf, i + 12),
     greenChnl: Buffer.readUInt8(buf, i + 12),
     blueChnl: Buffer.readUInt8(buf, i + 13)
-  }
+  };
 };
 
 let readPages = (buf, i, size) => {
@@ -327,7 +328,7 @@ let parse = buf : bmFont => {
       pages,
       chars,
       charsById,
-      glChars : Array.make(Array.length(charsById), None)
+      glChars: Array.make(Array.length(charsById), None)
     }
   | (None, Some(info), Some(common), Some(pages), Some(chars), Some(charsById)) => {
       kernings: [],
@@ -336,7 +337,7 @@ let parse = buf : bmFont => {
       pages,
       chars,
       charsById,
-      glChars : Array.make(Array.length(charsById), None)
+      glChars: Array.make(Array.length(charsById), None)
     }
   | _ => failwith("Could not parse font")
   };

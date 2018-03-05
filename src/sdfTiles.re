@@ -52,24 +52,23 @@ type sdfTiles = {
 };
 
 module StoreSpec = {
-    type hash = {
-        hCols: float,
-        hRows: float,
-        hTileSpace: float,
-        hSdfNode: SdfNode.hash
-    };
-    type progType = sdfTiles;
-    let getHash = (sdfTiles) => {
-        hCols: sdfTiles.cols,
-        hRows: sdfTiles.rows,
-        hTileSpace: sdfTiles.tileSpace,
-        hSdfNode: SdfNode.makeHash(sdfTiles.sdfNode)
-    };
-    let createProgram = (sdfTiles) => {
-      SdfNode.makeProgram(sdfTiles.sdfNode)
-    };
-    let tblSize = 3;
+  type hash = {
+    hCols: float,
+    hRows: float,
+    hTileSpace: float,
+    hSdfNode: SdfNode.hash
+  };
+  type progType = sdfTiles;
+  let getHash = sdfTiles => {
+    hCols: sdfTiles.cols,
+    hRows: sdfTiles.rows,
+    hTileSpace: sdfTiles.tileSpace,
+    hSdfNode: SdfNode.makeHash(sdfTiles.sdfNode)
+  };
+  let createProgram = sdfTiles => SdfNode.makeProgram(sdfTiles.sdfNode);
+  let tblSize = 3;
 };
+
 module Programs = ProgramStore.Make(StoreSpec);
 
 let makeNode =
@@ -102,12 +101,7 @@ let makeNode =
       ~color?,
       ()
     );
-  let sdfTiles : sdfTiles = {
-    cols,
-    rows,
-    tileSpace,
-    sdfNode
-  };
+  let sdfTiles: sdfTiles = {cols, rows, tileSpace, sdfNode};
   let program = Programs.getProgram(sdfTiles);
   SdfNode.makeNode(
     sdfNode,

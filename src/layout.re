@@ -69,7 +69,7 @@ let stacked =
     ~hidden,
     ~hAlign,
     ~vAlign,
-    ~margin=?margin,
+    ~margin?,
     ~children,
     ()
   );

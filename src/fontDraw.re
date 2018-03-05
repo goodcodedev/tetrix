@@ -13,22 +13,24 @@ type t = {
   multicolor: bool
 };
 
-let vertexSource = (fontDraw) => {
+let vertexSource = fontDraw => {
   let (attribs, varyings, main) =
     if (fontDraw.multicolor) {
       (
         "attribute vec3 color;\n",
         "varying vec3 vColor;\n",
-        "vColor = color;\n",
-      )
+        "vColor = color;\n"
+      );
     } else {
-      ("", "", "")
+      ("", "", "");
     };
   {|
     precision mediump float;
     attribute vec2 position;
     attribute vec2 uv;
-    |} ++ attribs ++ {|
+    |}
+  ++ attribs
+  ++ {|
     attribute float size;
 
     uniform mat3 model;
@@ -37,31 +39,31 @@ let vertexSource = (fontDraw) => {
 
     varying vec2 vUv;
     varying float smoothFactor;
-    |} ++ varyings ++ {|
+    |}
+  ++ varyings
+  ++ {|
 
     void main() {
         vUv = uv;
-      |} ++ main ++ {|
+      |}
+  ++ main
+  ++ {|
         // Bit trying and failing to get this somewhat right
         // Can probably be calibrated better
         smoothFactor = model[0][0] / pixelSize.x / size * 600.0;
         vec2 pos = vec3(vec3(position, 1.0) * model * layout).xy;
         gl_Position = vec4(pos, 0.0, 1.0);
     }
-  |}
+  |};
 };
 
 /* https://github.com/libgdx/libgdx/wiki/Distance-field-fonts */
-let fragmentSource = (fontDraw) => {
+let fragmentSource = fontDraw => {
   let (varyings, uniforms, colorGl) =
     if (fontDraw.multicolor) {
-      (
-        "varying vec3 vColor;\n",
-        "",
-        "vColor",
-      )
+      ("varying vec3 vColor;\n", "", "vColor");
     } else {
-      ("", "uniform vec3 color;\n", "color")
+      ("", "uniform vec3 color;\n", "color");
     };
   {|
     #ifdef GL_OES_standard_derivatives
@@ -69,10 +71,14 @@ let fragmentSource = (fontDraw) => {
     #endif
     precision mediump float;
     uniform sampler2D map;
-    |} ++ uniforms ++ {|
+    |}
+  ++ uniforms
+  ++ {|
     uniform float opacity;
     varying vec2 vUv;
-    |} ++ varyings ++ {|
+    |}
+  ++ varyings
+  ++ {|
     varying float smoothFactor;
 
     float aastep(float value) {
@@ -89,13 +95,15 @@ let fragmentSource = (fontDraw) => {
         float discardLimit = 0.0001;
         vec4 texColor = 1.0 - texture2D(map, vUv);
         float alpha = aastep(texColor.x);
-        vec3 c = |} ++ colorGl ++ {| * alpha;
+        vec3 c = |}
+  ++ colorGl
+  ++ {| * alpha;
         gl_FragColor = vec4(c, opacity * alpha);
         if (alpha < discardLimit) {
             discard;
         }
     }
-  |}
+  |};
 };
 
 let msdfVertexSource =
@@ -143,27 +151,18 @@ let msdfFragmentSource =
   );
 
 module StoreSpec = {
-  type hash = {
-    multicolor: bool
-  };
+  type hash = {multicolor: bool};
   type progType = t;
-  let getHash = (fontDraw : t) : hash => {
-    multicolor: fontDraw.multicolor
-  };
-  let createProgram = (fontDraw : t) => {
+  let getHash = (fontDraw: t) : hash => {multicolor: fontDraw.multicolor};
+  let createProgram = (fontDraw: t) => {
     let requiredUniforms =
       switch fontDraw.multicolor {
-      | false =>
-        [
+      | false => [
           ("model", Gpu.GlType.Mat3f),
           ("color", Gpu.GlType.Vec3f),
           ("opacity", Gpu.GlType.Float)
         ]
-      | true =>
-        [
-          ("model", Gpu.GlType.Mat3f),
-          ("opacity", Gpu.GlType.Float)
-        ]
+      | true => [("model", Gpu.GlType.Mat3f), ("opacity", Gpu.GlType.Float)]
       };
     let attribs =
       if (fontDraw.multicolor) {
@@ -172,13 +171,13 @@ module StoreSpec = {
           VertexAttrib.make("uv", GlType.Vec2f),
           VertexAttrib.make("size", GlType.Float),
           VertexAttrib.make("color", GlType.Vec3f)
-        ]
+        ];
       } else {
         [
           VertexAttrib.make("position", GlType.Vec2f),
           VertexAttrib.make("uv", GlType.Vec2f),
           VertexAttrib.make("size", GlType.Float)
-        ]
+        ];
       };
     /* Todo: Number of textures (fonts or fonts with several) needs to be in hash,
        and reflected in required textures */
@@ -189,25 +188,22 @@ module StoreSpec = {
       ~attribs,
       ~requiredTextures=[("map", false)],
       ()
-    )
+    );
   };
   let tblSize = 2;
 };
+
 module Programs = ProgramStore.Make(StoreSpec);
 
-let makeText = (
-  part : FontText.part,
-  fontLayout : FontText.FontLayout.t,
-  ~height=0.5,
-  ()
-) => {
+let makeText =
+    (part: FontText.part, fontLayout: FontText.FontLayout.t, ~height=0.5, ()) => {
   let blockInfo = FontText.getPartInfo(part);
   let textures =
     List.map(
-      (font) => FontStore.getTexture(fontLayout.store, font),
+      font => FontStore.getTexture(fontLayout.store, font),
       blockInfo.fonts
     );
-  let multicolor = (List.length(blockInfo.colors) > 1) ? true : false;
+  let multicolor = List.length(blockInfo.colors) > 1 ? true : false;
   let attribs =
     if (multicolor) {
       [
@@ -215,20 +211,15 @@ let makeText = (
         ("uv", GlType.Vec2f),
         ("size", GlType.Float),
         ("color", GlType.Vec3f)
-      ]
+      ];
     } else {
       [
         ("position", GlType.Vec2f),
         ("uv", GlType.Vec2f),
         ("size", GlType.Float)
-      ]
+      ];
     };
-  let vertices =
-    VertexBuffer.make(
-      [||],
-      attribs,
-      DynamicDraw
-    );
+  let vertices = VertexBuffer.make([||], attribs, DynamicDraw);
   let indices = IndexBuffer.make([||], DynamicDraw);
   let uModel = Scene.UMat3f.id();
   let aspect = 1.0 /. height;
@@ -244,50 +235,45 @@ let makeText = (
     aspect,
     fontLayout,
     multicolor
-  }
+  };
 };
 
 let makeSimpleText =
-  (
-    text,
-    font,
-    fontLayout,
-    ~height=0.2,
-    ~numLines=1,
-    ~align=FontText.Left,
-    ~color=Color.fromFloats(1.0, 1.0, 1.0),
-    ()
-  ) => {
+    (
+      text,
+      font,
+      fontLayout,
+      ~height=0.2,
+      ~numLines=1,
+      ~align=FontText.Left,
+      ~color=Color.fromFloats(1.0, 1.0, 1.0),
+      ()
+    ) =>
   makeText(
-    FontText.block(
-      ~height,
-      ~font,  
-      ~color,
-      ~align,
-      [
-        FontText.text(text)
-      ]
-    ),
+    FontText.block(~height, ~font, ~color, ~align, [FontText.text(text)]),
     fontLayout,
-    ~height=(height *. float_of_int(numLines)),
+    ~height=height *. float_of_int(numLines),
     ()
-  )
-};
+  );
 
-let updateNode =
-  (
-    fontDraw : t,
-    node : Scene.node('s)
-  ) => {
+let updateNode = (fontDraw: t, node: Scene.node('s)) => {
   node.loading = true;
   /* Callback will trigger in function if font is already loaded */
   FontStore.requestMultiple(
     fontDraw.fontLayout.store,
     fontDraw.blockInfo.fonts,
     _store => {
-      let (vertices, yLineEnd) = FontText.FontLayout.layoutVertices(fontDraw.fontLayout, fontDraw.part, fontDraw.multicolor);
+      let (vertices, yLineEnd) =
+        FontText.FontLayout.layoutVertices(
+          fontDraw.fontLayout,
+          fontDraw.part,
+          fontDraw.multicolor
+        );
       VertexBuffer.setDataT(fontDraw.vertices, vertices);
-      let numVertices = (fontDraw.multicolor) ? FontText.FontLayout.numColorVertices : FontText.FontLayout.numVertices;
+      let numVertices =
+        fontDraw.multicolor ?
+          FontText.FontLayout.numColorVertices :
+          FontText.FontLayout.numVertices;
       IndexBuffer.setDataT(
         fontDraw.indices,
         IndexBuffer.makeQuadsData(Array.length(vertices) / numVertices)
@@ -308,7 +294,7 @@ let updateNode =
 
 let makeNode =
     (
-      fontDraw : t,
+      fontDraw: t,
       ~key=?,
       ~cls="fontDraw",
       ~opacity=1.0,
@@ -317,33 +303,31 @@ let makeNode =
       ()
     ) => {
   let uniforms =
-      switch fontDraw.multicolor {
-      | false =>
-        let color =
-          switch fontDraw.blockInfo.colors {
-          | [color] => color
-          | _ => failwith("Could not find font color")
-          };
-        [
-          ("model", fontDraw.uModel),
-          ("color", Scene.UVec3f.vec(Color.toVec3(color))),
-          ("opacity", Scene.UFloat.make(opacity))
-        ]
-      | true =>
-        [
-          ("model", fontDraw.uModel),
-          ("opacity", Scene.UFloat.make(opacity))
-        ]
-      };
+    switch fontDraw.multicolor {
+    | false =>
+      let color =
+        switch fontDraw.blockInfo.colors {
+        | [color] => color
+        | _ => failwith("Could not find font color")
+        };
+      [
+        ("model", fontDraw.uModel),
+        ("color", Scene.UVec3f.vec(Color.toVec3(color))),
+        ("opacity", Scene.UFloat.make(opacity))
+      ];
+    | true => [
+        ("model", fontDraw.uModel),
+        ("opacity", Scene.UFloat.make(opacity))
+      ]
+    };
   let textures =
     List.mapi(
-      (i, texture) => {
+      (i, texture) =>
         if (i == 0) {
-          ("map", Scene.SceneTex.tex(texture))
+          ("map", Scene.SceneTex.tex(texture));
         } else {
-          ("map" ++ string_of_int(i + 1), Scene.SceneTex.tex(texture))
-        }
-      },
+          ("map" ++ string_of_int(i + 1), Scene.SceneTex.tex(texture));
+        },
       fontDraw.textures
     );
   let node =
@@ -358,55 +342,51 @@ let makeNode =
       ~transparent=true,
       ~loading=true,
       ~size=Scene.Aspect(fontDraw.aspect),
-      ~margin=?margin,
+      ~margin?,
       ~hidden,
       ()
     );
-    updateNode(fontDraw, node);
+  updateNode(fontDraw, node);
   node;
 };
 
-let makePartNode = (
-  block,
-  fontLayout,
-  ~height=0.5,
-  ~key=?,
-  ~cls=?,
-  ~opacity=1.0,
-  ~hidden=false,
-  ~margin=?,
-  ()
-) => {
-  makeNode(
-    makeText(
+let makePartNode =
+    (
       block,
       fontLayout,
-      ~height,
+      ~height=0.5,
+      ~key=?,
+      ~cls=?,
+      ~opacity=1.0,
+      ~hidden=false,
+      ~margin=?,
       ()
-    ),
-    ~key=?key,
-    ~cls=?cls,
+    ) =>
+  makeNode(
+    makeText(block, fontLayout, ~height, ()),
+    ~key?,
+    ~cls?,
     ~opacity,
     ~hidden,
-    ~margin=?,
+    ~margin?,
     ()
-  )
-};
+  );
 
-let makeSimpleNode = (
-    text,
-    font,
-    fontLayout,
-    ~height=0.2,
-    ~numLines=1,
-    ~align=FontText.Left,
-    ~color=Color.fromFloats(1.0, 1.0, 1.0),
-    ~key=?,
-    ~cls=?,
-    ~opacity=1.0,
-    ~hidden=false,
-    ()
-) => {
+let makeSimpleNode =
+    (
+      text,
+      font,
+      fontLayout,
+      ~height=0.2,
+      ~numLines=1,
+      ~align=FontText.Left,
+      ~color=Color.fromFloats(1.0, 1.0, 1.0),
+      ~key=?,
+      ~cls=?,
+      ~opacity=1.0,
+      ~hidden=false,
+      ()
+    ) =>
   makeNode(
     makeSimpleText(
       text,
@@ -418,10 +398,9 @@ let makeSimpleNode = (
       ~color,
       ()
     ),
-    ~key=?key,
-    ~cls=?cls,
+    ~key?,
+    ~cls?,
     ~opacity,
     ~hidden,
     ()
-  )
-};
+  );

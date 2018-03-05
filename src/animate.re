@@ -165,7 +165,7 @@ let anim =
     ~key?,
     ~next?,
     ~frameInterval,
-    ~onDone=?onDone,
+    ~onDone?,
     ()
   );
 };

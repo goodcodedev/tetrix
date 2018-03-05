@@ -262,7 +262,7 @@ let makeProgram = self => {
     ~attribs=Gpu.VertexBuffer.quadAttribs(),
     ~requiredUniforms,
     ()
-  )
+  );
 };
 
 /* Hash for sdfNode, will not take into account differences
@@ -271,9 +271,9 @@ type hash = {
   hFragCoords: fragCoords,
   hModel: bool,
   /* Simple encoding,
-    None = no color,
-    Some(None) = dyncolor,
-    Some(Some(Color.t)) = Static */
+     None = no color,
+     Some(None) = dyncolor,
+     Some(Some(Color.t)) = Static */
   hColor: option(option(Color.t)),
   hColorMix: float,
   hAlphaLimit: option(float),
@@ -281,7 +281,7 @@ type hash = {
   hLight: Light.ProgramLight.hash
 };
 
-let makeHash = (sdfNode) => {
+let makeHash = sdfNode => {
   let hModel =
     switch sdfNode.model {
     | Some(_) => true
@@ -301,7 +301,7 @@ let makeHash = (sdfNode) => {
     hAlphaLimit: sdfNode.alphaLimit,
     hOpacity: sdfNode.opacity,
     hLight: Light.ProgramLight.makeHash(sdfNode.lighting)
-  }
+  };
 };
 
 let makeNode =
@@ -345,8 +345,7 @@ let makeNode =
   let (vertShader, fragShader, program) =
     switch program {
     | Some(program) => (None, None, Some(program))
-    | None =>
-      (
+    | None => (
         Some(Shader.make(makeVertexSource(self))),
         Some(Shader.make(makeFragmentSource(self))),
         None
@@ -355,9 +354,9 @@ let makeNode =
   Scene.makeNode(
     ~key?,
     ~cls,
-    ~vertShader=?vertShader,
-    ~fragShader=?fragShader,
-    ~program=?program,
+    ~vertShader?,
+    ~fragShader?,
+    ~program?,
     ~size,
     ~margin?,
     ~transparent,

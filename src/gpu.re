@@ -71,14 +71,14 @@ let curRId = ref(1);
 let rId = () => {
   let rId = curRId^;
   curRId := rId + 1;
-  rId
+  rId;
 };
 
 type gpuState = {
   mutable curProg: int,
   mutable curVertex: int,
   mutable curIndex: int,
-  mutable curTextures: array(int),
+  mutable curTextures: array(int)
 };
 
 type uniform =
@@ -140,15 +140,12 @@ module Uniform = {
     uniform.inited = Some(inited);
     inited;
   };
-  let initLoc = (context, program, name) => {
-    Gl.getUniformLocation(~context, ~program, ~name)
-  };
+  let initLoc = (context, program, name) =>
+    Gl.getUniformLocation(~context, ~program, ~name);
   let initedFromLoc = (glType, uniform, loc) : inited => {
-    {
-      glType: glType,
-      uniform: uniform,
-      loc
-    }
+    glType,
+    uniform,
+    loc
   };
   let setFloat = (uniform, value) =>
     switch uniform {
@@ -217,7 +214,7 @@ module Uniform = {
     | UniformMat4f(values) =>
       let values = values^;
       uniformMatrix4fv(context, uniform.loc, Js.false_, values);
-};
+    };
 };
 
 module VertexAttrib = {
@@ -302,13 +299,7 @@ module Program = {
         0,
         attribs
       );
-    {
-      vertexShader,
-      fragmentShader,
-      attribs,
-      uniforms,
-      perElement
-    }
+    {vertexShader, fragmentShader, attribs, uniforms, perElement};
   };
   let linkProgram = (context, vertexSource, fragmentSource) => {
     let vShader =
@@ -339,9 +330,7 @@ module Program = {
     let stride =
       List.fold_left(
         (size, attrib: VertexAttrib.t) =>
-          size
-          + GlType.getSize(attrib.glType)
-          * GlType.getBytes(attrib.glType),
+          size + GlType.getSize(attrib.glType) * GlType.getBytes(attrib.glType),
         0,
         attribs
       );
@@ -351,21 +340,13 @@ module Program = {
         let size = GlType.getSize(attrib.glType);
         let attrSize = size * GlType.getBytes(attrib.glType);
         let loc =
-          VertexAttrib.init(
-            attrib,
-            context,
-            program,
-            size,
-            stride,
-            offset^
-          );
+          VertexAttrib.init(attrib, context, program, size, stride, offset^);
         offset := offset^ + attrSize;
         loc;
       },
       attribs
-    )
+    );
   };
-
   let init = (program, context) =>
     switch (
       linkProgram(
@@ -384,13 +365,11 @@ module Program = {
       Some({rId: rId(), programRef, uniforms, attribs});
     | None => None
     };
-  let initedWithUniforms = (iProgram : inited, uniforms) => {
-    {
-      rId: iProgram.rId,
-      programRef: iProgram.programRef,
-      uniforms,
-      attribs: iProgram.attribs
-    }
+  let initedWithUniforms = (iProgram: inited, uniforms) => {
+    rId: iProgram.rId,
+    programRef: iProgram.programRef,
+    uniforms,
+    attribs: iProgram.attribs
   };
 };
 
@@ -428,13 +407,11 @@ module VertexBuffer = {
       );
     {data, usage, attribs, perElement, inited: None};
   };
-
-  let createAttribs = (self) => {
+  let createAttribs = self =>
     List.map(
       ((name, glType)) => VertexAttrib.make(name, glType),
       self.attribs
-    )
-  };
+    );
   /* Width height in 0.0 - 2.0, x, y from top left as 0.0 for now */
   let makeQuadData = (width, height, x, y) => {
     let leftX = (-1.) +. x;
@@ -481,7 +458,6 @@ module VertexBuffer = {
       }
     );
   };
-
   let init = (buffer, context, gpuState) =>
     switch buffer.inited {
     | Some(inited) => inited
@@ -550,7 +526,7 @@ module IndexBuffer = {
         quadData(quadNum + 1);
       };
     quadData(0);
-    d
+    d;
   };
   let setData = (inited: inited, data) => {
     inited.data = data;
@@ -960,13 +936,8 @@ module ProgramTexture = {
      be used to get a uniform location, then connect
      it with a texture at a later time (as in sceneProgram) */
   let initRef = (uniformName, context, program) =>
-    Gl.getUniformLocation(
-      ~context,
-      ~program,
-      ~name=uniformName
-    );
-
-  let initFromRef = (programTexture, context, uRef) => {
+    Gl.getUniformLocation(~context, ~program, ~name=uniformName);
+  let initFromRef = (programTexture, context, uRef) =>
     switch programTexture.inited {
     | Some(_) => failwith("Init from ref already inited")
     | None =>
@@ -975,7 +946,6 @@ module ProgramTexture = {
       programTexture.inited = Some(inited);
       inited;
     };
-  };
 };
 
 module FrameBuffer = {
@@ -1101,7 +1071,7 @@ module Canvas = {
   type keyboardT = {mutable keyCode: Reasongl.Gl.Events.keycodeT};
   type t = {
     context: Gl.contextT,
-    gpuState: gpuState,
+    gpuState,
     mutable deltaTime: float,
     mutable elapsed: float,
     mutable width: int,
@@ -1190,11 +1160,9 @@ module Canvas = {
             };
           };
         },
-      ~keyUp=
-        (~keycode) =>
-          (),
-            /* Need this to trigger cleaning of keyes pressed
-               and repeat marked */
+      ~keyUp=(~keycode) => (),
+      /* Need this to trigger cleaning of keyes pressed
+         and repeat marked */
       ()
     );
   };
@@ -1248,7 +1216,8 @@ module Canvas = {
   external enableVertexAttribArray : (Gl.contextT, Gl.attributeT) => unit =
     "enableVertexAttribArray";
   /* todo: currently not used, not sure if it works */
-  let drawVertices = (canvas, program : Program.inited, vertexBuffer : VertexBuffer.inited) => {
+  let drawVertices =
+      (canvas, program: Program.inited, vertexBuffer: VertexBuffer.inited) => {
     let context = canvas.context;
     let gpuState = canvas.gpuState;
     if (gpuState.curProg != program.rId) {
@@ -1286,22 +1255,23 @@ module Canvas = {
   [@bs.send]
   external drawElements : (Gl.contextT, int, int, int, int) => unit =
     "drawElements";
-  let drawIndexes = (
-    canvas,
-    program : Program.inited,
-    vertexBuffer : VertexBuffer.inited,
-    indexBuffer : IndexBuffer.inited,
-    textures : array(ProgramTexture.inited)
-  ) => {
+  let drawIndexes =
+      (
+        canvas,
+        program: Program.inited,
+        vertexBuffer: VertexBuffer.inited,
+        indexBuffer: IndexBuffer.inited,
+        textures: array(ProgramTexture.inited)
+      ) => {
     let context = canvas.context;
     let gpuState = canvas.gpuState;
     let switchedProgram =
       if (gpuState.curProg != program.rId) {
         useProgram(context, program.programRef);
         gpuState.curProg = program.rId;
-        true
+        true;
       } else {
-        false
+        false;
       };
     /* Set uniforms */
     List.iter(
@@ -1316,9 +1286,9 @@ module Canvas = {
           VertexBuffer.updateGpuData(vertexBuffer, context);
         };
         gpuState.curVertex = vertexBuffer.rId;
-        true
+        true;
       } else {
-        false
+        false;
       };
     /* Not sure of the required logic here, when
        the pointers need to be set, it does seem to be
@@ -1366,7 +1336,7 @@ module Canvas = {
             };
             Texture.updateGpuData(pInit.texture);
           };
-          pInit.rId
+          pInit.rId;
         },
         textures
       );
@@ -1423,12 +1393,10 @@ module DrawState = {
     };
   };
   let fromInited = (program, vertexBuffer, indexBuffer, textures) => {
-    {
-      program,
-      vertexBuffer,
-      indexBuffer,
-      textures
-    }
+    program,
+    vertexBuffer,
+    indexBuffer,
+    textures
   };
   let draw = (drawState, canvas) =>
     switch drawState.indexBuffer {

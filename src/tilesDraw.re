@@ -13,7 +13,8 @@ let vertexSource = {|
     }
 |};
 
-let fragmentSource = {|
+let fragmentSource =
+  {|
     precision mediump float;
     varying vec2 vPosition;
     varying vec2 sdfPos;
@@ -29,13 +30,27 @@ let fragmentSource = {|
         float tile = texture2D(tiles, tilePos).x;
         int colorIdx = int(tile * 255.0);
         vec3 color =
-            (colorIdx == 1) ? |} ++ Color.toGlsl(Game.colors[2]) ++ {|
-            : (colorIdx == 2) ? |} ++ Color.toGlsl(Game.colors[3]) ++ {|
-            : (colorIdx == 3) ? |} ++ Color.toGlsl(Game.colors[4]) ++ {|
-            : (colorIdx == 4) ? |} ++ Color.toGlsl(Game.colors[5]) ++ {|
-            : (colorIdx == 5) ? |} ++ Color.toGlsl(Game.colors[6]) ++ {|
-            : (colorIdx == 6) ? |} ++ Color.toGlsl(Game.colors[7]) ++ {|
-            : |} ++ Color.toGlsl(Game.colors[8]) ++ {|;
+            (colorIdx == 1) ? |}
+  ++ Color.toGlsl(Game.colors[2])
+  ++ {|
+            : (colorIdx == 2) ? |}
+  ++ Color.toGlsl(Game.colors[3])
+  ++ {|
+            : (colorIdx == 3) ? |}
+  ++ Color.toGlsl(Game.colors[4])
+  ++ {|
+            : (colorIdx == 4) ? |}
+  ++ Color.toGlsl(Game.colors[5])
+  ++ {|
+            : (colorIdx == 5) ? |}
+  ++ Color.toGlsl(Game.colors[6])
+  ++ {|
+            : (colorIdx == 6) ? |}
+  ++ Color.toGlsl(Game.colors[7])
+  ++ {|
+            : |}
+  ++ Color.toGlsl(Game.colors[8])
+  ++ {|;
         vec3 sdfColor = texture2D(sdfTiles, sdfPos).xyz;
         //color = color * 0.5 + ((colorIdx == 0) ? vec3(0.0, 0.0, 0.0) : (sdfColor * 0.5));
         /*

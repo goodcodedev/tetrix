@@ -4,8 +4,7 @@ open Config;
 
 open SceneState;
 
-let resize = _state =>
-  ();
+let resize = _state => ();
 
 let makeElState = () => {
   let pos = Scene.UMat3f.id();
@@ -19,11 +18,7 @@ let makeSceneLight = camera => {
   let dirLight =
     Directional.make(~dir=StaticDir(Data.Vec3.make(0.4, 0.3, 0.3)), ());
   let pointLight =
-    PointLight.make(
-      ~pos=StaticPos(Config.pointLight),
-      ~specular=12,
-      ()
-    );
+    PointLight.make(~pos=StaticPos(Config.pointLight), ~specular=12, ());
   ProgramLight.make(dirLight, [pointLight], camera);
 };
 
@@ -48,10 +43,7 @@ let setup = _canvas => {
     Scene.SVertexObject.make(
       VertexBuffer.make(
         [||],
-        [
-          ("position", GlType.Vec2f),
-          ("fromDrop", GlType.Float)
-        ],
+        [("position", GlType.Vec2f), ("fromDrop", GlType.Float)],
         DynamicDraw
       ),
       Some(IndexBuffer.make([||], DynamicDraw))
@@ -194,7 +186,14 @@ let createLeftRow = state => {
         ~size=Scene.(Dimensions(Scale(1.0), Scale(0.6))),
         Layout.vertical(
           ~margin=
-            Scene.(MarginRBLT(Scale(0.0), Scale(0.0), Scale(0.0), ScreenScale(0.028))),
+            Scene.(
+              MarginRBLT(
+                Scale(0.0),
+                Scale(0.0),
+                Scale(0.0),
+                ScreenScale(0.028)
+              )
+            ),
           ~spacing=Scene.ScreenScale(0.015),
           ~vAlign=Scene.AlignTop,
           [
@@ -207,7 +206,7 @@ let createLeftRow = state => {
               ~align=FontText.Center,
               ()
             ),
-            DrawElement.makeNode(state.holdingEl, state.sceneLight),
+            DrawElement.makeNode(state.holdingEl, state.sceneLight)
           ]
         ),
         ()
@@ -251,7 +250,12 @@ let createRightRow = state => {
           ~key="nextElements",
           ~margin=
             Scene.(
-              MarginRBLT(Scale(0.0), Scale(0.0), Scale(0.0), ScreenScale(0.028))
+              MarginRBLT(
+                Scale(0.0),
+                Scale(0.0),
+                Scale(0.0),
+                ScreenScale(0.028)
+              )
             ),
           ~spacing=Scene.ScreenScale(0.015),
           ~vAlign=Scene.AlignTop,
@@ -278,150 +282,148 @@ let createRightRow = state => {
 };
 
 let createStartScreen = state => {
-  let vimtrisText = FontText.(block(
-    ~font="digitalt",
-    ~height=0.25,
-    ~align=FontText.Center,
-    ~color=Color.fromFloats(1.0, 1.0, 1.0),
-    [
-      styledText(~color=Game.colors[2], "V"),
-      styledText(~color=Game.colors[3], "i"),
-      styledText(~color=Game.colors[4], "m"),
-      styledText(~color=Game.colors[5], "t"),
-      styledText(~color=Game.colors[6], "r"),
-      styledText(~color=Game.colors[7], "i"),
-      styledText(~color=Game.colors[8], "s"),
-      block([
-        styled(~height=0.08, [text("Press N to play\n")]),
-        styled(~height=0.06, [text("Press ? for help")])
-      ])
-    ]
-  ));
+  let vimtrisText =
+    FontText.(
+      block(
+        ~font="digitalt",
+        ~height=0.25,
+        ~align=FontText.Center,
+        ~color=Color.fromFloats(1.0, 1.0, 1.0),
+        [
+          styledText(~color=Game.colors[2], "V"),
+          styledText(~color=Game.colors[3], "i"),
+          styledText(~color=Game.colors[4], "m"),
+          styledText(~color=Game.colors[5], "t"),
+          styledText(~color=Game.colors[6], "r"),
+          styledText(~color=Game.colors[7], "i"),
+          styledText(~color=Game.colors[8], "s"),
+          block([
+            styled(~height=0.08, [text("Press N to play\n")]),
+            styled(~height=0.06, [text("Press ? for help")])
+          ])
+        ]
+      )
+    );
   Layout.vertical(
     ~key="startScreen",
     ~vAlign=Scene.AlignMiddle,
-    [
-      FontDraw.makePartNode(
-        vimtrisText,
-        state.fontLayout,
-        ~height=0.5,
-        ()
-      )
-    ]
-  )
+    [FontDraw.makePartNode(vimtrisText, state.fontLayout, ~height=0.5, ())]
+  );
 };
 
 let createPauseScreen = state => {
-  let pauseText = FontText.(
-    block(~align=Center, [
-      styledText(~height=0.235, "\n\n"), /* Some space, should use/have padding/margin */
-      styledText(
-        ~height=0.26,
-        "Pause"
+  let pauseText =
+    FontText.(
+      block(
+        ~align=Center,
+        [
+          styledText(
+            ~height=0.235,
+            "\n\n"
+          ), /* Some space, should use/have padding/margin */
+          styledText(~height=0.26, "Pause")
+        ]
       )
-    ])
-  );
-  let helpText = FontText.(
-    block(~align=Center, [
-      styledText(
-        ~height=0.058,
-        "\nPress Space to continue\nPress ? for help"
+    );
+  let helpText =
+    FontText.(
+      block(
+        ~align=Center,
+        [
+          styledText(
+            ~height=0.058,
+            "\nPress Space to continue\nPress ? for help"
+          )
+        ]
       )
-    ])
-  );
+    );
   Layout.stacked(
     ~key="pauseScreen",
     ~hidden=true,
     [
-      Layout.vertical(
-        [
-          FontDraw.makePartNode(
-            pauseText,
-            state.fontLayout,
-            ~key="pauseText",
-            ~height=0.44,
-            ~opacity=0.6,
-            ()
-          ),
-          FontDraw.makePartNode(
-            helpText,
-            state.fontLayout,
-            ~key="pauseHelpText",
-            ~height=0.25,
-            ()
-          )
-        ]
-      )
+      Layout.vertical([
+        FontDraw.makePartNode(
+          pauseText,
+          state.fontLayout,
+          ~key="pauseText",
+          ~height=0.42,
+          ~opacity=0.6,
+          ()
+        ),
+        FontDraw.makePartNode(
+          helpText,
+          state.fontLayout,
+          ~key="pauseHelpText",
+          ~height=0.25,
+          ()
+        )
+      ])
     ]
-  )
+  );
 };
 
 let createGameOverScreen = state => {
-  let gameOverText = FontText.(
-    block(~align=Center, [
-      styledText(
-        ~height=0.23,
-        ~lineHeight=1.4,
-        "Game\nover"
+  let gameOverText =
+    FontText.(
+      block(
+        ~align=Center,
+        [styledText(~height=0.23, ~lineHeight=1.4, "Game\nover")]
       )
-    ])
-  );
-  let helpText = FontText.(
-    block(~align=Center, [
-      styledText(
-        ~height=0.045,
-        ~lineHeight=2.4,
-        "\nPress N to start a new game\nPress ? for help"
+    );
+  let helpText =
+    FontText.(
+      block(
+        ~align=Center,
+        [
+          styledText(
+            ~height=0.045,
+            ~lineHeight=2.4,
+            "\nPress N to start a new game\nPress ? for help"
+          )
+        ]
       )
-    ])
-  );
+    );
   Layout.stacked(
     ~key="gameOverScreen",
     ~hidden=true,
     [
-      Layout.vertical(
-        [
-          FontDraw.makePartNode(
-            gameOverText,
-            state.fontLayout,
-            ~key="gameOverText",
-            ~height=0.27,
-            ()
-          ),
-          FontDraw.makePartNode(
-            helpText,
-            state.fontLayout,
-            ~key="gameOverHelpText",
-            ~height=0.15,
-            ()
-          )
-        ]
-      )
+      Layout.vertical([
+        FontDraw.makePartNode(
+          gameOverText,
+          state.fontLayout,
+          ~key="gameOverText",
+          ~height=0.27,
+          ()
+        ),
+        FontDraw.makePartNode(
+          helpText,
+          state.fontLayout,
+          ~key="gameOverHelpText",
+          ~height=0.15,
+          ()
+        )
+      ])
     ]
-  )
+  );
 };
 
 let createHelpScreen = state => {
-  let leftStyle = FontText.blockStyle(
-    ~align=FontText.Right,
-    ~scaleX=0.45,
-    ()
-  );
-  let rightStyle = FontText.blockStyle(
-    ~align=Left,
-    ~color=Color.fromFloats(0.75, 0.7, 0.8),
-    ~scaleX=0.55,
-    ()
-  );
+  let leftStyle = FontText.blockStyle(~align=FontText.Right, ~scaleX=0.45, ());
+  let rightStyle =
+    FontText.blockStyle(
+      ~align=Left,
+      ~color=Color.fromFloats(0.75, 0.7, 0.8),
+      ~scaleX=0.55,
+      ()
+    );
   let helpBlocks =
     List.fold_left(
-      (blocks, (key, command)) => {
-        FontText.([
+      (blocks, (key, command)) =>
+        FontText.[
           block(~style=rightStyle, [text("- " ++ command)]),
           block(~style=leftStyle, [text(key)]),
           ...blocks
-        ])
-      },
+        ],
       [],
       [
         ("Space", "pause"),
@@ -439,12 +441,14 @@ let createHelpScreen = state => {
       ]
     );
   /* Hacked in newline for space, margin/padding would be nice */
-  let helpText = FontText.(block(
-    ~font="digitalt",
-    ~height=0.12, [
-      block(~height=0.042, [text("\n"), ...List.rev(helpBlocks)])
-    ]
-  ));
+  let helpText =
+    FontText.(
+      block(
+        ~font="digitalt",
+        ~height=0.12,
+        [block(~height=0.042, [text("\n"), ...List.rev(helpBlocks)])]
+      )
+    );
   Layout.vertical(
     ~margin=Scene.MarginXY(Scene.Scale(0.12), Scene.Scale(0.0)),
     ~key="helpScreen",
@@ -455,12 +459,22 @@ let createHelpScreen = state => {
         [
           FontDraw.makePartNode(
             FontText.(
-              block(~align=FontText.Center, [styled(~height=0.12, [
-                text("Help\n"),
-                styled(~height=0.06, ~color=Color.fromFloats(0.8, 0.85, 0.9), [
-                  text("Press N to play")
-                ])
-              ])])
+              block(
+                ~align=FontText.Center,
+                [
+                  styled(
+                    ~height=0.12,
+                    [
+                      text("Help\n"),
+                      styled(
+                        ~height=0.06,
+                        ~color=Color.fromFloats(0.8, 0.85, 0.9),
+                        [text("Press N to play")]
+                      )
+                    ]
+                  )
+                ]
+              )
             ),
             state.fontLayout,
             ~key="startHelp",
@@ -469,29 +483,34 @@ let createHelpScreen = state => {
           ),
           FontDraw.makePartNode(
             FontText.(
-              block(~align=FontText.Center, [styled(~height=0.12, [
-                text("Help\n"),
-                styled(~height=0.05, ~color=Color.fromFloats(0.8, 0.85, 0.9), [
-                  text("Press Space to continue")
-                ])
-              ])])
+              block(
+                ~align=FontText.Center,
+                [
+                  styled(
+                    ~height=0.12,
+                    [
+                      text("Help\n"),
+                      styled(
+                        ~height=0.05,
+                        ~color=Color.fromFloats(0.8, 0.85, 0.9),
+                        [text("Press Space to continue")]
+                      )
+                    ]
+                  )
+                ]
+              )
             ),
             state.fontLayout,
             ~hidden=true,
             ~key="gameHelp",
             ~height=0.23,
             ()
-          ),
+          )
         ]
       ),
-      FontDraw.makePartNode(
-        helpText,
-        state.fontLayout,
-        ~height=0.47,
-        ()
-      )
+      FontDraw.makePartNode(helpText, state.fontLayout, ~height=0.47, ())
     ]
-  )
+  );
 };
 
 let createNextLevelScreen = state =>
@@ -798,9 +817,8 @@ let drawGame = (state, scene) => {
       /* Handle holding element */
       switch state.gameState.holdingEl {
       | Some(holdEl) =>
-        updateElTiles(scene, holdEl, state.holdingEl, 3, 4, None, true);
-      | None =>
-        resetElState(scene, state.holdingEl);
+        updateElTiles(scene, holdEl, state.holdingEl, 3, 4, None, true)
+      | None => resetElState(scene, state.holdingEl)
       };
     }
   | Some(touchDown) =>
@@ -814,7 +832,11 @@ let drawGame = (state, scene) => {
         /* End blinking */
         blinkEnd(scene);
         /* Update completed rows uniform */
-        Scene.UFloat.set(scene, state.completedRows, float_of_int(state.gameState.completedRows));
+        Scene.UFloat.set(
+          scene,
+          state.completedRows,
+          float_of_int(state.gameState.completedRows)
+        );
         /* Signal done to game logic by setting Done state */
         state.gameState = {
           ...state.gameState,
@@ -847,7 +869,11 @@ let drawGame = (state, scene) => {
         };
       } else if (elapsed >= Config.dropDownBeforeTick) {
         /* Update completed rows uniform */
-        Scene.UFloat.set(scene, state.completedRows, float_of_int(state.gameState.completedRows));
+        Scene.UFloat.set(
+          scene,
+          state.completedRows,
+          float_of_int(state.gameState.completedRows)
+        );
         /* Signal done to start next tick */
         state.gameState = {
           ...state.gameState,
@@ -964,14 +990,14 @@ let draw = (state, scene, canvas: Gpu.Canvas.t) => {
       drawGame(state, scene);
     | StartScreen => state
     | StartHelp =>
-        switch state.sceneLayout {
-        | StartHelp => state
-        | StartScreen =>
-          Scene.hideNodeByKey(scene, "startScreen");
-          Scene.showNodeByKey(scene, "helpScreen");
-          setScreenState(state, StartHelp);
-        | _ => failwith("Starthelp should only be triggered from start screen")
-        };
+      switch state.sceneLayout {
+      | StartHelp => state
+      | StartScreen =>
+        Scene.hideNodeByKey(scene, "startScreen");
+        Scene.showNodeByKey(scene, "helpScreen");
+        setScreenState(state, StartHelp);
+      | _ => failwith("Starthelp should only be triggered from start screen")
+      }
     | HelpScreen =>
       switch state.sceneLayout {
       | HelpScreen => state
@@ -1000,8 +1026,8 @@ let draw = (state, scene, canvas: Gpu.Canvas.t) => {
         Scene.hideNodeByKey(scene, "startScreen");
         Scene.showNodeByKey(scene, "helpScreen");
         setScreenState(state, HelpScreen);
-      | _ => failwith("Helpscreen from state not recognized");
-      };
+      | _ => failwith("Helpscreen from state not recognized")
+      }
     | Paused =>
       switch state.sceneLayout {
       | PauseScreen => state

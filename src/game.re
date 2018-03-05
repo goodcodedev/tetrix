@@ -104,7 +104,10 @@ let elTiles = (element, rotation) => {
 
 let colors =
   Array.map(
-    color => Color.fromArray(Array.map(component => float_of_int(component) /. 255.0, color)),
+    color =>
+      Color.fromArray(
+        Array.map(component => float_of_int(component) /. 255.0, color)
+      ),
     [|
       [|199, 214, 240|], /* Standard unfilled color */
       [|205, 220, 246|], /* Standard lighter color */
@@ -117,6 +120,7 @@ let colors =
       [|240, 130, 120|] /* Red left shift */
     |]
   );
+
 /* Temp, adjust colors */
 let colors =
   Array.map(
@@ -124,7 +128,7 @@ let colors =
       let hsl = Color.Hsl.fromRgb(color);
       Color.Hsl.incrL(hsl, 0.07);
       Color.Hsl.incrS(hsl, 0.07);
-      Color.Hsl.toRgb(hsl)
+      Color.Hsl.toRgb(hsl);
     },
     colors
   );
@@ -175,30 +179,34 @@ let addCenterRadius = (el, rot) => {
   /*let centerX = float_of_int(left^) +. radiusX /. 2.0;*/
   let radiusY = float_of_int(height) *. (-1.0);
   /*let centerY = float_of_int(top^ * (-1)) -. radiusY /. 2.0;*/
-  let (centerX, centerY) =
-    {
-      /* Center positions of width, height */
-      let y = float_of_int(top^ * (-1)) -. radiusY /. 2.0;
-      let x = float_of_int(left^) +. radiusX /. 2.0;
-      switch (el, rot) {
-      | (LeftTurn, 0) | (LeftTurn, 2) => (x, y +. 0.5)
-      | (LeftTurn, 1) | (LeftTurn, 3) => (x +. 0.5, y +. 1.0)
-      | (RightTurn, 0) | (RightTurn, 2) => (x, y +. 0.5)
-      | (RightTurn, 1) | (RightTurn, 3) => (x -. 0.5, y +. 1.0)
-      | (Triangle, 2) => (x, y +. 0.5)
-      | (Triangle, 1) => (x -. 0.25, y +. 1.5)
-      | (Triangle, 3) => (x +. 0.25, y +. 1.5)
-      | (Cube, _) => (x, y +. 1.0)
-      | (LeftL, 2) => (x, y +. 0.5)
-      | (LeftL, 1) => (x, y +. 1.5)
-      | (LeftL, 3) => (x +. 0.5, y +. 1.5)
-      | (RightL, 2) => (x, y +. 0.5)
-      | (RightL, 1) => (x -. 0.5, y +. 1.5)
-      | (RightL, 3) => (x +. 0.25, y +. 1.5)
-      | (Line, 1) | (Line, 3) => (x, y +. 2.5)
-      | _ => (x, y)
-      }
+  let (centerX, centerY) = {
+    /* Center positions of width, height */
+    let y = float_of_int(top^ * (-1)) -. radiusY /. 2.0;
+    let x = float_of_int(left^) +. radiusX /. 2.0;
+    switch (el, rot) {
+    | (LeftTurn, 0)
+    | (LeftTurn, 2) => (x, y +. 0.5)
+    | (LeftTurn, 1)
+    | (LeftTurn, 3) => (x +. 0.5, y +. 1.0)
+    | (RightTurn, 0)
+    | (RightTurn, 2) => (x, y +. 0.5)
+    | (RightTurn, 1)
+    | (RightTurn, 3) => (x -. 0.5, y +. 1.0)
+    | (Triangle, 2) => (x, y +. 0.5)
+    | (Triangle, 1) => (x -. 0.25, y +. 1.5)
+    | (Triangle, 3) => (x +. 0.25, y +. 1.5)
+    | (Cube, _) => (x, y +. 1.0)
+    | (LeftL, 2) => (x, y +. 0.5)
+    | (LeftL, 1) => (x, y +. 1.5)
+    | (LeftL, 3) => (x +. 0.5, y +. 1.5)
+    | (RightL, 2) => (x, y +. 0.5)
+    | (RightL, 1) => (x -. 0.5, y +. 1.5)
+    | (RightL, 3) => (x +. 0.25, y +. 1.5)
+    | (Line, 1)
+    | (Line, 3) => (x, y +. 2.5)
+    | _ => (x, y)
     };
+  };
   let offsetX = left^;
   Hashtbl.add(
     centerRadius,
@@ -459,7 +467,7 @@ let newGame = state => {
     gameState: Running
   };
   updateBeams(state);
-  state
+  state;
 };
 
 let isCollision = state =>
@@ -739,25 +747,30 @@ let processGameInput = (state, gameAction) =>
     }
   | HoldElement =>
     let holdEl = ElQueue.setHoldPos(state.curEl);
-    let state = switch state.holdingEl {
-    | None =>
-      nextEl({
-        ...state,
-        holdingEl: Some(holdEl)
-      })
-    | Some(nextEl) =>
-      {
-        ...state,
-        holdingEl: Some(holdEl),
-        elChanged: true,
-        elMoved: true,
-        lastTick: state.curTime,
-        curEl: ElQueue.setBoardInitPos(nextEl)
-      }
-    };
+    let state =
+      switch state.holdingEl {
+      | None => nextEl({...state, holdingEl: Some(holdEl)})
+      | Some(nextEl) => {
+          ...state,
+          holdingEl: Some(holdEl),
+          elChanged: true,
+          elMoved: true,
+          lastTick: state.curTime,
+          curEl: ElQueue.setBoardInitPos(nextEl)
+        }
+      };
     {...state, action: GameAction(NoAction)};
-  | Pause => {...state, gameState: Paused, action: PauseAction(NoAction), paused: true}
-  | Help => {...state, gameState: HelpScreen, action: HelpScreenAction(NoAction)}
+  | Pause => {
+      ...state,
+      gameState: Paused,
+      action: PauseAction(NoAction),
+      paused: true
+    }
+  | Help => {
+      ...state,
+      gameState: HelpScreen,
+      action: HelpScreenAction(NoAction)
+    }
   | NoAction => state
   };
 
@@ -913,7 +926,7 @@ let rec processGameAction = (state, action: gameAction) => {
     switch state.gameState {
     | Running => gameLogic(state)
     | _ => processAction(state)
-    }
+    };
   };
   /* Check for touchdown in progress */
   switch state.touchDown {
@@ -928,7 +941,12 @@ let rec processGameAction = (state, action: gameAction) => {
 and processStartScreenAction = (state, action: startScreenAction) =>
   switch action {
   | NoAction => state
-  | Help => processAction({...state, gameState: StartHelp, action: HelpScreenAction(NoAction)})
+  | Help =>
+    processAction({
+      ...state,
+      gameState: StartHelp,
+      action: HelpScreenAction(NoAction)
+    })
   | StartGame =>
     processAction({...state, gameState: Running, action: GameAction(NoAction)})
   }
@@ -941,7 +959,12 @@ and processHelpScreenAction = (state, action: helpScreenAction) =>
 and processPauseAction = (state, action: pauseAction) =>
   switch action {
   | NoAction => state
-  | Help => processAction({...state, gameState: HelpScreen, action: HelpScreenAction(NoAction)})
+  | Help =>
+    processAction({
+      ...state,
+      gameState: HelpScreen,
+      action: HelpScreenAction(NoAction)
+    })
   | Resume =>
     processAction({
       ...state,
@@ -959,7 +982,12 @@ and processNextLevelAction = (state, action: nextLevelAction) =>
 and processGameOverAction = (state, action: gameOverAction) =>
   switch action {
   | NoAction => state
-  | Help => processAction({...state, gameState: HelpScreen, action: HelpScreenAction(NoAction)})
+  | Help =>
+    processAction({
+      ...state,
+      gameState: HelpScreen,
+      action: HelpScreenAction(NoAction)
+    })
   | NewGame => newGame(state)
   }
 and processAction = state =>
@@ -1036,7 +1064,7 @@ let keyPressed = (state, canvas: Gpu.Canvas.t) => {
           }
         }
       )
-    }
+    };
   | Paused =>
     PauseAction(
       switch keyCode {

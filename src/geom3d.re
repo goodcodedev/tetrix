@@ -34,11 +34,7 @@ module Quad = {
     /* Make vector from bottom left to bottom right
        and bottom left to top left and
        take cross product of their normalized values */
-    Point.normal(
-      q.bl,
-      q.br,
-      q.tl
-    );
+    Point.normal(q.bl, q.br, q.tl);
 };
 
 /* I don't know the terms
@@ -226,10 +222,7 @@ module AreaBetweenQuads = {
     let vbuf =
       VertexBuffer.make(
         createVertexData(self),
-        [
-          ("position", GlType.Vec3f),
-          ("normal", GlType.Vec3f)
-        ],
+        [("position", GlType.Vec3f), ("normal", GlType.Vec3f)],
         usage
       );
     let ibuf = IndexBuffer.make(IndexBuffer.makeQuadsData(6), usage);
