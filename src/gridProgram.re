@@ -5,10 +5,12 @@ let vertexSource = {|
     uniform mat3 tileShadowsMat;
     uniform mat3 beamsMat;
     uniform mat3 dropMat;
+    uniform mat3 gridLightMat;
     varying vec2 vPosition;
     varying vec2 tileShadowsPos;
     varying vec2 beamsPos;
     varying vec2 dropPos;
+    varying vec2 gridLightPos;
 
     uniform vec2 pixelSize;
     // Coords to take off lines on sides
@@ -28,11 +30,13 @@ let vertexSource = {|
         tileShadowsPos = (vec3(position, 1.0) * tileShadowsMat).xy;
         beamsPos = (vec3(position, 1.0) * beamsMat).xy;
         dropPos = (vec3(position, 1.0) * dropMat).xy;
+        gridLightPos = (vec3(position, 1.0) * gridLightMat).xy;
         gl_Position = vec4(transformed.xy, 0.0, 1.0);
     }
 |};
 
-let fragmentSource = {|
+let fragmentSource = 
+  {|
     precision mediump float;
     uniform vec3 bg;
     uniform vec3 lineColor;
@@ -44,7 +48,9 @@ let fragmentSource = {|
     uniform sampler2D tileShadows;
     uniform sampler2D beams;
     uniform sampler2D drop;
+    uniform sampler2D gridLight;
     uniform vec4 centerRadius;
+    uniform float completedRows;
 
     varying vec2 vPosition;
     varying vec2 lineCoords;
@@ -52,6 +58,7 @@ let fragmentSource = {|
     varying vec2 tileShadowsPos;
     varying vec2 beamsPos;
     varying vec2 dropPos;
+    varying vec2 gridLightPos;
 
     // Normalized to 0.0 - 1.0
     varying vec2 coord;
@@ -96,9 +103,15 @@ let fragmentSource = {|
         attenuation = attenuation * (1.0 - smoothstep(startDegree, endDegree, lightToSurfaceAngle));
         triangleLight = aoi * attenuation;
 
+        // Global pointLight (not using local position)
+        vec3 gridLight = texture2D(gridLight, gridLightPos).xyz;
+
+        // Completed rows indication
+        vec3 bg2 = mix(bg, bg * 1.1, step(vPosition.y, -1.0 + completedRows * rowSize));
+
         // Shadow
         float shadow = texture2D(tileShadows, tileShadowsPos).x;
-        vec3 color = mix(bg, vec3(0.0, 0.0, 0.0), shadow * 0.15);
+        vec3 color = mix(bg2 * gridLight, vec3(0.0, 0.0, 0.0), shadow * 0.15);
 
         // Aura light
         /*
@@ -113,7 +126,7 @@ let fragmentSource = {|
         float x3blank = (mod(lineCoords.x - wordStart, wordSize) > singlePixel.x * 2.0) ? 1.0 : 0.0;
         float yblank = (mod(lineCoords.y, rowSize) > singlePixel.y) ? 1.0 : 0.0;
         float lineCoef = (1.0 - xblank * yblank * x3blank) * 0.9 + (1.0 - x3blank) * 0.1;
-        color = mix(color, lineColor, lineCoef);
+        color = mix(color, lineColor * gridLight, lineCoef);
 
         // Beam
         vec3 beam = texture2D(beams, beamsPos).xyz;
@@ -124,13 +137,13 @@ let fragmentSource = {|
         color = mix(color, dropColor, dropBeam * 0.2);
 
         // Color + triangleLight
-        vec3 tLight = triangleLight * bg * elColor;
+        vec3 tLight = triangleLight * bg2 * elColor;
         tLight = pow(tLight, vec3(1.0/2.2));
         color = color + tLight;
         // Gamma correction
         gl_FragColor = vec4(color, 1.0);
     }
-|};
+  |};
 
 open Gpu;
 
@@ -145,8 +158,10 @@ let makeNode =
       dropColor,
       sdfTiles,
       elState: SceneState.elState,
-      centerRadius
-    ) =>
+      centerRadius,
+      completedRows
+    ) => {
+  let gridLight = GridLight.makeNode();
   Scene.
     /*let bg = UVec3f.vals(0.08, 0.12, 0.22);*/
     (
@@ -168,16 +183,19 @@ let makeNode =
           ("elPos", elState.pos),
           ("elColor", elState.color),
           ("dropColor", dropColor),
-          ("centerRadius", centerRadius)
+          ("centerRadius", centerRadius),
+          ("completedRows", completedRows)
         ],
         ~pixelSizeUniform=true,
         ~textures=[
           ("tiles", tilesTex),
           ("tileShadows", SceneTex.node(tileShadows)),
           ("beams", SceneTex.node(beamNode)),
-          ("drop", SceneTex.node(dropNode))
+          ("drop", SceneTex.node(dropNode)),
+          ("gridLight", SceneTex.node(gridLight))
         ],
-        ~deps=[sdfTiles, beamNode, tileShadows, dropNode],
+        ~deps=[sdfTiles, beamNode, tileShadows, dropNode, gridLight],
         ()
       )
-    );
+    )
+};

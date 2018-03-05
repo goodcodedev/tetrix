@@ -173,6 +173,16 @@ module PointLight = {
       };
     };
   };
+  /* Light function for only this pointLight */
+  let getLightFunction = (self, camera : Camera.t) => {
+    let part = getLightFuncSource(self, 0, camera);
+    "vec3 lighting(vec3 localP, vec3 screenP, vec3 normal) {\n"
+    ++ part.statements
+    ++ "return pow("
+    ++ part.addend
+    ++ ", vec3(1.0/2.2));\n"
+    ++ "}\n";
+  };
 };
 
 module Directional = {

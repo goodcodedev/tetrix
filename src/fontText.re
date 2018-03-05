@@ -729,16 +729,17 @@ module FontLayout = {
           /* Initiate char loop */
           addChar(0);
         | Styled(styled) =>
-          let height = switch styled.style.height {
+          let style = styled.style;
+          let height = switch style.height {
           | None => curStyle.height
           | Some(height) => height
           };
-          let spacing = switch styled.style.spacing {
+          let spacing = switch style.spacing {
           | None => curStyle.spacing
           | Some(spacing) => spacing
           };
           let adjSpacing = spacing *. height;
-          let font = switch styled.style.font {
+          let font = switch style.font {
           | None => curStyle.font
           | Some(font) => Hashtbl.find(layout.store.fonts, font)
           };
@@ -747,7 +748,7 @@ module FontLayout = {
             height,
             spacing,
             adjSpacing,
-            color: switch styled.style.color {
+            color: switch style.color {
             | None => curStyle.color
             | Some(color) => color
             }
@@ -755,21 +756,22 @@ module FontLayout = {
           s.curStyle = newStyle;
           layoutParts(styled.children, newStyle, curBlock);
         | Block(block) =>
+          let style = block.style;
           if (s.pendingLine) {
             s.pendingLine = false;
             alignLine(s.iGlyph - 1, curBlock);
           };
           /* Set curStyle from block */
-          let height = switch block.style.height {
+          let height = switch style.height {
           | None => curStyle.height
           | Some(height) => height
           };
-          let spacing = switch block.style.spacing {
+          let spacing = switch style.spacing {
           | None => curStyle.spacing
           | Some(spacing) => spacing
           };
           let adjSpacing = spacing *. height;
-          let font = switch block.style.font {
+          let font = switch style.font {
           | None => curStyle.font
           | Some(font) => Hashtbl.find(layout.store.fonts, font)
           };
@@ -778,7 +780,7 @@ module FontLayout = {
             height,
             spacing,
             adjSpacing,
-            color: switch block.style.color {
+            color: switch style.color {
             | None => curStyle.color
             | Some(color) => color
             }
@@ -788,7 +790,7 @@ module FontLayout = {
              xBlock point from adjecent blocks where block
              continues from */
           let blockWidth =
-            switch (block.style.scaleX) {
+            switch (style.scaleX) {
             | None => curBlockWidth
             | Some(scaleX) => curBlockWidth *. scaleX
             };
@@ -809,7 +811,7 @@ module FontLayout = {
             lineStart,
             lineEnd,
             firstLineAdded: false,
-            align: switch block.style.align {
+            align: switch style.align {
             | None => curBlock.align
             | Some(align) => align
             },

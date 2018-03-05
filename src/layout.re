@@ -57,6 +57,7 @@ let stacked =
       ~hidden=false,
       ~hAlign=Scene.AlignCenter,
       ~vAlign=Scene.AlignTop,
+      ~margin=?,
       children
     ) =>
   Scene.makeNode(
@@ -68,6 +69,7 @@ let stacked =
     ~hidden,
     ~hAlign,
     ~vAlign,
+    ~margin=?margin,
     ~children,
     ()
   );

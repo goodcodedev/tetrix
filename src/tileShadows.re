@@ -26,13 +26,11 @@ let fragmentSource = {|
             vPosition.x * 0.08,
             0.0
         );
-        float lenLight = smoothstep(1.8, 5.0, distance(vPosition * aspect, vec2(0.0, -2.0)));
-
         persp.x = clamp(persp.x, -1.0, 1.0);
         vec2 tilePos = vec2((persp.x + 1.0) * 0.5, (persp.y - 1.0) * -0.5);
         tilePos.y = tilePos.y - 0.03;
         float tile = texture2D(tiles, tilePos).x;
-        vec4 tileColor = (tile > 0.0) ?  vec4(1.0, 1.0, 1.0, 1.0) : vec4(vec3(lenLight), 1.0);
+        vec4 tileColor = (tile > 0.0) ?  vec4(1.0, 1.0, 1.0, 1.0) : vec4(0.0, 0.0, 0.0, 1.0);
         gl_FragColor = tileColor;
     }
 |};

@@ -17,6 +17,7 @@ type sceneLayout =
 type sceneState = {
   tiles: array(int),
   sceneLayout,
+  fontLayout: FontText.FontLayout.t,
   tilesTex: Scene.sceneTexture,
   elState,
   elCenterRadius: Scene.sceneUniform,
@@ -33,5 +34,5 @@ type sceneState = {
   boardColor: Scene.sceneUniform,
   lineColor: Scene.sceneUniform,
   mutable gameState: Game.stateT,
-  fontLayout: FontText.FontLayout.t
+  completedRows: Scene.sceneUniform
 };

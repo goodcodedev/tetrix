@@ -20,7 +20,7 @@ let makeSceneLight = camera => {
     Directional.make(~dir=StaticDir(Data.Vec3.make(0.4, 0.3, 0.3)), ());
   let pointLight =
     PointLight.make(
-      ~pos=StaticPos(Data.Vec3.make(0.0, -0.4, 2.0)),
+      ~pos=StaticPos(Config.pointLight),
       ~specular=12,
       ()
     );
@@ -69,7 +69,7 @@ let setup = _canvas => {
   let elState = makeElState();
   let dropColor = Scene.UVec3f.zeros();
   let gameState = Game.setup(tiles);
-  let camera = Camera.make(Data.Vec3.make(0.0, 0.4, 4.0));
+  let camera = Camera.make(Config.camera);
   let sceneLight = makeSceneLight(camera);
   let elCenterRadius = Scene.UVec4f.zeros();
   let elLightPos = Scene.UVec3f.zeros();
@@ -107,7 +107,8 @@ let setup = _canvas => {
     boardColor,
     lineColor,
     gameState,
-    fontLayout: FontText.FontLayout.make(FontStore.make(~initSize=1, ()))
+    fontLayout: FontText.FontLayout.make(FontStore.make(~initSize=1, ())),
+    completedRows: Scene.UFloat.zero()
   };
   setBg(state);
 };
@@ -146,7 +147,8 @@ let createBoardNode = state => {
       state.dropColor,
       sdfTiles,
       state.elState,
-      state.elCenterRadius
+      state.elCenterRadius,
+      state.completedRows
     );
   let tileBlink = TileBlink.makeNode(state.blinkVO);
   Layout.stacked(
@@ -310,10 +312,21 @@ let createStartScreen = state => {
 };
 
 let createPauseScreen = state => {
-  let part = FontText.(
+  let pauseText = FontText.(
     block(~align=Center, [
-      styledText(~height=0.26, "Pause"),
-      styledText(~height=0.058, "\n\nPress Space to continue")
+      styledText(~height=0.235, "\n\n"), /* Some space, should use/have padding/margin */
+      styledText(
+        ~height=0.26,
+        "Pause"
+      )
+    ])
+  );
+  let helpText = FontText.(
+    block(~align=Center, [
+      styledText(
+        ~height=0.058,
+        "\nPress Space to continue\nPress ? for help"
+      )
     ])
   );
   Layout.stacked(
@@ -323,10 +336,18 @@ let createPauseScreen = state => {
       Layout.vertical(
         [
           FontDraw.makePartNode(
-            part,
+            pauseText,
             state.fontLayout,
-            ~key="paused",
-            ~height=0.5,
+            ~key="pauseText",
+            ~height=0.44,
+            ~opacity=0.6,
+            ()
+          ),
+          FontDraw.makePartNode(
+            helpText,
+            state.fontLayout,
+            ~key="pauseHelpText",
+            ~height=0.25,
             ()
           )
         ]
@@ -508,7 +529,7 @@ let createScene = (canvas, state) => {
   let scene =
     Scene.make(canvas, state, createRootNode(state), ~drawListDebug=false, ());
   /* Queue deps from root */
-  /*Scene.queueDeps(scene, scene.root.id);*/
+  Scene.queueDeps(scene, scene.root.id);
   let anim =
     Animate.anim(
       AnimNodeUniform(Scene.getNodeUnsafe(scene, "background"), "anim"),
@@ -771,6 +792,8 @@ let drawGame = (state, scene) => {
       if (elapsed >= untilElapsed) {
         /* End blinking */
         blinkEnd(scene);
+        /* Update completed rows uniform */
+        Scene.UFloat.set(scene, state.completedRows, float_of_int(state.gameState.completedRows));
         /* Signal done to game logic by setting Done state */
         state.gameState = {
           ...state.gameState,
@@ -802,6 +825,8 @@ let drawGame = (state, scene) => {
           };
         };
       } else if (elapsed >= Config.dropDownBeforeTick) {
+        /* Update completed rows uniform */
+        Scene.UFloat.set(scene, state.completedRows, float_of_int(state.gameState.completedRows));
         /* Signal done to start next tick */
         state.gameState = {
           ...state.gameState,

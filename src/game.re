@@ -14,20 +14,6 @@ module Document = {
 
 open Config;
 
-let elColorOffset = 2;
-
-let boardOffsetX = 50;
-
-let boardOffsetY = 20;
-
-let tileWidth = 20;
-
-let tileHeight = 20;
-
-let tilePadding = 3;
-
-let boardWidth = tileCols * tileWidth;
-
 type element =
   | Cube
   | Line
@@ -186,9 +172,9 @@ let addCenterRadius = (el, rot) => {
   let width = right^ - left^;
   let height = top^ - bottom^;
   let radiusX = float_of_int(width);
-  let centerX = float_of_int(left^) +. radiusX /. 2.0;
+  /*let centerX = float_of_int(left^) +. radiusX /. 2.0;*/
   let radiusY = float_of_int(height) *. (-1.0);
-  let centerY = float_of_int(top^ * (-1)) -. radiusY /. 2.0;
+  /*let centerY = float_of_int(top^ * (-1)) -. radiusY /. 2.0;*/
   let (centerX, centerY) =
     {
       /* Center positions of width, height */
@@ -211,15 +197,6 @@ let addCenterRadius = (el, rot) => {
       | _ => (x, y)
       }
     };
-    /*
-type element =
-  | Cube
-  | Line
-  | Triangle
-  | RightTurn
-  | LeftTurn
-  | LeftL
-  | RightL;*/
   let offsetX = left^;
   Hashtbl.add(
     centerRadius,
@@ -257,6 +234,7 @@ module TouchDown = {
   type t = {
     state: touchDownState,
     drawn: bool,
+    /* Array of completed rows */
     rows: array(int),
     completedRows: bool,
     elapsed: float,
@@ -346,6 +324,7 @@ module ElQueue = {
 };
 
 type stateT = {
+  gameState,
   action: inputAction,
   curEl: elData,
   holdingEl: option(elData),
@@ -355,12 +334,12 @@ type stateT = {
   lastTick: float,
   curTime: float,
   tiles: array(array(int)),
+  completedRows: int,
   sceneTiles: array(int),
   updateTiles: bool,
   beams: array((int, int)),
   dropBeams: array((int, int)),
   dropColor: Color.t,
-  gameState,
   paused: bool,
   touchDown: option(TouchDown.t),
   elQueue: ElQueue.t,
@@ -433,6 +412,7 @@ let setup = tiles : stateT => {
   /*let sdf = SdfTiles.createCanvas();
     SdfTiles.draw(sdf);*/
   let state = {
+    gameState: StartScreen,
     action: StartScreenAction(NoAction),
     curEl: ElQueue.setBoardInitPos(ElQueue.pop(elQueue)),
     holdingEl: None,
@@ -442,12 +422,12 @@ let setup = tiles : stateT => {
     lastTick: 0.,
     curTime: 0.,
     tiles: Array.make_matrix(tileRows, tileCols, 0),
+    completedRows: 0,
     sceneTiles: tiles,
     updateTiles: true,
     beams: Array.make(tileCols, (beamNone, 0)),
     dropBeams: Array.make(tileCols, (beamNone, 0)),
     dropColor: Color.white(),
-    gameState: StartScreen,
     paused: false,
     touchDown: None,
     elQueue,
@@ -779,6 +759,7 @@ let processGameInput = (state, gameAction) =>
   | NoAction => state
   };
 
+/* Touchdown process (animation) completed */
 let afterTouchdown = state => {
   let curTime = state.curTime +. state.deltaTime;
   let state =
@@ -834,18 +815,21 @@ let elementHasTouchedDown = (state, isDropDown) => {
       (0, [||]),
       completedRows
     );
-  let completedRows = Array.length(completedRowIndexes) > 0;
+  let numCompleted = Array.length(completedRowIndexes);
+  let completedRows = numCompleted > 0;
   if (! completedRows && ! isDropDown) {
     /* No dropdown and no completed rows, run afterTouchdown directly */
     afterTouchdown({
       ...state,
-      updateTiles: true
+      updateTiles: true,
+      completedRows: state.completedRows + numCompleted
     });
   } else {
     {
       /* Initiate process of touchdown involving animations */
       ...state,
       updateTiles: true,
+      completedRows: state.completedRows + numCompleted,
       touchDown:
         Some({
           rows: completedRowIndexes,
