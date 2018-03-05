@@ -6,11 +6,11 @@ module Document = {
     "addEventListener";
 };
 
-[@bs.set] external setLastKeyCode : ('a, int) => unit = "__lastKeyCode";
+[@bs.set] external setLastKeyCode : ('a, string) => unit = "__lastKeyCode";
 
-[@bs.get] external lastKeyCode : 'a => int = "__lastKeyCode";
+[@bs.get] external lastKeyCode : 'a => string = "__lastKeyCode";
 
-[@bs.get] external getWhich : 'eventT => int = "which";
+[@bs.get] external getKeyEventKey : 'eventT => string = "key";
 
 open Config;
 
@@ -414,7 +414,7 @@ let updateBeams = state => {
 
 let setup = tiles : stateT => {
   Document.addEventListener(Document.window, "keydown", e =>
-    setLastKeyCode(Document.window, getWhich(e))
+    setLastKeyCode(Document.window, getKeyEventKey(e))
   );
   Random.self_init();
   let elQueue = ElQueue.make();
@@ -1017,7 +1017,7 @@ let keyPressed = (state, canvas: Gpu.Canvas.t) => {
       | N => StartGame
       | _ =>
         switch (lastKeyCode(Document.window)) {
-        | 171 => Help
+        | "?" => Help
         | _ => NoAction
         }
       }
@@ -1045,10 +1045,10 @@ let keyPressed = (state, canvas: Gpu.Canvas.t) => {
         | Space => Pause
         | _ =>
           switch (lastKeyCode(Document.window)) {
-          | 48
-          | 173 => MoveBeginning
-          | 52 => MoveEnd
-          | 171 => Help
+          | "0"
+          | "_" => MoveBeginning
+          | "$" => MoveEnd
+          | "?" => Help
           | _ => NoAction
           }
         }
@@ -1059,7 +1059,7 @@ let keyPressed = (state, canvas: Gpu.Canvas.t) => {
         | Space => Pause
         | _ =>
           switch (lastKeyCode(Document.window)) {
-          | 171 => Help
+          | "?" => Help
           | _ => NoAction
           }
         }
@@ -1071,7 +1071,7 @@ let keyPressed = (state, canvas: Gpu.Canvas.t) => {
       | Space => Resume
       | _ =>
         switch (lastKeyCode(Document.window)) {
-        | 171 => Help
+        | "?" => Help
         | _ => NoAction
         }
       }
@@ -1103,7 +1103,7 @@ let keyPressed = (state, canvas: Gpu.Canvas.t) => {
       | N => NewGame
       | _ =>
         switch (lastKeyCode(Document.window)) {
-        | 171 => Help
+        | "?" => Help
         | _ => NoAction
         }
       }

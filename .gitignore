@@ -5,3 +5,4 @@ node_modules
 *.cmx
 *.o
 **/.DS_Store
+dist
