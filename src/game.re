@@ -182,18 +182,20 @@ let addCenterRadius = (el, rot) => {
       let x = float_of_int(left^) +. radiusX /. 2.0;
       switch (el, rot) {
       | (LeftTurn, 0) | (LeftTurn, 2) => (x, y +. 0.5)
-      | (LeftTurn, 1) | (LeftTurn, 3) => (x +. 0.5, y +. 0.5)
+      | (LeftTurn, 1) | (LeftTurn, 3) => (x +. 0.5, y +. 1.0)
       | (RightTurn, 0) | (RightTurn, 2) => (x, y +. 0.5)
-      | (RightTurn, 1) | (RightTurn, 3) => (x -. 0.5, y +. 0.5)
+      | (RightTurn, 1) | (RightTurn, 3) => (x -. 0.5, y +. 1.0)
       | (Triangle, 2) => (x, y +. 0.5)
-      | (Triangle, 1) => (x -. 0.5, y +. 0.5)
-      | (Triangle, 3) => (x +. 0.5, y +. 0.5)
-      | (Cube, _) => (x, y +. 0.5)
+      | (Triangle, 1) => (x -. 0.25, y +. 1.5)
+      | (Triangle, 3) => (x +. 0.25, y +. 1.5)
+      | (Cube, _) => (x, y +. 1.0)
       | (LeftL, 2) => (x, y +. 0.5)
-      | (LeftL, 1) => (x, y +. 1.0)
+      | (LeftL, 1) => (x, y +. 1.5)
+      | (LeftL, 3) => (x +. 0.5, y +. 1.5)
       | (RightL, 2) => (x, y +. 0.5)
-      | (RightL, 3) => (x, y +. 1.0)
-      | (Line, 1) | (Line, 3) => (x, y +. 1.0)
+      | (RightL, 1) => (x -. 0.5, y +. 1.5)
+      | (RightL, 3) => (x +. 0.25, y +. 1.5)
+      | (Line, 1) | (Line, 3) => (x, y +. 2.5)
       | _ => (x, y)
       }
     };
@@ -994,32 +996,47 @@ let keyPressed = (state, canvas: Gpu.Canvas.t) => {
     )
   | Running =>
     Js.log(lastKeyCode(Document.window));
-    GameAction(
-      switch keyCode {
-      | H => MoveLeft
-      | L => MoveRight
-      | W => BlockRight
-      | E => BlockEnd
-      | B => BlockLeft
-      | J => MoveDown
-      | K => CancelDown
-      | S
-      | R => RotateCCW
-      | C => RotateCW
-      | D
-      | X => HoldElement
-      | Period => DropDown
-      | Space => Pause
-      | _ =>
-        switch (lastKeyCode(Document.window)) {
-        | 48
-        | 173 => MoveBeginning
-        | 52 => MoveEnd
-        | 171 => Help
-        | _ => NoAction
+    /* Allow different commands on touchDown */
+    switch state.touchDown {
+    | None =>
+      GameAction(
+        switch keyCode {
+        | H => MoveLeft
+        | L => MoveRight
+        | W => BlockRight
+        | E => BlockEnd
+        | B => BlockLeft
+        | J => MoveDown
+        | K => CancelDown
+        | S
+        | R => RotateCCW
+        | C => RotateCW
+        | D
+        | X => HoldElement
+        | Period => DropDown
+        | Space => Pause
+        | _ =>
+          switch (lastKeyCode(Document.window)) {
+          | 48
+          | 173 => MoveBeginning
+          | 52 => MoveEnd
+          | 171 => Help
+          | _ => NoAction
+          }
         }
-      }
-    )
+      )
+    | Some(_) =>
+      GameAction(
+        switch keyCode {
+        | Space => Pause
+        | _ =>
+          switch (lastKeyCode(Document.window)) {
+          | 171 => Help
+          | _ => NoAction
+          }
+        }
+      )
+    }
   | Paused =>
     PauseAction(
       switch keyCode {

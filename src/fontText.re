@@ -12,6 +12,7 @@ type blockStyle = {
   height: option(float),
   color: option(Color.t),
   spacing: option(float),
+  lineHeight: option(float)
 };
 let blockStyle = (
   ~align=?,
@@ -20,6 +21,7 @@ let blockStyle = (
   ~height=?,
   ~color=?,
   ~spacing=?,
+  ~lineHeight=?,
   ()
 ) : blockStyle => {
   align,
@@ -27,25 +29,29 @@ let blockStyle = (
   font,
   height,
   color,
-  spacing
+  spacing,
+  lineHeight
 };
 type textStyle = {
   font: option(string),
   height: option(float),
   color: option(Color.t),
   spacing: option(float),
+  lineHeight: option(float)
 };
 let textStyle = (
   ~font=?,
   ~height=?,
   ~color=?,
   ~spacing=?,
+  ~lineHeight=?,
   ()
 ) : textStyle => {
   font,
   height,
   color,
-  spacing
+  spacing,
+  lineHeight
 };
 type block = {
   style: blockStyle,
@@ -71,6 +77,7 @@ let block = (
   ~height=?,
   ~color=?,
   ~spacing=?,
+  ~lineHeight=?,
   ~style=?,
   children
 ) => {
@@ -84,7 +91,8 @@ let block = (
         font,
         height,
         color,
-        spacing
+        spacing,
+        lineHeight
       }
     };
   Block({
@@ -98,6 +106,7 @@ let styled = (
   ~height=?,
   ~color=?,
   ~spacing=?,
+  ~lineHeight=?,
   ~style=?,
   children
 ) => {
@@ -109,7 +118,8 @@ let styled = (
         font,
         height,
         color,
-        spacing
+        spacing,
+        lineHeight
       }
     };
   Styled({
@@ -124,12 +134,14 @@ let styledText = (
   ~font=?,
   ~height=?,
   ~color=?,
+  ~lineHeight=?,
   textString
 ) => {
   styled(
     ~font=?font,
     ~height=?height,
     ~color=?color,
+    ~lineHeight=?lineHeight,
     [
       text(textString)
     ]
@@ -223,6 +235,7 @@ let rec getPartText = (part) => {
 type calcStyle = {
   font: BMFont.bmFont,
   height: float,
+  lineHeight: float,
   spacing: float,
   adjSpacing: float, /* Spacing adjusted with height */
   color: Color.t
@@ -418,6 +431,7 @@ module FontLayout = {
     {
       font,
       height: defaultHeight,
+      lineHeight: 2.0,
       spacing: 0.0,
       adjSpacing: 0.0,
       color: defaultColor
@@ -458,7 +472,6 @@ module FontLayout = {
       curStyle
     };
     /* Some linespacing factor, lineHeight might be off somehow */
-    let lineHeight = 2.0;
     let glyphB = layout.glyphB;
     let spaceCode = Char.code(' ');
     let nlCode = Char.code('\n');
@@ -564,7 +577,7 @@ module FontLayout = {
       alignLine(lastIndex, curBlock);
       s.glyphLineStart = lastIndex + 1;
       s.lastGlyph = None;
-      let lineDist = curStyle.height *. lineHeight;
+      let lineDist = curStyle.height *. curStyle.lineHeight;
       /* Go to next line */
       s.penY = s.penY -. lineDist;
       s.yLineEnd = s.yLineEnd -. lineDist;
@@ -575,8 +588,10 @@ module FontLayout = {
       };
     };
     let addFirstLine = (curStyle, curBlock) => {
-      let lineDist = curStyle.height *. lineHeight;
-      s.penY = s.penY -. curStyle.height +. (curStyle.font.common.glBase *. curStyle.height *. lineHeight);
+      let lineDist = curStyle.height *. curStyle.lineHeight;
+      /* Todo: Added 2.0 factor to base altough not sure about it,
+        was lineHeight, figure out what is appropriate */
+      s.penY = s.penY -. curStyle.height +. (curStyle.font.common.glBase *. curStyle.height *. 2.0);
       s.yLineEnd = s.yLineEnd -. lineDist;
       /* Child blocks should start after line */
       curBlock.yBlockStart = s.yLineEnd;
@@ -678,7 +693,7 @@ module FontLayout = {
                       let subtractX = (glyphB.data[spaceIndex + 1].x +. 1.0) *. (-1.0);
                       /* todo: Need to resolve current height for next line
                         based on moved characters */
-                      let addY = curStyle.height *. lineHeight *. -1.0;
+                      let addY = curStyle.height *. curStyle.lineHeight *. -1.0;
                       moveXY(subtractX, addY, spaceIndex + 1, s.iGlyph - 1);
                       let lastChar = glyphB.data[s.iGlyph - 1];
                       s.penX = lastChar.x +. lastChar.glChar.xAdvance *. curStyle.height;
@@ -746,6 +761,10 @@ module FontLayout = {
           let newStyle = {
             font,
             height,
+            lineHeight: switch style.lineHeight {
+            | None => curStyle.lineHeight
+            | Some(lineHeight) => lineHeight
+            },
             spacing,
             adjSpacing,
             color: switch style.color {
@@ -778,6 +797,10 @@ module FontLayout = {
           let curStyle = {
             font,
             height,
+            lineHeight: switch style.lineHeight {
+            | None => curStyle.lineHeight
+            | Some(lineHeight) => lineHeight
+            },
             spacing,
             adjSpacing,
             color: switch style.color {

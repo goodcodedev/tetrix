@@ -356,29 +356,50 @@ let createPauseScreen = state => {
   )
 };
 
-let createGameOverScreen = state =>
-  Layout.vertical(
+let createGameOverScreen = state => {
+  let gameOverText = FontText.(
+    block(~align=Center, [
+      styledText(
+        ~height=0.23,
+        ~lineHeight=1.4,
+        "Game\nover"
+      )
+    ])
+  );
+  let helpText = FontText.(
+    block(~align=Center, [
+      styledText(
+        ~height=0.045,
+        ~lineHeight=2.4,
+        "\nPress N to start a new game\nPress ? for help"
+      )
+    ])
+  );
+  Layout.stacked(
     ~key="gameOverScreen",
     ~hidden=true,
     [
-    FontDraw.makeSimpleNode(
-      "Game over",
-      "digitalt",
-      state.fontLayout,
-      ~key="gameOver",
-      ~height=0.17,
-      ~align=FontText.Center,
-      ()
-    ),
-    FontDraw.makeSimpleNode(
-      "Press N to start new game",
-      "digitalt",
-      state.fontLayout,
-      ~height=0.06,
-      ~align=FontText.Center,
-      ()
-    )
-  ]);
+      Layout.vertical(
+        [
+          FontDraw.makePartNode(
+            gameOverText,
+            state.fontLayout,
+            ~key="gameOverText",
+            ~height=0.27,
+            ()
+          ),
+          FontDraw.makePartNode(
+            helpText,
+            state.fontLayout,
+            ~key="gameOverHelpText",
+            ~height=0.15,
+            ()
+          )
+        ]
+      )
+    ]
+  )
+};
 
 let createHelpScreen = state => {
   let leftStyle = FontText.blockStyle(
@@ -421,7 +442,7 @@ let createHelpScreen = state => {
   let helpText = FontText.(block(
     ~font="digitalt",
     ~height=0.12, [
-      block(~height=0.045, [text("\n"), ...List.rev(helpBlocks)])
+      block(~height=0.042, [text("\n"), ...List.rev(helpBlocks)])
     ]
   ));
   Layout.vertical(
@@ -466,7 +487,7 @@ let createHelpScreen = state => {
       FontDraw.makePartNode(
         helpText,
         state.fontLayout,
-        ~height=0.55,
+        ~height=0.47,
         ()
       )
     ]
@@ -888,14 +909,14 @@ let drawGame = (state, scene) => {
 
 let setScreenState = (state, screen) => {...state, sceneLayout: screen};
 
-let showMask = scene => {
+let showMask = (scene, last) => {
   let maskNode = Scene.getNodeUnsafe(scene, "mask");
   let animKey = "maskAnim";
   Scene.clearAnim(scene, animKey);
   let anim =
     Animate.anim(
       AnimNodeUniform(maskNode, "anim"),
-      AnimFloat(0.0, 1.0),
+      AnimFloat(0.0, last),
       ~key=animKey,
       ~easing=Scene.SineOut,
       ~duration=3.0,
@@ -985,7 +1006,7 @@ let draw = (state, scene, canvas: Gpu.Canvas.t) => {
       switch state.sceneLayout {
       | PauseScreen => state
       | GameScreen =>
-        showMask(scene);
+        showMask(scene, 0.6);
         Scene.showNodeByKey(scene, "pauseScreen");
         setScreenState(state, PauseScreen);
       | _ => failwith("Paused from other than game screen")
@@ -995,7 +1016,7 @@ let draw = (state, scene, canvas: Gpu.Canvas.t) => {
       switch state.sceneLayout {
       | GameOverScreen => state
       | GameScreen =>
-        showMask(scene);
+        showMask(scene, 1.0);
         Scene.showNodeByKey(scene, "gameOverScreen");
         setScreenState(state, GameOverScreen);
       | _ => failwith("Game over from other than game screen")

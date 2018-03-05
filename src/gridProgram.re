@@ -99,12 +99,12 @@ let fragmentSource =
         float aoi = dot(vec3(0.0, 0.0, 1.0), lVec);
         float attenuation = 1.0 / (1.0 + 100.0 * pow(length(surfaceToLight), 2.0));
         float endDegree = 60.0 + centerRadius.z * 30.0;
-        float startDegree = endDegree - 20.0 - centerRadius.z * 20.0;
+        float startDegree = endDegree - 25.0 - centerRadius.z * 20.0;
         attenuation = attenuation * (1.0 - smoothstep(startDegree, endDegree, lightToSurfaceAngle));
         triangleLight = aoi * attenuation;
 
         // Global pointLight (not using local position)
-        vec3 gridLight = texture2D(gridLight, gridLightPos).xyz;
+        vec3 gridLight = (texture2D(gridLight, gridLightPos).xyz * 0.7) + 0.3;
 
         // Completed rows indication
         vec3 bg2 = mix(bg, bg * 1.1, step(vPosition.y, -1.0 + completedRows * rowSize));
